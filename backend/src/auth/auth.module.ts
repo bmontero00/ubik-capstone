@@ -6,7 +6,7 @@ import { AuthController } from './auth.controller';
 @Module({
   imports: [
     JwtModule.register({
-      secret: process.env.JWT_SECRET || 'UBIK_JWT_DEV_SECRET_2026_CAPSTONE',
+      secret: process.env.JWT_SECRET || 'UBIK_CAPSTONE_SECRET_KEY_2026',
       signOptions: { expiresIn: '7d' },
     }),
   ],

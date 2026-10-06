@@ -13,19 +13,16 @@ export class AuthService {
   ) {}
 
   async register(dto: RegisterDto) {
-    // 1. Evitar correos duplicados
     const existingUser = await this.prisma.user.findUnique({
       where: { email: dto.email },
     });
 
     if (existingUser) {
-      throw new ConflictException('El correo ya se encuentra registrado en UBIK');
+      throw new ConflictException('El correo electrónico ya está registrado');
     }
 
-    // 2. Hash seguro de contraseña (Salt rounds = 10)
     const hashedPassword = await bcrypt.hash(dto.password, 10);
 
-    // 3. Persistir en PostgreSQL Supabase
     const user = await this.prisma.user.create({
       data: {
         email: dto.email,
@@ -41,7 +38,6 @@ export class AuthService {
       },
     });
 
-    // 4. Firmar token JWT
     const token = this.generateToken(user.id, user.email, user.role);
 
     return {
@@ -52,7 +48,6 @@ export class AuthService {
   }
 
   async login(dto: LoginDto) {
-    // 1. Buscar usuario en base de datos
     const user = await this.prisma.user.findUnique({
       where: { email: dto.email },
     });
@@ -61,13 +56,11 @@ export class AuthService {
       throw new UnauthorizedException('Credenciales inválidas');
     }
 
-    // 2. Comparar hash de contraseña
     const isPasswordValid = await bcrypt.compare(dto.password, user.password);
     if (!isPasswordValid) {
       throw new UnauthorizedException('Credenciales inválidas');
     }
 
-    // 3. Generar token JWT
     const token = this.generateToken(user.id, user.email, user.role);
 
     return {
@@ -86,7 +79,7 @@ export class AuthService {
     return this.jwtService.sign(
       { sub: userId, email, role },
       {
-        secret: process.env.JWT_SECRET || 'UBIK_JWT_DEV_SECRET_2026_CAPSTONE',
+        secret: process.env.JWT_SECRET || 'UBIK_CAPSTONE_SECRET_KEY_2026',
         expiresIn: '7d',
       },
     );
