@@ -1,69 +1,112 @@
-import Image from "next/image";
+'use client';
+
+import React, { useState, useEffect } from 'react';
+import Navbar from '../components/Navbar';
+import AuthModal from '../components/AuthModal';
+import { AuthResponse } from '../services/auth';
+import { Compass, Sparkles, ShieldCheck, Map } from 'lucide-react';
 
 export default function Home() {
+  const [isAuthOpen, setIsAuthOpen] = useState(false);
+  const [user, setUser] = useState<{ name: string; email: string } | null>(null);
+
+  useEffect(() => {
+    const savedUser = localStorage.getItem('ubik_user');
+    if (savedUser) {
+      setUser(JSON.parse(savedUser));
+    }
+  }, []);
+
+  const handleAuthSuccess = (data: AuthResponse) => {
+    localStorage.setItem('ubik_token', data.accessToken);
+    localStorage.setItem('ubik_user', JSON.stringify(data.user));
+    setUser({ name: data.user.name, email: data.user.email });
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('ubik_token');
+    localStorage.removeItem('ubik_user');
+    setUser(null);
+  };
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans">
+      <Navbar
+        user={user}
+        onLogout={handleLogout}
+        onOpenAuth={() => setIsAuthOpen(true)}
+      />
+
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 py-8 flex flex-col gap-8">
+        {/* Banner Hero */}
+        <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-slate-900 to-emerald-950/40 border border-slate-800 p-8 sm:p-12 shadow-2xl">
+          <div className="max-w-2xl space-y-4">
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+              <Sparkles className="w-3.5 h-3.5" /> Descubrimiento Inteligente de Eventos
+            </span>
+            <h1 className="text-3xl sm:text-5xl font-extrabold tracking-tight text-white leading-tight">
+              Explora lo que pasa en tu comunidad en tiempo real.
+            </h1>
+            <p className="text-slate-400 text-base sm:text-lg">
+              Conectamos asistentes con creadores locales mediante geolocalización de baja latencia y recomendaciones personalizadas.
+            </p>
+            <div className="pt-2 flex flex-wrap gap-3">
+              <button
+                onClick={() => setIsAuthOpen(true)}
+                className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold px-6 py-3 rounded-xl transition-all shadow-lg shadow-emerald-500/20 text-sm"
+              >
+                {user ? 'Explorar Eventos Cercanos' : 'Comenzar Ahora'}
+              </button>
+            </div>
+          </div>
+        </section>
+
+        {/* Placeholder Visual del Mapa (Sprint 2) */}
+        <section className="bg-slate-900/60 border border-slate-800 rounded-3xl p-6 flex flex-col items-center justify-center min-h-[380px] text-center relative overflow-hidden group">
+          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-emerald-500/5 via-transparent to-transparent pointer-events-none" />
+          <div className="bg-slate-800/80 p-4 rounded-2xl border border-slate-700/50 mb-4 group-hover:scale-105 transition-transform duration-300">
+            <Map className="w-10 h-10 text-emerald-400" />
+          </div>
+          <h3 className="text-xl font-bold text-white mb-2">Visor Geoespacial UBIK</h3>
+          <p className="text-sm text-slate-400 max-w-md mb-6">
+            Módulo interactivo con centrado GPS y filtro por radio de distancia. Diseñado para responder con latencia menor a 300 ms sobre PostgreSQL + PostGIS.
           </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
+          <span className="text-xs uppercase tracking-widest text-emerald-400 font-mono px-3 py-1 rounded-md bg-emerald-500/10 border border-emerald-500/20">
+            Arquitectura Base Lista — Integración Cartográfica en Sprint 2
+          </span>
+        </section>
+
+        {/* Pilares Técnicos */}
+        <section className="grid sm:grid-cols-3 gap-4">
+          <div className="bg-slate-900/40 border border-slate-800/80 p-5 rounded-2xl space-y-2">
+            <Compass className="w-5 h-5 text-emerald-400" />
+            <h4 className="font-bold text-white text-sm">Geolocalización Inmediata</h4>
+            <p className="text-xs text-slate-400">
+              Consultas espaciales optimizadas para responder en menos de 300 ms vía Supabase São Paulo.
+            </p>
+          </div>
+          <div className="bg-slate-900/40 border border-slate-800/80 p-5 rounded-2xl space-y-2">
+            <Sparkles className="w-5 h-5 text-cyan-400" />
+            <h4 className="font-bold text-white text-sm">Motor de Recomendación</h4>
+            <p className="text-xs text-slate-400">
+              Sugerencias de actividades basadas en lenguaje natural y preferencias de estilo.
+            </p>
+          </div>
+          <div className="bg-slate-900/40 border border-slate-800/80 p-5 rounded-2xl space-y-2">
+            <ShieldCheck className="w-5 h-5 text-emerald-400" />
+            <h4 className="font-bold text-white text-sm">Seguridad Transaccional</h4>
+            <p className="text-xs text-slate-400">
+              Códigos Únicos de Compra y tokens JWT sin almacenamiento de datos bancarios.
+            </p>
+          </div>
+        </section>
       </main>
+
+      <AuthModal
+        isOpen={isAuthOpen}
+        onClose={() => setIsAuthOpen(false)}
+        onSuccess={handleAuthSuccess}
+      />
     </div>
   );
 }
