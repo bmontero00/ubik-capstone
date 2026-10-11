@@ -1,10 +1,16 @@
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+}
+
 generator client {
   provider = "prisma-client-js"
 }
 
-datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+enum Role {
+  ATTENDEE
+  ORGANIZER
+  ADMIN
 }
 
 model User {
@@ -12,9 +18,43 @@ model User {
   email     String   @unique
   password  String
   name      String
-  role      String   @default("ATTENDEE")
+  role      Role     @default(ATTENDEE)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // Relación con los eventos creados por el usuario
+  events    Event[]
+
   @@map("users")
+}
+
+model Category {
+  id     String  @id @default(uuid())
+  name   String  @unique
+  events Event[]
+
+  @@map("categories")
+}
+
+model Event {
+  id          String   @id @default(uuid())
+  title       String
+  description String?
+  price       Float    @default(0)
+  date        DateTime
+  address     String
+  latitude    Float
+  longitude   Float
+  imageUrl    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Llaves foráneas y relaciones
+  categoryId  String
+  category    Category @relation(fields: [categoryId], references: [id])
+
+  organizerId String
+  organizer   User     @relation(fields: [organizerId], references: [id])
+
+  @@map("events")
 }
