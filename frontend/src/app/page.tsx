@@ -5,7 +5,6 @@ import Navbar from '../components/Navbar';
 import AuthModal from '../components/AuthModal';
 import dynamic from 'next/dynamic';
 
-// Importación dinámica para evitar el error SSR con Leaflet
 const InteractiveMap = dynamic(() => import('../components/Map'), { 
   ssr: false, 
   loading: () => (
@@ -24,64 +23,89 @@ interface Organizer { id: string; name: string; email: string; }
 interface EventItem {
   id: string; title: string; description: string; price: number;
   date: string; address: string; latitude: number; longitude: number;
-  distanceKm?: number; category: Category; organizer: Organizer;
+  imageUrl?: string; distanceKm?: number; category: Category; organizer: Organizer;
 }
 
 export default function HomePage() {
-  // 1. ESTADOS (Hooks siempre en el mismo orden)
-  const [user, setUser] = useState<{ name?: string; email: string } | null>(null);
+  const [user, setUser] = useState<{ id?: string; name?: string; email: string } | null>(null);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [radius, setRadius] = useState<number>(15);
   const [searchQuery, setSearchQuery] = useState<string>(''); 
   const [events, setEvents] = useState<EventItem[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]); // 🚀 Estado para categorías dinámicas
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
-  const [isClient, setIsClient] = useState(false); // Para asegurar hidratación limpia
+  const [isClient, setIsClient] = useState(false);
+
+  // Estados para el Modal de Creación de Eventos
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedCoords, setSelectedCoords] = useState<{ lat: number; lng: number } | null>(null);
+  
+  const [formData, setFormData] = useState({
+    title: '',
+    description: '',
+    priceInput: '',
+    categoryId: '', // 🚀 ID de la categoría seleccionada en el form
+    date: new Date().toISOString().split('T')[0],
+    address: 'Santiago, Chile',
+    imageFile: null as File | null
+  });
 
   const defaultLat = -33.4372;
   const defaultLng = -70.6506;
 
-  // 2. EFECTOS (Siempre se ejecutan)
-  
-  // Efecto para marcar que estamos en el cliente y cargar la sesión
   useEffect(() => {
     setIsClient(true);
     const savedUser = localStorage.getItem('ubik_user');
     if (savedUser) {
       try { 
         const parsed = JSON.parse(savedUser);
-        const realUser = parsed.user ? parsed.user : parsed;
-        setUser(realUser); 
+        setUser(parsed.user ? parsed.user : parsed); 
       } catch (err) { 
         console.error('Error al recuperar sesión local', err); 
       }
     }
-  }, []); // Dependencia vacía CONSTANTE
+    fetchCategories();
+  }, []);
 
-  // Efecto para cargar eventos (depende SOLO de radius)
-  useEffect(() => {
-    // Si no estamos en el cliente aún, no hacemos fetch
-    if (!isClient) return;
-
-    const fetchEvents = async () => {
-      setIsLoading(true);
-      setError(null);
-      try {
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
-        const res = await fetch(`${apiUrl}/events?lat=${defaultLat}&lng=${defaultLng}&radius=${radius}`);
-        if (!res.ok) throw new Error(`Error ${res.status}`);
-        const data: EventItem[] = await res.json();
-        setEvents(data);
-      } catch (err: any) {
-        setError('No fue posible conectar con el servidor de UBIK. Verifica que el backend esté corriendo.');
-      } finally {
-        setIsLoading(false);
+  // 🚀 Función para obtener categorías desde el backend (o usar respaldo predefinido)
+  const fetchCategories = async () => {
+    try {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+      const res = await fetch(`${apiUrl}/categories`);
+      if (res.ok) {
+        const data = await res.json();
+        setCategories(data);
+        if (data.length > 0) {
+          setFormData(prev => ({ ...prev, categoryId: data[0].id }));
+        }
       }
-    };
-    fetchEvents();
-  }, [radius, isClient]); // Array de dependencias ESTABLE
+    } catch (err) {
+      console.error('Error al cargar categorías:', err);
+    }
+  };
 
-  // 3. HANDLERS
+  const fetchEvents = async () => {
+    if (!isClient) return;
+    setIsLoading(true);
+    setError(null);
+    try {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+      const res = await fetch(`${apiUrl}/events?lat=${defaultLat}&lng=${defaultLng}&radius=${radius}`);
+      if (!res.ok) throw new Error(`Error ${res.status}`);
+      const data: EventItem[] = await res.json();
+      setEvents(data);
+    } catch (err: any) {
+      setError('No fue posible conectar con el servidor de UBIK. Verifica que el backend esté corriendo.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchEvents();
+  }, [radius, isClient]);
+
   const handleLogout = () => {
     localStorage.removeItem('ubik_token');
     localStorage.removeItem('ubik_user');
@@ -89,12 +113,64 @@ export default function HomePage() {
   };
 
   const handleAuthSuccess = (userData: any) => {
-    const realUser = userData.user ? userData.user : userData;
-    setUser(realUser);
+    setUser(userData.user ? userData.user : userData);
     setIsAuthOpen(false);
   };
 
-  // 4. DERIVACIÓN DE DATOS
+  const handleSelectLocationForNewEvent = (lat: number, lng: number) => {
+    setSelectedCoords({ lat, lng });
+    setIsModalOpen(true);
+  };
+
+  // Enviar nuevo evento a Supabase a través del backend NestJS
+  const handleCreateEventSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedCoords) return;
+
+    try {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+      const finalPrice = formData.priceInput.trim() === '' ? 0 : Math.max(0, Number(formData.priceInput));
+
+      const dataPayload = new FormData();
+      dataPayload.append('title', formData.title);
+      dataPayload.append('description', formData.description);
+      dataPayload.append('price', String(finalPrice));
+      dataPayload.append('date', formData.date);
+      dataPayload.append('address', formData.address);
+      dataPayload.append('latitude', String(selectedCoords.lat));
+      dataPayload.append('longitude', String(selectedCoords.lng));
+      dataPayload.append('categoryId', formData.categoryId); // 🚀 Enviar la categoría seleccionada
+      dataPayload.append('organizerId', user?.id || '1');
+      
+      if (formData.imageFile) {
+        dataPayload.append('image', formData.imageFile);
+      }
+
+      const response = await fetch(`${apiUrl}/events`, {
+        method: 'POST',
+        body: dataPayload,
+      });
+
+      if (response.ok) {
+        alert('¡Evento registrado exitosamente en Supabase!');
+        setIsModalOpen(false);
+        setFormData(prev => ({ 
+          ...prev, 
+          title: '', 
+          description: '', 
+          priceInput: '', 
+          imageFile: null 
+        }));
+        fetchEvents();
+      } else {
+        alert('Error al registrar el evento en el servidor.');
+      }
+    } catch (error) {
+      console.error('Error de red al crear evento:', error);
+      alert('Error de conexión con el backend.');
+    }
+  };
+
   const filteredEvents = events.filter((evt) => 
     evt.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
     evt.category?.name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -102,26 +178,20 @@ export default function HomePage() {
 
   const getCategoryBadge = (categoryName: string) => {
     switch (categoryName?.toLowerCase()) {
-      case 'cultural': return 'bg-purple-100 text-purple-700 border-purple-200';
-      case 'música': return 'bg-indigo-100 text-indigo-700 border-indigo-200';
-      case 'talleres': return 'bg-emerald-100 text-emerald-700 border-emerald-200';
+      case 'vehículos': return 'bg-amber-100 text-amber-800 border-amber-200';
+      case 'diversión': return 'bg-pink-100 text-pink-800 border-pink-200';
+      case 'videojuegos': return 'bg-purple-100 text-purple-800 border-purple-200';
+      case 'deporte': return 'bg-emerald-100 text-emerald-800 border-emerald-200';
       default: return 'bg-blue-100 text-blue-700 border-blue-200';
     }
   };
 
   const getFirstName = (fullName?: string, email?: string) => {
-    if (fullName && fullName.trim() !== '') {
-      const first = fullName.trim().split(' ')[0];
-      return first.charAt(0).toUpperCase() + first.slice(1).toLowerCase();
-    }
-    if (email && email.trim() !== '') {
-      const first = email.split('@')[0];
-      return first.charAt(0).toUpperCase() + first.slice(1).toLowerCase();
-    }
+    if (fullName?.trim()) return fullName.trim().split(' ')[0];
+    if (email?.trim()) return email.split('@')[0];
     return 'Explorador';
   };
 
-  // 5. RENDERIZADO CONDICIONAL SEGURO (Prevenir discrepancias de hidratación)
   if (!isClient) {
     return (
         <div className="min-h-screen bg-slate-950 flex items-center justify-center">
@@ -130,13 +200,14 @@ export default function HomePage() {
     );
   }
 
+  const isFreeEvent = formData.priceInput.trim() === '' || Number(formData.priceInput) === 0;
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans">
       <Navbar user={user} onOpenAuth={() => setIsAuthOpen(true)} onLogout={handleLogout} />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
         {!user ? (
-          // --- VISTA PÚBLICA ---
           <section className="flex flex-col items-center justify-center py-20 text-center animate-fade-in">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-950/80 border border-indigo-800 text-indigo-300 text-xs font-semibold mb-6 tracking-wide uppercase">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
@@ -149,116 +220,86 @@ export default function HomePage() {
               </span>
             </h1>
             <p className="text-lg text-slate-400 max-w-2xl mb-12 leading-relaxed">
-              Explora, filtra y asiste a eventos sociales y comunitarios según tu ubicación exacta. 
-              Sin algoritmos opacos, sin comisiones abusivas. Conecta directamente con la cultura local.
+              Explora, filtra y asiste a eventos sociales y comunitarios según tu ubicación exacta[cite: 9].
             </p>
-            
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-16 w-full max-w-4xl text-left">
-              <div className="bg-slate-900/50 p-6 rounded-2xl border border-slate-800 transition-colors hover:border-slate-700">
-                <div className="w-10 h-10 bg-indigo-900/50 rounded-lg flex items-center justify-center text-indigo-400 mb-4">📍</div>
-                <h3 className="text-white font-bold mb-2">Mapa Interactivo</h3>
-                <p className="text-sm text-slate-400">Busca eventos en un radio específico desde donde te encuentras.</p>
-              </div>
-              <div className="bg-slate-900/50 p-6 rounded-2xl border border-slate-800 transition-colors hover:border-slate-700">
-                <div className="w-10 h-10 bg-purple-900/50 rounded-lg flex items-center justify-center text-purple-400 mb-4">🎟️</div>
-                <h3 className="text-white font-bold mb-2">Reserva Segura</h3>
-                <p className="text-sm text-slate-400">Compra entradas o descubre eventos comunitarios 100% gratuitos.</p>
-              </div>
-              <div className="bg-slate-900/50 p-6 rounded-2xl border border-slate-800 transition-colors hover:border-slate-700">
-                <div className="w-10 h-10 bg-pink-900/50 rounded-lg flex items-center justify-center text-pink-400 mb-4">🤖</div>
-                <h3 className="text-white font-bold mb-2">IA Integrada</h3>
-                <p className="text-sm text-slate-400">Recomendaciones personalizadas basadas en tus gustos y preferencias.</p>
-              </div>
-            </div>
-
             <button 
               onClick={() => setIsAuthOpen(true)}
               className="px-10 py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl transition-all shadow-lg hover:shadow-indigo-500/25 active:scale-95 text-lg flex items-center gap-3 mx-auto"
             >
               Comenzar a Explorar
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path>
-              </svg>
             </button>
           </section>
         ) : (
-          // --- VISTA PRIVADA ---
           <div className="animate-fade-in">
             <header className="mb-8 flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
               <div>
                 <h2 className="text-3xl font-bold text-white">
                   ¡Hola, {getFirstName(user?.name, user?.email)}! 👋
                 </h2>
-                <p className="text-slate-400 mt-1">Aquí tienes las actividades ocurriendo cerca de ti.</p>
+                <p className="text-slate-400 mt-1">Aquí tienes las actividades cerca de ti. <span className="text-emerald-400 text-xs font-semibold">(Tip: Haz clic derecho en el mapa para crear un evento)</span></p>
               </div>
             </header>
 
             <section className="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 mb-8 shadow-xl backdrop-blur-sm flex flex-col lg:flex-row gap-6 items-center">
               <div className="relative w-full lg:w-1/2">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <svg className="h-5 w-5 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                  </svg>
-                </div>
                 <input
                   type="text"
-                  placeholder="Buscar lugares, actividades o categorías..."
+                  placeholder="Buscar por título, categoría (ej: Deporte, Vehículos)..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-10 pr-4 py-3 bg-slate-950 border border-slate-700 rounded-xl text-white focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors"
+                  className="w-full pl-10 pr-4 py-3 bg-slate-950 border border-slate-700 rounded-xl text-white focus:outline-none focus:border-indigo-500"
                 />
               </div>
-
               <div className="w-full lg:w-1/2 flex items-center gap-4 bg-slate-950 px-4 py-3 rounded-xl border border-slate-700">
-                <svg className="w-5 h-5 text-indigo-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                </svg>
-                <div className="flex-1">
-                  <input
-                    type="range"
-                    min="1"
-                    max="30"
-                    value={radius}
-                    onChange={(e) => setRadius(Number(e.target.value))}
-                    className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-indigo-500"
-                  />
-                </div>
+                <input
+                  type="range"
+                  min="1"
+                  max="30"
+                  value={radius}
+                  onChange={(e) => setRadius(Number(e.target.value))}
+                  className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+                />
                 <span className="font-semibold text-indigo-300 min-w-[50px] text-right">{radius} km</span>
               </div>
             </section>
 
-            {/* MAPA INTERACTIVO */}
             <section className="mb-8 w-full h-[450px] bg-slate-800 rounded-2xl border border-slate-700 relative overflow-hidden shadow-2xl z-0">
               <InteractiveMap 
                 events={filteredEvents} 
                 centerLat={defaultLat} 
                 centerLng={defaultLng} 
                 radiusKm={radius} 
+                onSelectLocationForNewEvent={handleSelectLocationForNewEvent}
               />
             </section>
 
             <section>
-              <h3 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
-                Catálogo de Eventos
-                <span className="text-xs px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700">
-                  {filteredEvents.length} resultados
-                </span>
+              <h3 className="text-xl font-bold text-white mb-6">
+                Catálogo de Eventos ({filteredEvents.length} resultados)
               </h3>
-
               {isLoading ? (
                 <div className="text-center py-10"><span className="text-indigo-400">Cargando actividades...</span></div>
               ) : error ? (
                 <div className="bg-red-950/40 border border-red-800 text-red-300 p-4 rounded-xl">{error}</div>
               ) : filteredEvents.length === 0 ? (
-                <div className="text-center py-12 bg-slate-900/40 rounded-2xl border border-slate-800">
-                  <p className="text-slate-400">No hay coincidencias para tu búsqueda en este radio.</p>
+                <div className="text-center py-12 bg-slate-900/40 rounded-2xl border border-slate-800 text-slate-400">
+                  No hay coincidencias para tu búsqueda en este radio.
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                   {filteredEvents.map((evt) => {
                     const isFree = evt.price === 0;
                     return (
-                      <article key={evt.id} className="flex flex-col bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden hover:border-slate-700 hover:shadow-xl transition-all group">
+                      <article key={evt.id} className="flex flex-col bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden hover:border-slate-700 transition-all">
+                        {evt.imageUrl && (
+                          <div className="w-full h-40 bg-slate-950 overflow-hidden">
+                            <img 
+                              src={`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'}${evt.imageUrl}`} 
+                              alt={evt.title} 
+                              className="w-full h-full object-cover" 
+                            />
+                          </div>
+                        )}
                         <div className="p-6 flex-1">
                           <div className="flex justify-between items-center mb-3">
                             <span className={`text-[10px] uppercase font-bold px-2 py-1 rounded border ${getCategoryBadge(evt.category?.name)}`}>
@@ -275,7 +316,7 @@ export default function HomePage() {
                         </div>
                         <div className="bg-slate-950 px-6 py-4 flex justify-between items-center border-t border-slate-800">
                           <span className="font-extrabold text-white">
-                            {isFree ? <span className="text-emerald-400">Gratis</span> : `$${evt.price.toLocaleString('es-CL')}`}
+                            {isFree ? <span className="text-emerald-400">Entrada Liberada</span> : `$${evt.price.toLocaleString('es-CL')}`}
                           </span>
                           {!isFree && (
                             <button className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg transition">
@@ -292,6 +333,148 @@ export default function HomePage() {
           </div>
         )}
       </main>
+
+      {/* 🚀 MODAL DE REGISTRO DE EVENTOS ACTUALIZADO */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-lg p-6 shadow-2xl animate-fade-in text-white">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-bold text-emerald-400">📍 Registrar Nuevo Evento</h2>
+              <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-white font-bold text-lg">✕</button>
+            </div>
+
+            <p className="text-xs text-slate-400 mb-4 bg-slate-950 p-3 rounded-lg border border-slate-800">
+              Coordenadas de ubicación: <span className="text-indigo-400">Lat: {selectedCoords?.lat.toFixed(5)}, Lng: {selectedCoords?.lng.toFixed(5)}</span>
+            </p>
+
+            <form onSubmit={handleCreateEventSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Título del Evento</label>
+                <input 
+                  type="text" 
+                  required
+                  value={formData.title}
+                  onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                  placeholder="Ej: Expo Tunning o Junta Pokémon" 
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-emerald-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Descripción</label>
+                <textarea 
+                  rows={2}
+                  value={formData.description}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  placeholder="Breve detalle de las actividades..." 
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-emerald-500"
+                />
+              </div>
+
+              {/* 🚀 NUEVO: Selector de Categoría (Vehículos, Diversión, Videojuegos, Deporte) */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Categoría del Evento</label>
+                <select
+                  value={formData.categoryId}
+                  onChange={(e) => setFormData({ ...formData, categoryId: e.target.value })}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-emerald-500 text-white cursor-pointer"
+                  required
+                >
+                  {categories.length > 0 ? (
+                    categories.map((cat) => (
+                      <option key={cat.id} value={cat.id}>
+                        {cat.name.charAt(0).toUpperCase() + cat.name.slice(1)}
+                      </option>
+                    ))
+                  ) : (
+                    <>
+                      <option value="">Cargando categorías...</option>
+                    </>
+                  )}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">Precio (CLP)</label>
+                  <input 
+                    type="number" 
+                    min="0"
+                    value={formData.priceInput}
+                    onChange={(e) => setFormData({ ...formData, priceInput: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-emerald-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    placeholder="Ej: 5000 (Vacio = Gratis)"
+                  />
+                  {isFreeEvent ? (
+                    <span className="text-[10px] text-emerald-400 mt-1 block font-medium">
+                      ✨ Detectado: Entrada Liberada (Gratis)
+                    </span>
+                  ) : (
+                    <span className="text-[10px] text-indigo-400 mt-1 block">
+                      Monto: ${Number(formData.priceInput).toLocaleString('es-CL')} CLP
+                    </span>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">Foto de Perfil del Evento</label>
+                  <input 
+                    type="file" 
+                    accept=".jpg, .jpeg, .png"
+                    onChange={(e) => {
+                      if (e.target.files && e.target.files[0]) {
+                        setFormData({ ...formData, imageFile: e.target.files[0] });
+                      }
+                    }}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2 py-1.5 text-xs text-slate-400 file:mr-2 file:py-1 file:px-2 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-emerald-600 file:text-slate-950 hover:file:bg-emerald-500 cursor-pointer"
+                  />
+                  <span className="text-[10px] text-slate-500 mt-1 block">Formatos: .jpg, .png</span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">Fecha del Evento</label>
+                  {/* 🚀 CORRECCIÓN ICONO FECHA: [color-scheme:dark] fuerza el calendario nativo a modo oscuro (letras/íconos blancos) */}
+                  <input 
+                    type="date" 
+                    required
+                    value={formData.date}
+                    onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-emerald-500 [color-scheme:dark]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">Dirección Referencial</label>
+                  <input 
+                    type="text" 
+                    required
+                    value={formData.address}
+                    onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-4 border-t border-slate-800">
+                <button 
+                  type="button"
+                  onClick={() => setIsModalOpen(false)}
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-xs font-semibold rounded-lg transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  type="submit"
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-bold text-xs rounded-lg transition-colors"
+                >
+                  Guardar evento
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       <AuthModal isOpen={isAuthOpen} onClose={() => setIsAuthOpen(false)} onSuccess={handleAuthSuccess} onAuthSuccess={handleAuthSuccess} />
     </div>

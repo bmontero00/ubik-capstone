@@ -5,6 +5,39 @@ import { PrismaService } from '../prisma/prisma.service';
 export class EventsService {
   constructor(private readonly prisma: PrismaService) {}
 
+  // 🚀 NUEVO MÉTODO: Registrar y guardar el evento en Supabase/PostgreSQL vía Prisma
+  async create(data: {
+    title: string;
+    description: string;
+    price: number;
+    date: string | Date;
+    address: string;
+    latitude: number;
+    longitude: number;
+    categoryId?: string | number;
+    organizerId?: string;
+    imageUrl?: string;
+  }) {
+    return this.prisma.event.create({
+      data: {
+        title: data.title,
+        description: data.description,
+        price: Number(data.price),
+        date: new Date(data.date),
+        address: data.address,
+        latitude: Number(data.latitude),
+        longitude: Number(data.longitude),
+        categoryId: String(data.categoryId || '1'), // 👈 Cambiado a string para solucionar el error de tipo
+        organizerId: data.organizerId || '1',
+        imageUrl: data.imageUrl || null,
+      },
+      include: {
+        category: { select: { id: true, name: true } },
+        organizer: { select: { id: true, name: true, email: true } },
+      },
+    });
+  }
+
   async findAll(lat?: number, lng?: number, radiusKm?: number) {
     const events = await this.prisma.event.findMany({
       include: {
@@ -47,4 +80,5 @@ export class EventsService {
         Math.sin(dLon / 2);
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   }
+  
 }
