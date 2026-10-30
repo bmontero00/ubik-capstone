@@ -660,7 +660,7 @@ export function ReasonToggle({
       </button>
       {open && (
         <div className={`mt-2 p-3 rounded-lg border text-xs leading-relaxed text-slate-200 ${box}`}>
-          <p>{reason || 'El administrador no dejó un motivo detallado.'}</p>
+          <p className="whitespace-pre-line break-words">{reason || 'El administrador no dejó un motivo detallado.'}</p>
           {date && <p className="mt-1 text-slate-400">{dateLabel} {formatDate(date, true)}</p>}
         </div>
       )}

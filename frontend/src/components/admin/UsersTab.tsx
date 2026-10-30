@@ -4,7 +4,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Search, Loader2, Inbox, IdCard, Phone, Building2, Link2, CalendarDays, Mail, X } from 'lucide-react';
 import { AccountStatus, EventStatus, OrganizerStatus, UserRole, apiJson } from '../../services/auth';
 import {
-  ACCOUNT_STATUS_LABELS, ACCOUNT_STATUSES_WITH_REASON, EVENT_STATUS_LABELS, ORGANIZER_STATUS_LABELS,
+  ACCOUNT_STATUS_LABELS, EVENT_STATUS_LABELS, ORGANIZER_STATUS_LABELS,
   ROLE_LABELS, StatusPill, formatDate,
 } from '../../utils/labels';
 import { formatRut } from '../../utils/rut';
@@ -119,7 +119,7 @@ export default function UsersTab({ onChanged }: { onChanged: () => void }) {
     if (!detail) return;
     const updated = await apiJson<UserDetail>(`/admin/users/${detail.id}/status`, {
       method: 'PATCH',
-      body: JSON.stringify({ status, reason: reason || undefined }),
+      body: JSON.stringify({ status, reason }),
     });
     setDetail(updated);
     setNotice(`Estado de ${updated.name} actualizado a "${ACCOUNT_STATUS_LABELS[updated.status].label}".`);
@@ -262,10 +262,10 @@ function UserDetailPanel({
         <Info label="Eventos creados" value={String(detail._count.events)} />
       </dl>
 
-      {detail.status !== 'ACTIVE' && (
-        <div className={`mb-5 p-3 rounded-xl border text-xs ${detail.status === 'SUSPENDED' ? 'bg-rose-500/10 border-rose-500/25' : 'bg-amber-500/10 border-amber-500/25'}`}>
+      {detail.statusReason && (
+        <div className={`mb-5 p-3 rounded-xl border text-xs ${{ SUSPENDED: 'bg-rose-500/10 border-rose-500/25', UNDER_REVIEW: 'bg-amber-500/10 border-amber-500/25', ACTIVE: 'bg-slate-950 border-slate-800' }[detail.status]}`}>
           <p className="font-semibold text-slate-200 mb-1">Motivo del estado actual</p>
-          <p className="text-slate-300">{detail.statusReason || 'Sin motivo registrado.'}</p>
+          <p className="text-slate-300 whitespace-pre-line break-words">{detail.statusReason}</p>
           <p className="text-slate-500 mt-1">
             {formatDate(detail.statusChangedAt, true)}
             {detail.statusChangedBy && ` · por ${detail.statusChangedBy.name}`}
@@ -316,7 +316,6 @@ function UserDetailPanel({
         <StatusChangeForm
           current={detail.status}
           options={ACCOUNT_OPTIONS}
-          statusesWithReason={ACCOUNT_STATUSES_WITH_REASON}
           reasonPlaceholder="Ej. Recibimos reportes por publicar eventos falsos."
           confirmText={{ SUSPENDED: `${detail.name} no podrá volver a iniciar sesión hasta que reactives su cuenta. ¿Confirmas la suspensión?` }}
           onSubmit={onUpdateStatus}

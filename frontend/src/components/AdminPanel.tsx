@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { ShieldCheck, Check, X, Loader2, Link2, Phone, IdCard, Building2, Inbox } from 'lucide-react';
 import { authFetch, OrganizerStatus } from '../services/auth';
 import { formatRut } from '../utils/rut';
+import ReasonField, { validateReason } from './admin/ReasonField';
 
 interface OrganizerRequest {
   id: string;
@@ -14,11 +15,30 @@ interface OrganizerRequest {
   socialUrl: string | null;
   status: OrganizerStatus;
   rejectionReason: string | null;
+  approvalNote: string | null;
   createdAt: string;
   reviewedAt: string | null;
   user: { id: string; name: string; email: string };
   reviewedBy?: { id: string; name: string } | null;
 }
+
+type ReviewAction = 'approve' | 'reject';
+
+// Textos del cuadro de revisión según la acción
+const REVIEW_COPY: Record<ReviewAction, { label: string; placeholder: string; hint: string; confirm: string }> = {
+  approve: {
+    label: 'Motivo de la aprobación',
+    placeholder: 'Ej. Identidad verificada con el RUT y su Instagram muestra ferias realizadas en 2025.',
+    hint: 'Deja registro de qué verificaste antes de aprobar',
+    confirm: 'Confirmar aprobación',
+  },
+  reject: {
+    label: 'Motivo del rechazo (lo verá el organizador)',
+    placeholder: 'Ej. El RUT no coincide con el nombre ingresado. Revisa tus datos y vuelve a postular.',
+    hint: 'Explica qué debe corregir para volver a postular',
+    confirm: 'Confirmar rechazo',
+  },
+};
 
 const TABS: { status: OrganizerStatus; label: string }[] = [
   { status: 'PENDING', label: 'Pendientes' },
@@ -33,8 +53,19 @@ export default function AdminPanel() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [rejectingId, setRejectingId] = useState<string | null>(null);
-  const [rejectReason, setRejectReason] = useState('');
+  // Solicitud que se está revisando y con qué acción; el motivo es obligatorio en ambos casos
+  const [reviewing, setReviewing] = useState<{ id: string; action: ReviewAction } | null>(null);
+  const [reason, setReason] = useState('');
+  const [reasonTouched, setReasonTouched] = useState(false);
+  const [submitAttempted, setSubmitAttempted] = useState(false);
+
+  const startReview = (id: string, action: ReviewAction) => {
+    setReviewing({ id, action });
+    setReason('');
+    setReasonTouched(false);
+    setSubmitAttempted(false);
+    setError(null);
+  };
 
   const load = async (status: OrganizerStatus) => {
     setLoading(true);
@@ -54,14 +85,19 @@ export default function AdminPanel() {
     load(tab);
   }, [tab]);
 
-  const review = async (id: string, approve: boolean) => {
+  const submitReview = async () => {
+    if (!reviewing) return;
+    setSubmitAttempted(true);
+    if (validateReason(reason)) return;
+
+    const { id, action } = reviewing;
     setBusyId(id);
     setError(null);
     try {
-      const res = await authFetch(`/admin/organizers/${id}/${approve ? 'approve' : 'reject'}`, {
+      const res = await authFetch(`/admin/organizers/${id}/${action}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: approve ? undefined : JSON.stringify({ reason: rejectReason.trim() }),
+        body: JSON.stringify({ reason: reason.normalize('NFC').trim() }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -69,8 +105,8 @@ export default function AdminPanel() {
       }
       // Sale de la lista actual sin recargar todo
       setRequests((prev) => prev.filter((r) => r.id !== id));
-      setRejectingId(null);
-      setRejectReason('');
+      setReviewing(null);
+      setReason('');
     } catch (err: any) {
       setError(err.message || 'No se pudo guardar la revisión.');
     } finally {
@@ -140,7 +176,10 @@ export default function AdminPanel() {
                     {r.eventDescription}
                   </p>
                   {r.status === 'REJECTED' && r.rejectionReason && (
-                    <p className="text-xs text-rose-300 mt-2">Motivo del rechazo: {r.rejectionReason}</p>
+                    <p className="text-xs text-rose-300 mt-2 whitespace-pre-line break-words">Motivo del rechazo: {r.rejectionReason}</p>
+                  )}
+                  {r.status === 'APPROVED' && r.approvalNote && (
+                    <p className="text-xs text-emerald-300 mt-2 whitespace-pre-line break-words">Motivo de la aprobación: {r.approvalNote}</p>
                   )}
                   {r.reviewedBy && r.reviewedAt && (
                     <p className="text-[11px] text-slate-500 mt-2">
@@ -149,17 +188,17 @@ export default function AdminPanel() {
                   )}
                 </div>
 
-                {r.status === 'PENDING' && rejectingId !== r.id && (
+                {r.status === 'PENDING' && reviewing?.id !== r.id && (
                   <div className="flex md:flex-col gap-2 shrink-0">
                     <button
-                      onClick={() => review(r.id, true)}
+                      onClick={() => startReview(r.id, 'approve')}
                       disabled={busyId === r.id}
                       className="flex items-center justify-center gap-1.5 px-4 py-2 text-xs font-bold rounded-lg bg-emerald-600 hover:bg-emerald-500 text-slate-950 disabled:opacity-50 transition-colors"
                     >
-                      {busyId === r.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />} Aprobar
+                      <Check className="w-3.5 h-3.5" /> Aprobar
                     </button>
                     <button
-                      onClick={() => { setRejectingId(r.id); setRejectReason(''); }}
+                      onClick={() => startReview(r.id, 'reject')}
                       disabled={busyId === r.id}
                       className="flex items-center justify-center gap-1.5 px-4 py-2 text-xs font-bold rounded-lg bg-slate-800 hover:bg-rose-600/80 text-slate-200 disabled:opacity-50 transition-colors"
                     >
@@ -169,32 +208,37 @@ export default function AdminPanel() {
                 )}
               </div>
 
-              {rejectingId === r.id && (
+              {reviewing?.id === r.id && (
                 <div className="mt-4 pt-4 border-t border-slate-800">
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">
-                    Motivo del rechazo (lo verá el organizador)
-                  </label>
-                  <textarea
-                    rows={2}
+                  <ReasonField
+                    label={REVIEW_COPY[reviewing.action].label}
+                    value={reason}
+                    onChange={setReason}
+                    onBlur={() => setReasonTouched(true)}
+                    placeholder={REVIEW_COPY[reviewing.action].placeholder}
+                    hint={REVIEW_COPY[reviewing.action].hint}
+                    showError={reasonTouched || submitAttempted}
+                    tone={reviewing.action === 'approve' ? 'emerald' : 'rose'}
                     autoFocus
-                    value={rejectReason}
-                    onChange={(e) => setRejectReason(e.target.value)}
-                    placeholder="Ej. El RUT no coincide con el nombre ingresado."
-                    className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-rose-500 resize-none"
                   />
                   <div className="flex justify-end gap-2 mt-2">
                     <button
-                      onClick={() => setRejectingId(null)}
+                      onClick={() => setReviewing(null)}
                       className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-800 hover:bg-slate-700 transition-colors"
                     >
                       Cancelar
                     </button>
                     <button
-                      onClick={() => review(r.id, false)}
-                      disabled={!rejectReason.trim() || busyId === r.id}
-                      className="px-3 py-1.5 text-xs font-bold rounded-lg bg-rose-600 hover:bg-rose-500 text-white disabled:opacity-50 transition-colors"
+                      onClick={submitReview}
+                      disabled={busyId === r.id}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg disabled:opacity-50 transition-colors ${
+                        reviewing.action === 'approve'
+                          ? 'bg-emerald-600 hover:bg-emerald-500 text-slate-950'
+                          : 'bg-rose-600 hover:bg-rose-500 text-white'
+                      }`}
                     >
-                      Confirmar rechazo
+                      {busyId === r.id && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                      {REVIEW_COPY[reviewing.action].confirm}
                     </button>
                   </div>
                 </div>

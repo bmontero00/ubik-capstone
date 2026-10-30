@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { Loader2 } from 'lucide-react';
+import ReasonField, { validateReason } from './ReasonField';
 
 export interface StatusOption<S extends string> {
   value: S;
@@ -13,18 +14,19 @@ export interface StatusOption<S extends string> {
 interface StatusChangeFormProps<S extends string> {
   current: S;
   options: StatusOption<S>[];
-  statusesWithReason: S[];
   reasonPlaceholder: string;
   confirmText?: Partial<Record<S, string>>; // texto extra de confirmación para cambios delicados
   onSubmit: (status: S, reason: string) => Promise<void>;
 }
 
-// Selector de estado + motivo, usado para cuentas y eventos
+// Selector de estado + motivo obligatorio, usado para cuentas y eventos
 export default function StatusChangeForm<S extends string>({
-  current, options, statusesWithReason, reasonPlaceholder, confirmText, onSubmit,
+  current, options, reasonPlaceholder, confirmText, onSubmit,
 }: StatusChangeFormProps<S>) {
   const [status, setStatus] = useState<S>(current);
   const [reason, setReason] = useState('');
+  const [reasonTouched, setReasonTouched] = useState(false);
+  const [submitAttempted, setSubmitAttempted] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
@@ -33,15 +35,17 @@ export default function StatusChangeForm<S extends string>({
   useEffect(() => {
     setStatus(current);
     setReason('');
+    setReasonTouched(false);
+    setSubmitAttempted(false);
     setError(null);
     setConfirming(false);
   }, [current, options]);
 
-  const needsReason = statusesWithReason.includes(status);
-  const unchanged = status === current && !reason.trim();
-  const canSave = !unchanged && (!needsReason || reason.trim().length > 0);
+  const reasonError = validateReason(reason);
 
   const save = async () => {
+    setSubmitAttempted(true);
+    if (reasonError) return;
     if (confirmText?.[status] && !confirming) {
       setConfirming(true);
       return;
@@ -49,8 +53,10 @@ export default function StatusChangeForm<S extends string>({
     setSaving(true);
     setError(null);
     try {
-      await onSubmit(status, reason.trim());
+      await onSubmit(status, reason.normalize('NFC').trim());
       setReason('');
+      setReasonTouched(false);
+      setSubmitAttempted(false);
       setConfirming(false);
     } catch (err: any) {
       setError(err.message || 'No se pudo guardar el cambio');
@@ -96,20 +102,15 @@ export default function StatusChangeForm<S extends string>({
         })}
       </div>
 
-      <label className="block text-xs font-semibold text-slate-300 mb-1">
-        Motivo {needsReason ? <span className="text-rose-400">(obligatorio)</span> : <span className="text-slate-500">(opcional)</span>}
-      </label>
-      <textarea
-        rows={3}
+      <ReasonField
+        label="Motivo del cambio"
         value={reason}
-        onChange={(e) => setReason(e.target.value)}
-        maxLength={500}
+        onChange={setReason}
+        onBlur={() => setReasonTouched(true)}
         placeholder={reasonPlaceholder}
-        className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500 resize-none"
+        showError={reasonTouched || submitAttempted}
       />
-      <p className="text-[11px] text-slate-500 mt-1">
-        {needsReason ? 'El usuario podrá ver este motivo.' : 'Queda registrado junto al cambio.'}
-      </p>
+      <p className="text-[11px] text-slate-500 mt-1">Queda registrado junto al cambio y el usuario afectado podrá verlo.</p>
 
       {error && <p className="mt-2 text-xs text-rose-400">{error}</p>}
 
@@ -132,7 +133,7 @@ export default function StatusChangeForm<S extends string>({
         <button
           type="button"
           onClick={save}
-          disabled={!canSave || saving}
+          disabled={saving}
           className={`flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
             confirming ? 'bg-rose-600 hover:bg-rose-500 text-white' : 'bg-indigo-600 hover:bg-indigo-500 text-white'
           }`}

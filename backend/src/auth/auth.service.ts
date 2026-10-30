@@ -207,6 +207,7 @@ export class AuthService {
             socialUrl: dto.socialUrl?.trim() || null,
             status: 'PENDING',
             rejectionReason: null,
+            approvalNote: null,
             reviewedAt: null,
             reviewedById: null,
           },

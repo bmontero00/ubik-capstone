@@ -1,35 +1,31 @@
 import { Body, Controller, Get, Param, Patch, Query, UseGuards } from '@nestjs/common';
 import { AccountStatus, EventStatus, OrganizerStatus, Role } from '@prisma/client';
-import { IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsIn } from 'class-validator';
 import { AdminService } from './admin.service';
 import { CurrentUser, JwtAuthGuard, Roles, RolesGuard } from '../auth/auth.guards';
 import type { AuthenticatedUser } from '../auth/auth.guards';
+import { IsReason } from '../common/reason.validator';
 
-class RejectOrganizerDto {
-  @IsOptional()
-  @IsString()
-  @MaxLength(500)
-  reason?: string;
+// Todo cambio de estado exige un motivo (ver IsReason)
+class ReviewOrganizerDto {
+  @IsReason()
+  reason: string;
 }
 
 class UpdateUserStatusDto {
   @IsIn(Object.values(AccountStatus), { message: 'Estado de cuenta no válido' })
   status: AccountStatus;
 
-  @IsOptional()
-  @IsString()
-  @MaxLength(500)
-  reason?: string;
+  @IsReason()
+  reason: string;
 }
 
 class UpdateEventStatusDto {
   @IsIn(Object.values(EventStatus), { message: 'Estado de evento no válido' })
   status: EventStatus;
 
-  @IsOptional()
-  @IsString()
-  @MaxLength(500)
-  reason?: string;
+  @IsReason()
+  reason: string;
 }
 
 // Devuelve el valor solo si pertenece al enum (filtros opcionales por query string)
@@ -54,12 +50,12 @@ export class AdminController {
   }
 
   @Patch('organizers/:id/approve')
-  approve(@Param('id') id: string, @CurrentUser() admin: AuthenticatedUser) {
-    return this.adminService.reviewOrganizer(id, admin.sub, true);
+  approve(@Param('id') id: string, @Body() dto: ReviewOrganizerDto, @CurrentUser() admin: AuthenticatedUser) {
+    return this.adminService.reviewOrganizer(id, admin.sub, true, dto.reason);
   }
 
   @Patch('organizers/:id/reject')
-  reject(@Param('id') id: string, @Body() dto: RejectOrganizerDto, @CurrentUser() admin: AuthenticatedUser) {
+  reject(@Param('id') id: string, @Body() dto: ReviewOrganizerDto, @CurrentUser() admin: AuthenticatedUser) {
     return this.adminService.reviewOrganizer(id, admin.sub, false, dto.reason);
   }
 

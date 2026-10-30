@@ -51,10 +51,6 @@ export const EVENT_STATUS_LABELS: Record<EventStatus, Label & { description: str
   },
 };
 
-// Estados que exigen motivo (mismas reglas que el backend)
-export const ACCOUNT_STATUSES_WITH_REASON: AccountStatus[] = ['UNDER_REVIEW', 'SUSPENDED'];
-export const EVENT_STATUSES_WITH_REASON: EventStatus[] = ['UNDER_REVIEW', 'POSTPONED', 'CANCELLED'];
-
 export const formatDate = (value: string | null | undefined, withTime = false) =>
   value
     ? new Date(value).toLocaleString('es-CL', withTime ? { dateStyle: 'medium', timeStyle: 'short' } : { dateStyle: 'medium' })

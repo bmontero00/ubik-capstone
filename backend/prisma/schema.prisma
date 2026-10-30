@@ -76,6 +76,7 @@ model OrganizerProfile {
   socialUrl        String?
   status           OrganizerStatus @default(PENDING)
   rejectionReason  String?
+  approvalNote     String?
   reviewedAt       DateTime?
   reviewedById     String?
   reviewedBy       User?           @relation("ReviewedBy", fields: [reviewedById], references: [id])

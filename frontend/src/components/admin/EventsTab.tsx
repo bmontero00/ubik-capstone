@@ -4,7 +4,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Search, Loader2, Inbox, CalendarDays, MapPin, User as UserIcon, Tag, X } from 'lucide-react';
 import { AccountStatus, EventStatus, apiJson } from '../../services/auth';
 import {
-  ACCOUNT_STATUS_LABELS, EVENT_STATUS_LABELS, EVENT_STATUSES_WITH_REASON, StatusPill, formatDate,
+  ACCOUNT_STATUS_LABELS, EVENT_STATUS_LABELS, StatusPill, formatDate,
 } from '../../utils/labels';
 import StatusChangeForm, { StatusOption } from './StatusChangeForm';
 import { Chip } from './UsersTab';
@@ -71,7 +71,7 @@ export default function EventsTab({ onChanged }: { onChanged: () => void }) {
     if (!selected) return;
     const updated = await apiJson<AdminEvent>(`/admin/events/${selected.id}/status`, {
       method: 'PATCH',
-      body: JSON.stringify({ status: next, reason: reason || undefined }),
+      body: JSON.stringify({ status: next, reason }),
     });
     setSelected(updated);
     setEvents((prev) =>
@@ -177,7 +177,7 @@ export default function EventsTab({ onChanged }: { onChanged: () => void }) {
               {selected.statusReason && (
                 <div className="mb-5 p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs">
                   <p className="font-semibold text-slate-200 mb-1">Motivo del estado actual</p>
-                  <p className="text-slate-300">{selected.statusReason}</p>
+                  <p className="text-slate-300 whitespace-pre-line break-words">{selected.statusReason}</p>
                   <p className="text-slate-500 mt-1">
                     {formatDate(selected.statusChangedAt, true)}
                     {selected.statusChangedBy && ` · por ${selected.statusChangedBy.name}`}
@@ -190,7 +190,6 @@ export default function EventsTab({ onChanged }: { onChanged: () => void }) {
                 <StatusChangeForm
                   current={selected.status}
                   options={EVENT_OPTIONS}
-                  statusesWithReason={EVENT_STATUSES_WITH_REASON}
                   reasonPlaceholder="Ej. El organizador informó un cambio de fecha por lluvia."
                   confirmText={{ CANCELLED: 'Los asistentes verán el evento como cancelado y no podrá recibir reservas. ¿Confirmas la cancelación?' }}
                   onSubmit={updateStatus}

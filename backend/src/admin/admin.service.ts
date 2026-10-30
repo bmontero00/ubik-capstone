@@ -1,10 +1,6 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { AccountStatus, EventStatus, OrganizerStatus, Prisma, Role } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-
-// Estados que exigen explicar el motivo del cambio
-const ACCOUNT_STATUSES_WITH_REASON: AccountStatus[] = ['UNDER_REVIEW', 'SUSPENDED'];
-const EVENT_STATUSES_WITH_REASON: EventStatus[] = ['UNDER_REVIEW', 'POSTPONED', 'CANCELLED'];
 
 // El admin solo gestiona asistentes y organizadores, nunca a otros administradores
 const MANAGED_ROLES: Role[] = ['ATTENDEE', 'ORGANIZER'];
@@ -69,19 +65,17 @@ export class AdminService {
     });
   }
 
-  async reviewOrganizer(profileId: string, adminId: string, approve: boolean, reason?: string) {
+  // reason ya viene validado por IsReason (obligatorio, 10 a 500 caracteres)
+  async reviewOrganizer(profileId: string, adminId: string, approve: boolean, reason: string) {
     const profile = await this.prisma.organizerProfile.findUnique({ where: { id: profileId } });
     if (!profile) throw new NotFoundException('Solicitud no encontrada');
-
-    if (!approve && !reason?.trim()) {
-      throw new BadRequestException('Indica el motivo del rechazo para que el organizador pueda corregirlo');
-    }
 
     return this.prisma.organizerProfile.update({
       where: { id: profileId },
       data: {
         status: approve ? 'APPROVED' : 'REJECTED',
-        rejectionReason: approve ? null : reason!.trim(),
+        rejectionReason: approve ? null : reason,
+        approvalNote: approve ? reason : null,
         reviewedAt: new Date(),
         reviewedById: adminId,
       },
@@ -130,6 +124,7 @@ export class AdminService {
             eventDescription: true,
             socialUrl: true,
             rejectionReason: true,
+            approvalNote: true,
             reviewedAt: true,
             createdAt: true,
           },
@@ -145,21 +140,17 @@ export class AdminService {
     return user;
   }
 
-  async updateUserStatus(id: string, adminId: string, status: AccountStatus, reason?: string) {
+  async updateUserStatus(id: string, adminId: string, status: AccountStatus, reason: string) {
     const user = await this.prisma.user.findUnique({ where: { id }, select: { role: true } });
     if (!user) throw new NotFoundException('Usuario no encontrado');
     if (!MANAGED_ROLES.includes(user.role)) {
       throw new ForbiddenException('No puedes cambiar el estado de un administrador');
     }
-    if (ACCOUNT_STATUSES_WITH_REASON.includes(status) && !reason?.trim()) {
-      throw new BadRequestException('Indica el motivo del cambio de estado');
-    }
-
     await this.prisma.user.update({
       where: { id },
       data: {
         status,
-        statusReason: reason?.trim() || null,
+        statusReason: reason,
         statusChangedAt: new Date(),
         statusChangedById: adminId,
       },
@@ -191,18 +182,15 @@ export class AdminService {
     });
   }
 
-  async updateEventStatus(id: string, adminId: string, status: EventStatus, reason?: string) {
+  async updateEventStatus(id: string, adminId: string, status: EventStatus, reason: string) {
     const event = await this.prisma.event.findUnique({ where: { id }, select: { id: true } });
     if (!event) throw new NotFoundException('Evento no encontrado');
-    if (EVENT_STATUSES_WITH_REASON.includes(status) && !reason?.trim()) {
-      throw new BadRequestException('Indica el motivo del cambio de estado del evento');
-    }
 
     return this.prisma.event.update({
       where: { id },
       data: {
         status,
-        statusReason: reason?.trim() || null,
+        statusReason: reason,
         statusChangedAt: new Date(),
         statusChangedById: adminId,
       },
