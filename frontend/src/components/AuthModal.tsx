@@ -20,6 +20,20 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
 
   if (!isOpen) return null;
 
+  // Limpia el formulario para que no queden datos de una sesión anterior
+  const resetForm = () => {
+    setIsLogin(true);
+    setName('');
+    setEmail('');
+    setPassword('');
+    setError(null);
+  };
+
+  const handleClose = () => {
+    resetForm();
+    onClose();
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -33,7 +47,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
         res = await registerUser(name, email, password);
       }
       onSuccess(res);
-      onClose();
+      handleClose();
     } catch (err: any) {
       setError(err.message || 'Error en la solicitud');
     } finally {
@@ -45,7 +59,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
       <div className="relative w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl text-white">
         <button
-          onClick={onClose}
+          onClick={handleClose}
           className="absolute top-4 right-4 text-slate-400 hover:text-white transition-colors"
         >
           <X className="w-5 h-5" />

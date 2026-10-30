@@ -220,7 +220,7 @@ export default function HomePage() {
               </span>
             </h1>
             <p className="text-lg text-slate-400 max-w-2xl mb-12 leading-relaxed">
-              Explora, filtra y asiste a eventos sociales y comunitarios según tu ubicación exacta[cite: 9].
+              Explora, filtra y asiste a eventos sociales y comunitarios según tu ubicación exacta.
             </p>
             <button 
               onClick={() => setIsAuthOpen(true)}
