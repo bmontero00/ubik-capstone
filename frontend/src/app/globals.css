@@ -24,3 +24,13 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Mapa oscuro: invierte los colores de los mapas de OpenStreetMap (ver utils/mapTiles.ts) */
+.ubik-dark-tiles {
+  filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%) saturate(60%);
+}
+
+/* Fondo del mapa mientras cargan las teselas (Leaflet usa gris claro por defecto) */
+html .leaflet-container {
+  background: #0b1120;
+}

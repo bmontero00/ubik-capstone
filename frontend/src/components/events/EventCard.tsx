@@ -16,6 +16,7 @@ export interface EventCardData {
   imageUrl?: string | null; // ruta guardada en el backend
   imagePreview?: string | null; // vista previa local (formulario)
   distanceKm?: number;
+  distanceFrom?: string; // ej. "Santiago centro" cuando no hay ubicación del usuario
   status?: EventStatus;
   statusReason?: string | null;
 }
@@ -55,7 +56,11 @@ export default function EventCard({ event, footerAction, placeholderImage = fals
           <span className={`text-[10px] uppercase font-bold px-2 py-1 rounded border ${categoryBadge(event.categoryName)}`}>
             {event.categoryName || 'Categoría'}
           </span>
-          {event.distanceKm !== undefined && <span className="text-xs text-indigo-400">A {event.distanceKm} km</span>}
+          {event.distanceKm !== undefined && (
+            <span className="text-xs text-indigo-400 text-right">
+              A {event.distanceKm} km{event.distanceFrom ? ` de ${event.distanceFrom}` : ''}
+            </span>
+          )}
         </div>
         <h4 className="text-lg font-bold text-white mb-2 break-words">{event.title || 'Título del evento'}</h4>
         {event.status && event.status !== 'PUBLISHED' && (

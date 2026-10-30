@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useRef } from 'react';
 import { MapContainer, TileLayer, Marker, useMap, useMapEvents } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
+import { DARK_TILES } from '../../utils/mapTiles';
 
 const pinIcon = L.icon({
   iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
@@ -52,11 +53,8 @@ export default function LocationPicker({ lat, lng, onChange }: LocationPickerPro
   );
 
   return (
-    <MapContainer center={[lat, lng]} zoom={15} scrollWheelZoom className="w-full h-full z-0">
-      <TileLayer
-        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-      />
+    <MapContainer center={[lat, lng]} zoom={15} scrollWheelZoom className="w-full h-full z-0 bg-slate-950">
+      <TileLayer url={DARK_TILES.url} attribution={DARK_TILES.attribution} className={DARK_TILES.className} maxZoom={DARK_TILES.maxZoom} />
       <Marker position={[lat, lng]} icon={pinIcon} draggable eventHandlers={handlers} ref={markerRef} />
       <Recenter lat={lat} lng={lng} />
       <ClickToMove onChange={onChange} />

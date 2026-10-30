@@ -15,6 +15,8 @@ import {
   fetchCurrentUser, isAccountActive, loadStoredUser, markApprovalNoticeSeen, saveSession, updateStoredUser,
 } from '../services/auth';
 import { Category, EventItem, fetchCategories as fetchCategoryList } from '../services/events';
+import { useUserLocation } from '../utils/location';
+import LocationNotice, { RequestLocationOnMount } from '../components/LocationNotice';
 import dynamic from 'next/dynamic';
 
 const InteractiveMap = dynamic(() => import('../components/Map'), { 
@@ -51,8 +53,9 @@ export default function HomePage() {
   const [myEventsKey, setMyEventsKey] = useState(0);
   const [toast, setToast] = useState<string | null>(null);
 
-  const defaultLat = -33.4372;
-  const defaultLng = -70.6506;
+  // Ubicación del usuario (con permiso). Sin permiso o fuera de Santiago, el centro es Santiago centro
+  const location = useUserLocation();
+  const { lat: centerLat, lng: centerLng } = location.center;
 
   useEffect(() => {
     setIsClient(true);
@@ -71,6 +74,8 @@ export default function HomePage() {
       setUser(fresh);
       updateStoredUser(fresh);
     } catch (err) {
+      // Sin conexión o consulta interrumpida (ej. al recargar): se mantiene la sesión guardada
+      if (!(err instanceof ApiError) || (err.status !== 401 && err.status !== 403)) return;
       // Token vencido, inválido o cuenta suspendida: se cierra la sesión local
       clearSession();
       setUser(null);
@@ -97,7 +102,7 @@ export default function HomePage() {
     setError(null);
     try {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
-      const res = await fetch(`${apiUrl}/events?lat=${defaultLat}&lng=${defaultLng}&radius=${radius}`);
+      const res = await fetch(`${apiUrl}/events?lat=${centerLat}&lng=${centerLng}&radius=${radius}`);
       if (!res.ok) throw new Error(`Error ${res.status}`);
       const data: EventItem[] = await res.json();
       setEvents(data);
@@ -110,7 +115,7 @@ export default function HomePage() {
 
   useEffect(() => {
     fetchEvents();
-  }, [radius, isClient]);
+  }, [radius, isClient, centerLat, centerLng]);
 
   const handleLogout = () => {
     clearSession();
@@ -138,6 +143,9 @@ export default function HomePage() {
   }, [user?.approvalNoticePending]);
   const canReserve = isAccountActive(user);
   const isApprovedOrganizer = user?.role === 'ORGANIZER' && user.organizerStatus === 'APPROVED';
+
+  // Crear evento: el formulario parte desde la ubicación del usuario, o Santiago centro
+  const openNewEventForm = () => setEventForm({ location: location.coords ?? undefined });
 
   // Clic derecho en el mapa: abre el formulario con esa ubicación
   const handleSelectLocationForNewEvent = (lat: number, lng: number) => setEventForm({ location: { lat, lng } });
@@ -179,6 +187,8 @@ export default function HomePage() {
   // Buscador, mapa y catálogo. El admin lo ve dentro de la pestaña "Explorar"
   const exploreContent = (
     <>
+      <RequestLocationOnMount status={location.status} request={location.request} />
+      <LocationNotice status={location.status} accuracy={location.coords?.accuracy} onRetry={location.request} />
       <section className="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 mb-8 shadow-xl backdrop-blur-sm flex flex-col lg:flex-row gap-6 items-center">
         <div className="relative w-full lg:w-1/2">
           <input
@@ -199,15 +209,21 @@ export default function HomePage() {
             className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-indigo-500"
           />
           <span className="font-semibold text-indigo-300 min-w-[50px] text-right">{radius} km</span>
+          <span className="hidden sm:inline text-[11px] text-slate-500 whitespace-nowrap">
+            {location.coords ? 'desde tu ubicación' : 'desde Santiago centro'}
+          </span>
         </div>
       </section>
 
       <section className="mb-8 w-full h-[450px] bg-slate-800 rounded-2xl border border-slate-700 relative overflow-hidden shadow-2xl z-0">
-        <InteractiveMap 
-          events={filteredEvents} 
-          centerLat={defaultLat} 
-          centerLng={defaultLng} 
-          radiusKm={radius} 
+        <InteractiveMap
+          events={filteredEvents}
+          centerLat={centerLat}
+          centerLng={centerLng}
+          radiusKm={radius}
+          userLocation={location.coords}
+          locating={location.status === 'locating'}
+          onLocate={location.request}
           onSelectLocationForNewEvent={canPublish ? handleSelectLocationForNewEvent : undefined}
         />
       </section>
@@ -229,7 +245,7 @@ export default function HomePage() {
             {filteredEvents.map((evt) => (
               <EventCard
                 key={evt.id}
-                event={{ ...evt, categoryName: evt.category?.name }}
+                event={{ ...evt, categoryName: evt.category?.name, distanceFrom: location.coords ? undefined : 'Santiago centro' }}
                 footerAction={
                   evt.price > 0 && (
                     <button
@@ -299,7 +315,7 @@ export default function HomePage() {
               </div>
               {canPublish && user.role === 'ORGANIZER' && (
                 <button
-                  onClick={() => setEventForm({})}
+                  onClick={() => openNewEventForm()}
                   className="flex items-center gap-2 px-5 py-2.5 text-sm font-bold rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-lg shadow-emerald-500/20 transition-colors"
                 >
                   <CalendarPlus className="w-4 h-4" /> Crear evento
@@ -355,7 +371,7 @@ export default function HomePage() {
                   <MyEventsPanel
                     canManage={canPublish}
                     refreshKey={myEventsKey}
-                    onCreate={() => setEventForm({})}
+                    onCreate={() => openNewEventForm()}
                     onEdit={(event) => setEventForm({ event })}
                     onChanged={fetchEvents}
                   />
