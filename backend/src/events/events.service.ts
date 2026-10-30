@@ -1,5 +1,6 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import type { JwtPayload } from '../auth/auth.guards';
 
 @Injectable()
 export class EventsService {
@@ -57,6 +58,20 @@ export class EventsService {
     }
 
     return events;
+  }
+
+  // Un organizador solo puede publicar si un administrador aprobó su solicitud
+  async assertCanPublish(user: JwtPayload) {
+    if (user.role === 'ADMIN') return;
+    const profile = await this.prisma.organizerProfile.findUnique({
+      where: { userId: user.sub },
+      select: { status: true },
+    });
+    if (profile?.status !== 'APPROVED') {
+      throw new ForbiddenException(
+        'Tu cuenta de organizador aún no ha sido aprobada por un administrador',
+      );
+    }
   }
 
   async findAllCategories() {

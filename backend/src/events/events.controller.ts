@@ -6,12 +6,15 @@ import {
   Query, 
   UploadedFile, 
   UseInterceptors, 
+  UseGuards,
   BadRequestException 
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { EventsService } from './events.service';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
+import { CurrentUser, JwtAuthGuard, Roles, RolesGuard } from '../auth/auth.guards';
+import type { JwtPayload } from '../auth/auth.guards';
 
 @Controller('events')
 export class EventsController {
@@ -23,7 +26,10 @@ export class EventsController {
     return this.eventsService.findAllCategories();
   }
 
+  // Solo organizadores aprobados (o administradores) pueden publicar eventos
   @Post()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ORGANIZER', 'ADMIN')
   @UseInterceptors(
     FileInterceptor('image', {
       storage: diskStorage({
@@ -45,8 +51,11 @@ export class EventsController {
   )
   async create(
     @Body() body: any,
+    @CurrentUser() user: JwtPayload,
     @UploadedFile() file?: Express.Multer.File,
   ) {
+    await this.eventsService.assertCanPublish(user);
+
     // Si se adjuntó un archivo de imagen, generamos la ruta estática accesible
     const imageUrl = file ? `/uploads/${file.filename}` : null;
 
@@ -58,6 +67,7 @@ export class EventsController {
       longitude: Number(body.longitude),
       categoryId: body.categoryId ? String(body.categoryId) : undefined,
       imageUrl,
+      organizerId: user.sub, // El organizador sale del token, nunca del formulario
     };
 
     return this.eventsService.create(eventData);

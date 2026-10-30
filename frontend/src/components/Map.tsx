@@ -49,7 +49,8 @@ export default function Map({ events, centerLat, centerLng, radiusKm, onSelectLo
   const [contextMenu, setContextMenu] = useState<{ lat: number; lng: number; x: number; y: number } | null>(null);
 
   const handleRightClick = (lat: number, lng: number, containerPoint: L.Point) => {
-    if (lat === 0 && lng === 0) {
+    // Sin permiso para publicar no se muestra el menú contextual
+    if (!onSelectLocationForNewEvent || (lat === 0 && lng === 0)) {
       setContextMenu(null);
       return;
     }

@@ -4,10 +4,16 @@ import React from 'react';
 import { MapPin, User, LogOut } from 'lucide-react';
 
 interface NavbarProps {
-  user: { name: string; email: string } | null;
+  user: { name: string; email: string; role?: string } | null;
   onLogout: () => void;
   onOpenAuth: () => void;
 }
+
+const ROLE_LABELS: Record<string, { label: string; className: string }> = {
+  ATTENDEE: { label: 'Comprador', className: 'bg-emerald-500/10 text-emerald-300 border-emerald-500/20' },
+  ORGANIZER: { label: 'Organizador', className: 'bg-indigo-500/10 text-indigo-300 border-indigo-500/25' },
+  ADMIN: { label: 'Admin', className: 'bg-amber-500/10 text-amber-300 border-amber-500/25' },
+};
 
 export default function Navbar({ user, onLogout, onOpenAuth }: NavbarProps) {
   return (
@@ -30,6 +36,11 @@ export default function Navbar({ user, onLogout, onOpenAuth }: NavbarProps) {
             <div className="flex items-center gap-3 bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-full text-sm">
               <User className="w-4 h-4 text-emerald-400" />
               <span className="font-medium text-slate-200">{user.name}</span>
+              {user.role && ROLE_LABELS[user.role] && (
+                <span className={`hidden sm:inline text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded border ${ROLE_LABELS[user.role].className}`}>
+                  {ROLE_LABELS[user.role].label}
+                </span>
+              )}
               <button
                 onClick={onLogout}
                 title="Cerrar sesión"

@@ -1,9 +1,26 @@
-import { Injectable, ConflictException, UnauthorizedException } from '@nestjs/common';
+import { Injectable, ConflictException, UnauthorizedException, NotFoundException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
+import { normalizeRut } from './rut.util';
+import { JWT_SECRET } from './auth.guards';
 import * as bcrypt from 'bcrypt';
+
+// Campos públicos del usuario, incluido el estado de su solicitud de organizador
+const userSelect = {
+  id: true,
+  email: true,
+  name: true,
+  role: true,
+  createdAt: true,
+  organizerProfile: {
+    select: { status: true, rejectionReason: true, organizationName: true },
+  },
+} satisfies Prisma.UserSelect;
+
+type PublicUser = Prisma.UserGetPayload<{ select: typeof userSelect }>;
 
 @Injectable()
 export class AuthService {
@@ -21,6 +38,16 @@ export class AuthService {
       throw new ConflictException('El correo electrónico ya está registrado');
     }
 
+    const isOrganizer = dto.accountType === 'ORGANIZER';
+    const rut = isOrganizer ? normalizeRut(dto.rut!) : null;
+
+    if (rut) {
+      const rutInUse = await this.prisma.organizerProfile.findUnique({ where: { rut } });
+      if (rutInUse) {
+        throw new ConflictException('Ya existe una cuenta de organizador asociada a este RUT');
+      }
+    }
+
     const hashedPassword = await bcrypt.hash(dto.password, 10);
 
     const user = await this.prisma.user.create({
@@ -28,28 +55,35 @@ export class AuthService {
         email: dto.email,
         password: hashedPassword,
         name: dto.name,
+        role: isOrganizer ? 'ORGANIZER' : 'ATTENDEE',
+        organizerProfile: rut
+          ? {
+              create: {
+                rut,
+                phone: dto.phone!.replace(/\s/g, ''),
+                organizationName: dto.organizationName?.trim() || null,
+                eventDescription: dto.eventDescription!.trim(),
+                socialUrl: dto.socialUrl?.trim() || null,
+              },
+            }
+          : undefined,
       },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        role: true,
-        createdAt: true,
-      },
+      select: userSelect,
     });
 
-    const token = this.generateToken(user.id, user.email, user.role);
-
     return {
-      message: 'Usuario registrado exitosamente',
-      user,
-      accessToken: token,
+      message: isOrganizer
+        ? 'Solicitud de organizador enviada. Te avisaremos cuando sea revisada.'
+        : 'Usuario registrado exitosamente',
+      user: this.toPublicUser(user),
+      accessToken: this.generateToken(user.id, user.email, user.role),
     };
   }
 
   async login(dto: LoginDto) {
     const user = await this.prisma.user.findUnique({
       where: { email: dto.email },
+      select: { ...userSelect, password: true },
     });
 
     if (!user) {
@@ -61,27 +95,34 @@ export class AuthService {
       throw new UnauthorizedException('Credenciales inválidas');
     }
 
-    const token = this.generateToken(user.id, user.email, user.role);
-
+    const { password: _password, ...publicUser } = user;
     return {
       message: 'Inicio de sesión exitoso',
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        role: user.role,
-      },
-      accessToken: token,
+      user: this.toPublicUser(publicUser),
+      accessToken: this.generateToken(user.id, user.email, user.role),
+    };
+  }
+
+  async getProfile(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: userSelect,
+    });
+    if (!user) throw new NotFoundException('Usuario no encontrado');
+    return this.toPublicUser(user);
+  }
+
+  // Aplana el perfil de organizador para que el frontend lea user.organizerStatus
+  private toPublicUser({ organizerProfile, ...user }: PublicUser) {
+    return {
+      ...user,
+      organizerStatus: organizerProfile?.status ?? null,
+      rejectionReason: organizerProfile?.rejectionReason ?? null,
+      organizationName: organizerProfile?.organizationName ?? null,
     };
   }
 
   private generateToken(userId: string, email: string, role: string): string {
-    return this.jwtService.sign(
-      { sub: userId, email, role },
-      {
-        secret: process.env.JWT_SECRET || 'UBIK_CAPSTONE_SECRET_KEY_2026',
-        expiresIn: '7d',
-      },
-    );
+    return this.jwtService.sign({ sub: userId, email, role }, { secret: JWT_SECRET, expiresIn: '7d' });
   }
 }

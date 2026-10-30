@@ -1,7 +1,9 @@
-import { Controller, Post, Body, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Post, Body, HttpCode, HttpStatus, Get, UseGuards } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
+import { CurrentUser, JwtAuthGuard } from './auth.guards';
+import type { JwtPayload } from './auth.guards';
 
 @Controller('auth')
 export class AuthController {
@@ -16,5 +18,12 @@ export class AuthController {
   @Post('login')
   async login(@Body() dto: LoginDto) {
     return this.authService.login(dto);
+  }
+
+  // Datos actualizados del usuario (por ejemplo, si un admin aprobó su solicitud)
+  @UseGuards(JwtAuthGuard)
+  @Get('me')
+  async me(@CurrentUser() user: JwtPayload) {
+    return this.authService.getProfile(user.sub);
   }
 }

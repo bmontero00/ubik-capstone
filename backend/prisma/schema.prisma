@@ -1,6 +1,6 @@
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 generator client {
@@ -23,9 +23,41 @@ model User {
   updatedAt DateTime @updatedAt
 
   // Relación con los eventos creados por el usuario
-  events    Event[]
+  events Event[]
+
+  // Datos de verificación (solo para usuarios ORGANIZER)
+  organizerProfile OrganizerProfile?  @relation("ProfileOwner")
+  reviewedProfiles OrganizerProfile[] @relation("ReviewedBy")
 
   @@map("users")
+}
+
+enum OrganizerStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// Solicitud de verificación de un organizador. Un administrador debe
+// aprobarla antes de que el organizador pueda publicar eventos.
+model OrganizerProfile {
+  id               String          @id @default(uuid())
+  userId           String          @unique
+  user             User            @relation("ProfileOwner", fields: [userId], references: [id], onDelete: Cascade)
+  rut              String          @unique
+  phone            String
+  organizationName String?
+  eventDescription String
+  socialUrl        String?
+  status           OrganizerStatus @default(PENDING)
+  rejectionReason  String?
+  reviewedAt       DateTime?
+  reviewedById     String?
+  reviewedBy       User?           @relation("ReviewedBy", fields: [reviewedById], references: [id])
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  @@map("organizer_profiles")
 }
 
 model Category {
@@ -50,11 +82,11 @@ model Event {
   updatedAt   DateTime @updatedAt
 
   // Llaves foráneas y relaciones
-  categoryId  String
-  category    Category @relation(fields: [categoryId], references: [id])
+  categoryId String
+  category   Category @relation(fields: [categoryId], references: [id])
 
   organizerId String
-  organizer   User     @relation(fields: [organizerId], references: [id])
+  organizer   User   @relation(fields: [organizerId], references: [id])
 
   @@map("events")
 }

@@ -3,6 +3,12 @@
 import React, { useState, useEffect } from 'react';
 import Navbar from '../components/Navbar';
 import AuthModal from '../components/AuthModal';
+import OrganizerStatusBanner from '../components/OrganizerStatusBanner';
+import AdminPanel from '../components/AdminPanel';
+import {
+  AuthResponse, AuthUser, authFetch, canPublishEvents, clearSession, fetchCurrentUser,
+  loadStoredUser, saveSession, updateStoredUser,
+} from '../services/auth';
 import dynamic from 'next/dynamic';
 
 const InteractiveMap = dynamic(() => import('../components/Map'), { 
@@ -27,7 +33,8 @@ interface EventItem {
 }
 
 export default function HomePage() {
-  const [user, setUser] = useState<{ id?: string; name?: string; email: string } | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [refreshingUser, setRefreshingUser] = useState(false);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [radius, setRadius] = useState<number>(15);
   const [searchQuery, setSearchQuery] = useState<string>(''); 
@@ -56,17 +63,28 @@ export default function HomePage() {
 
   useEffect(() => {
     setIsClient(true);
-    const savedUser = localStorage.getItem('ubik_user');
+    const savedUser = loadStoredUser();
     if (savedUser) {
-      try { 
-        const parsed = JSON.parse(savedUser);
-        setUser(parsed.user ? parsed.user : parsed); 
-      } catch (err) { 
-        console.error('Error al recuperar sesión local', err); 
-      }
+      setUser(savedUser);
+      refreshUser(); // Trae el estado actualizado (ej. si un admin aprobó la solicitud)
     }
     fetchCategories();
   }, []);
+
+  const refreshUser = async () => {
+    setRefreshingUser(true);
+    try {
+      const fresh = await fetchCurrentUser();
+      setUser(fresh);
+      updateStoredUser(fresh);
+    } catch {
+      // Token vencido o inválido: se cierra la sesión local
+      clearSession();
+      setUser(null);
+    } finally {
+      setRefreshingUser(false);
+    }
+  };
 
   // 🚀 Función para obtener categorías desde el backend (o usar respaldo predefinido)
   const fetchCategories = async () => {
@@ -107,15 +125,16 @@ export default function HomePage() {
   }, [radius, isClient]);
 
   const handleLogout = () => {
-    localStorage.removeItem('ubik_token');
-    localStorage.removeItem('ubik_user');
+    clearSession();
     setUser(null);
   };
 
-  const handleAuthSuccess = (userData: any) => {
-    setUser(userData.user ? userData.user : userData);
-    setIsAuthOpen(false);
+  const handleAuthSuccess = (data: AuthResponse) => {
+    saveSession(data);
+    setUser(data.user);
   };
+
+  const canPublish = canPublishEvents(user);
 
   const handleSelectLocationForNewEvent = (lat: number, lng: number) => {
     setSelectedCoords({ lat, lng });
@@ -140,13 +159,12 @@ export default function HomePage() {
       dataPayload.append('latitude', String(selectedCoords.lat));
       dataPayload.append('longitude', String(selectedCoords.lng));
       dataPayload.append('categoryId', formData.categoryId); // 🚀 Enviar la categoría seleccionada
-      dataPayload.append('organizerId', user?.id || '1');
-      
+
       if (formData.imageFile) {
         dataPayload.append('image', formData.imageFile);
       }
 
-      const response = await fetch(`${apiUrl}/events`, {
+      const response = await authFetch('/events', {
         method: 'POST',
         body: dataPayload,
       });
@@ -163,7 +181,8 @@ export default function HomePage() {
         }));
         fetchEvents();
       } else {
-        alert('Error al registrar el evento en el servidor.');
+        const data = await response.json().catch(() => ({}));
+        alert(data.message || 'Error al registrar el evento en el servidor.');
       }
     } catch (error) {
       console.error('Error de red al crear evento:', error);
@@ -236,9 +255,16 @@ export default function HomePage() {
                 <h2 className="text-3xl font-bold text-white">
                   ¡Hola, {getFirstName(user?.name, user?.email)}! 👋
                 </h2>
-                <p className="text-slate-400 mt-1">Aquí tienes las actividades cerca de ti. <span className="text-emerald-400 text-xs font-semibold">(Tip: Haz clic derecho en el mapa para crear un evento)</span></p>
+                <p className="text-slate-400 mt-1">
+                  Aquí tienes las actividades cerca de ti.
+                  {/* El organizador ya ve este tip en su aviso de estado */}
+                  {user.role === 'ADMIN' && <span className="text-emerald-400 text-xs font-semibold"> (Tip: Haz clic derecho en el mapa para crear un evento)</span>}
+                </p>
               </div>
             </header>
+
+            <OrganizerStatusBanner user={user} onRefresh={refreshUser} refreshing={refreshingUser} />
+            {user.role === 'ADMIN' && <AdminPanel />}
 
             <section className="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 mb-8 shadow-xl backdrop-blur-sm flex flex-col lg:flex-row gap-6 items-center">
               <div className="relative w-full lg:w-1/2">
@@ -269,7 +295,7 @@ export default function HomePage() {
                 centerLat={defaultLat} 
                 centerLng={defaultLng} 
                 radiusKm={radius} 
-                onSelectLocationForNewEvent={handleSelectLocationForNewEvent}
+                onSelectLocationForNewEvent={canPublish ? handleSelectLocationForNewEvent : undefined}
               />
             </section>
 
@@ -476,7 +502,10 @@ export default function HomePage() {
         </div>
       )}
 
-      <AuthModal isOpen={isAuthOpen} onClose={() => setIsAuthOpen(false)} onSuccess={handleAuthSuccess} onAuthSuccess={handleAuthSuccess} />
+      {/* Se monta solo al abrirse para que cada apertura parta con el formulario vacío */}
+      {isAuthOpen && (
+        <AuthModal isOpen onClose={() => setIsAuthOpen(false)} onSuccess={handleAuthSuccess} />
+      )}
     </div>
   );
 }
