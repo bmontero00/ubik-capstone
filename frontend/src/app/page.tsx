@@ -6,11 +6,15 @@ import AuthModal from '../components/AuthModal';
 import OrganizerStatusBanner from '../components/OrganizerStatusBanner';
 import AccountStatusBanner from '../components/AccountStatusBanner';
 import AdminDashboard from '../components/admin/AdminDashboard';
+import EventCard from '../components/events/EventCard';
+import EventFormModal from '../components/events/EventFormModal';
+import MyEventsPanel from '../components/events/MyEventsPanel';
+import { CalendarPlus, Compass, LayoutList, CheckCircle2, X } from 'lucide-react';
 import {
-  ApiError, AuthResponse, AuthUser, EventStatus, SuspendedInfo, authFetch, canPublishEvents, clearSession,
+  ApiError, AuthResponse, AuthUser, SuspendedInfo, canPublishEvents, clearSession,
   fetchCurrentUser, isAccountActive, loadStoredUser, markApprovalNoticeSeen, saveSession, updateStoredUser,
 } from '../services/auth';
-import { EVENT_STATUS_LABELS, StatusPill } from '../utils/labels';
+import { Category, EventItem, fetchCategories as fetchCategoryList } from '../services/events';
 import dynamic from 'next/dynamic';
 
 const InteractiveMap = dynamic(() => import('../components/Map'), { 
@@ -26,15 +30,6 @@ const InteractiveMap = dynamic(() => import('../components/Map'), {
   ) 
 });
 
-interface Category { id: string; name: string; }
-interface Organizer { id: string; name: string; email: string; }
-interface EventItem {
-  id: string; title: string; description: string; price: number;
-  date: string; address: string; latitude: number; longitude: number;
-  imageUrl?: string; distanceKm?: number; category: Category; organizer: Organizer;
-  status: EventStatus; statusReason?: string | null;
-}
-
 export default function HomePage() {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [refreshingUser, setRefreshingUser] = useState(false);
@@ -44,24 +39,17 @@ export default function HomePage() {
   const [radius, setRadius] = useState<number>(15);
   const [searchQuery, setSearchQuery] = useState<string>(''); 
   const [events, setEvents] = useState<EventItem[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]); // 🚀 Estado para categorías dinámicas
+  const [categories, setCategories] = useState<Category[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [isClient, setIsClient] = useState(false);
 
-  // Estados para el Modal de Creación de Eventos
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [selectedCoords, setSelectedCoords] = useState<{ lat: number; lng: number } | null>(null);
-  
-  const [formData, setFormData] = useState({
-    title: '',
-    description: '',
-    priceInput: '',
-    categoryId: '', // 🚀 ID de la categoría seleccionada en el form
-    date: new Date().toISOString().split('T')[0],
-    address: 'Santiago, Chile',
-    imageFile: null as File | null
-  });
+  // Formulario de eventos: sin "event" crea uno nuevo; con "event" lo edita
+  const [eventForm, setEventForm] = useState<{ event?: EventItem; location?: { lat: number; lng: number } } | null>(null);
+  // Vista del organizador: explorar el catálogo o administrar sus eventos
+  const [organizerView, setOrganizerView] = useState<'explore' | 'mine'>('explore');
+  const [myEventsKey, setMyEventsKey] = useState(0);
+  const [toast, setToast] = useState<string | null>(null);
 
   const defaultLat = -33.4372;
   const defaultLng = -70.6506;
@@ -95,18 +83,9 @@ export default function HomePage() {
     }
   };
 
-  // 🚀 Función para obtener categorías desde el backend (o usar respaldo predefinido)
   const fetchCategories = async () => {
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
-      const res = await fetch(`${apiUrl}/events/categories`);
-      if (res.ok) {
-        const data = await res.json();
-        setCategories(data);
-        if (data.length > 0) {
-          setFormData(prev => ({ ...prev, categoryId: data[0].id }));
-        }
-      }
+      setCategories(await fetchCategoryList());
     } catch (err) {
       console.error('Error al cargar categorías:', err);
     }
@@ -158,75 +137,30 @@ export default function HomePage() {
     markApprovalNoticeSeen().catch(() => {});
   }, [user?.approvalNoticePending]);
   const canReserve = isAccountActive(user);
+  const isApprovedOrganizer = user?.role === 'ORGANIZER' && user.organizerStatus === 'APPROVED';
 
-  const handleSelectLocationForNewEvent = (lat: number, lng: number) => {
-    setSelectedCoords({ lat, lng });
-    setIsModalOpen(true);
+  // Clic derecho en el mapa: abre el formulario con esa ubicación
+  const handleSelectLocationForNewEvent = (lat: number, lng: number) => setEventForm({ location: { lat, lng } });
+
+  const handleEventSaved = (saved: EventItem, created: boolean) => {
+    setEventForm(null);
+    setToast(created ? `¡"${saved.title}" ya está publicado!` : `Guardamos los cambios de "${saved.title}".`);
+    setMyEventsKey((k) => k + 1);
+    fetchEvents();
   };
 
-  // Enviar nuevo evento a Supabase a través del backend NestJS
-  const handleCreateEventSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedCoords) return;
-
-    try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
-      const finalPrice = formData.priceInput.trim() === '' ? 0 : Math.max(0, Number(formData.priceInput));
-
-      const dataPayload = new FormData();
-      dataPayload.append('title', formData.title);
-      dataPayload.append('description', formData.description);
-      dataPayload.append('price', String(finalPrice));
-      dataPayload.append('date', formData.date);
-      dataPayload.append('address', formData.address);
-      dataPayload.append('latitude', String(selectedCoords.lat));
-      dataPayload.append('longitude', String(selectedCoords.lng));
-      dataPayload.append('categoryId', formData.categoryId); // 🚀 Enviar la categoría seleccionada
-
-      if (formData.imageFile) {
-        dataPayload.append('image', formData.imageFile);
-      }
-
-      const response = await authFetch('/events', {
-        method: 'POST',
-        body: dataPayload,
-      });
-
-      if (response.ok) {
-        alert('¡Evento registrado exitosamente en Supabase!');
-        setIsModalOpen(false);
-        setFormData(prev => ({ 
-          ...prev, 
-          title: '', 
-          description: '', 
-          priceInput: '', 
-          imageFile: null 
-        }));
-        fetchEvents();
-      } else {
-        const data = await response.json().catch(() => ({}));
-        alert(data.message || 'Error al registrar el evento en el servidor.');
-      }
-    } catch (error) {
-      console.error('Error de red al crear evento:', error);
-      alert('Error de conexión con el backend.');
-    }
-  };
+  // El aviso de confirmación se oculta solo
+  useEffect(() => {
+    if (!toast) return;
+    const id = setTimeout(() => setToast(null), 5000);
+    return () => clearTimeout(id);
+  }, [toast]);
 
   const filteredEvents = events.filter((evt) => 
     evt.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
     evt.category?.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const getCategoryBadge = (categoryName: string) => {
-    switch (categoryName?.toLowerCase()) {
-      case 'vehículos': return 'bg-amber-100 text-amber-800 border-amber-200';
-      case 'diversión': return 'bg-pink-100 text-pink-800 border-pink-200';
-      case 'videojuegos': return 'bg-purple-100 text-purple-800 border-purple-200';
-      case 'deporte': return 'bg-emerald-100 text-emerald-800 border-emerald-200';
-      default: return 'bg-blue-100 text-blue-700 border-blue-200';
-    }
-  };
 
   const getFirstName = (fullName?: string, email?: string) => {
     if (fullName?.trim()) return fullName.trim().split(' ')[0];
@@ -241,8 +175,6 @@ export default function HomePage() {
         </div>
     );
   }
-
-  const isFreeEvent = formData.priceInput.trim() === '' || Number(formData.priceInput) === 0;
 
   // Buscador, mapa y catálogo. El admin lo ve dentro de la pestaña "Explorar"
   const exploreContent = (
@@ -294,62 +226,29 @@ export default function HomePage() {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredEvents.map((evt) => {
-              const isFree = evt.price === 0;
-              return (
-                <article key={evt.id} className="flex flex-col bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden hover:border-slate-700 transition-all">
-                  {evt.imageUrl && (
-                    <div className="w-full h-40 bg-slate-950 overflow-hidden">
-                      <img 
-                        src={`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'}${evt.imageUrl}`} 
-                        alt={evt.title} 
-                        className="w-full h-full object-cover" 
-                      />
-                    </div>
-                  )}
-                  <div className="p-6 flex-1">
-                    <div className="flex justify-between items-center mb-3">
-                      <span className={`text-[10px] uppercase font-bold px-2 py-1 rounded border ${getCategoryBadge(evt.category?.name)}`}>
-                        {evt.category?.name || 'General'}
-                      </span>
-                      {evt.distanceKm && <span className="text-xs text-indigo-400">A {evt.distanceKm} km</span>}
-                    </div>
-                    <h4 className="text-lg font-bold text-white mb-2">{evt.title}</h4>
-                    {evt.status !== 'PUBLISHED' && (
-                      <div className="mb-3">
-                        <StatusPill {...EVENT_STATUS_LABELS[evt.status]} />
-                        {evt.statusReason && <p className="text-[11px] text-slate-400 mt-1">{evt.statusReason}</p>}
-                      </div>
-                    )}
-                    <p className="text-xs text-slate-400 line-clamp-2 mb-4">{evt.description}</p>
-                    <div className="text-xs text-slate-500 space-y-1">
-                      <p>📍 {evt.address}</p>
-                      <p>📅 {new Date(evt.date).toLocaleDateString('es-CL')}</p>
-                    </div>
-                  </div>
-                  <div className="bg-slate-950 px-6 py-4 flex justify-between items-center border-t border-slate-800">
-                    <span className="font-extrabold text-white">
-                      {isFree ? <span className="text-emerald-400">Entrada Liberada</span> : `$${evt.price.toLocaleString('es-CL')}`}
-                    </span>
-                    {!isFree && (
-                      <button
-                        disabled={!canReserve || evt.status !== 'PUBLISHED'}
-                        title={
-                          !canReserve
-                            ? 'Tu cuenta está en revisión: no puedes reservar entradas'
-                            : evt.status !== 'PUBLISHED'
-                              ? 'Este evento no acepta reservas'
-                              : undefined
-                        }
-                        className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-500 disabled:cursor-not-allowed text-white text-xs font-bold rounded-lg transition"
-                      >
-                        Reservar
-                      </button>
-                    )}
-                  </div>
-                </article>
-              );
-            })}
+            {filteredEvents.map((evt) => (
+              <EventCard
+                key={evt.id}
+                event={{ ...evt, categoryName: evt.category?.name }}
+                footerAction={
+                  evt.price > 0 && (
+                    <button
+                      disabled={!canReserve || evt.status !== 'PUBLISHED'}
+                      title={
+                        !canReserve
+                          ? 'Tu cuenta está en revisión: no puedes reservar entradas'
+                          : evt.status !== 'PUBLISHED'
+                            ? 'Este evento no acepta reservas'
+                            : undefined
+                      }
+                      className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-500 disabled:cursor-not-allowed text-white text-xs font-bold rounded-lg transition"
+                    >
+                      Reservar
+                    </button>
+                  )
+                }
+              />
+            ))}
           </div>
         )}
       </section>
@@ -393,11 +292,19 @@ export default function HomePage() {
                 <p className="text-slate-400 mt-1">
                   {user.role === 'ADMIN' ? 'Panel de administración de UBIK.' : 'Aquí tienes las actividades cerca de ti.'}
                   {/* Tip permanente para quien puede publicar (el aviso de verificación solo sale una vez) */}
-                  {canPublish && !showApprovedNotice && (
+                  {canPublish && !showApprovedNotice && user.role !== 'ORGANIZER' && (
                     <span className="text-emerald-400 text-xs font-semibold"> (Tip: Haz clic derecho en el mapa para crear un evento)</span>
                   )}
                 </p>
               </div>
+              {canPublish && user.role === 'ORGANIZER' && (
+                <button
+                  onClick={() => setEventForm({})}
+                  className="flex items-center gap-2 px-5 py-2.5 text-sm font-bold rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-lg shadow-emerald-500/20 transition-colors"
+                >
+                  <CalendarPlus className="w-4 h-4" /> Crear evento
+                </button>
+              )}
             </header>
 
             <AccountStatusBanner user={user} />
@@ -414,6 +321,46 @@ export default function HomePage() {
 
             {user.role === 'ADMIN' ? (
               <AdminDashboard explore={exploreContent} onEventsChanged={fetchEvents} />
+            ) : isApprovedOrganizer ? (
+              <>
+                <nav className="mb-6 inline-flex bg-slate-900/80 border border-slate-800 rounded-2xl p-1.5 gap-1" role="tablist">
+                  {([
+                    { id: 'explore', label: 'Explorar', icon: Compass },
+                    { id: 'mine', label: 'Mis eventos', icon: LayoutList },
+                  ] as const).map(({ id, label, icon: Icon }) => (
+                    <button
+                      key={id}
+                      role="tab"
+                      aria-selected={organizerView === id}
+                      onClick={() => setOrganizerView(id)}
+                      className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-colors ${
+                        organizerView === id ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                      }`}
+                    >
+                      <Icon className="w-4 h-4" /> {label}
+                    </button>
+                  ))}
+                </nav>
+                {organizerView === 'explore' ? (
+                  <>
+                    {/* El aviso de cuenta verificada ya da esta indicación */}
+                    {canPublish && !showApprovedNotice && (
+                      <p className="-mt-3 mb-4 text-xs text-slate-500">
+                        Tip: haz clic derecho en el mapa para crear un evento en ese punto.
+                      </p>
+                    )}
+                    {exploreContent}
+                  </>
+                ) : (
+                  <MyEventsPanel
+                    canManage={canPublish}
+                    refreshKey={myEventsKey}
+                    onCreate={() => setEventForm({})}
+                    onEdit={(event) => setEventForm({ event })}
+                    onChanged={fetchEvents}
+                  />
+                )}
+              </>
             ) : (
               exploreContent
             )}
@@ -421,149 +368,26 @@ export default function HomePage() {
         )}
       </main>
 
-      {/* 🚀 MODAL DE REGISTRO DE EVENTOS ACTUALIZADO */}
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-lg p-6 shadow-2xl animate-fade-in text-white">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-bold text-emerald-400">📍 Registrar Nuevo Evento</h2>
-              <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-white font-bold text-lg">✕</button>
-            </div>
+      {eventForm && (
+        <EventFormModal
+          categories={categories}
+          event={eventForm.event}
+          initialLocation={eventForm.location}
+          onClose={() => setEventForm(null)}
+          onSaved={handleEventSaved}
+        />
+      )}
 
-            <p className="text-xs text-slate-400 mb-4 bg-slate-950 p-3 rounded-lg border border-slate-800">
-              Coordenadas de ubicación: <span className="text-indigo-400">Lat: {selectedCoords?.lat.toFixed(5)}, Lng: {selectedCoords?.lng.toFixed(5)}</span>
-            </p>
-
-            <form onSubmit={handleCreateEventSubmit} className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">Título del Evento</label>
-                <input 
-                  type="text" 
-                  required
-                  value={formData.title}
-                  onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                  placeholder="Ej: Expo Tunning o Junta Pokémon" 
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-emerald-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">Descripción</label>
-                <textarea 
-                  rows={2}
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  placeholder="Breve detalle de las actividades..." 
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-emerald-500"
-                />
-              </div>
-
-              {/* 🚀 NUEVO: Selector de Categoría (Vehículos, Diversión, Videojuegos, Deporte) */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">Categoría del Evento</label>
-                <select
-                  value={formData.categoryId}
-                  onChange={(e) => setFormData({ ...formData, categoryId: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-emerald-500 text-white cursor-pointer"
-                  required
-                >
-                  {categories.length > 0 ? (
-                    categories.map((cat) => (
-                      <option key={cat.id} value={cat.id}>
-                        {cat.name.charAt(0).toUpperCase() + cat.name.slice(1)}
-                      </option>
-                    ))
-                  ) : (
-                    <>
-                      <option value="">Cargando categorías...</option>
-                    </>
-                  )}
-                </select>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">Precio (CLP)</label>
-                  <input 
-                    type="number" 
-                    min="0"
-                    value={formData.priceInput}
-                    onChange={(e) => setFormData({ ...formData, priceInput: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-emerald-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                    placeholder="Ej: 5000 (Vacio = Gratis)"
-                  />
-                  {isFreeEvent ? (
-                    <span className="text-[10px] text-emerald-400 mt-1 block font-medium">
-                      ✨ Detectado: Entrada Liberada (Gratis)
-                    </span>
-                  ) : (
-                    <span className="text-[10px] text-indigo-400 mt-1 block">
-                      Monto: ${Number(formData.priceInput).toLocaleString('es-CL')} CLP
-                    </span>
-                  )}
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">Foto de Perfil del Evento</label>
-                  <input 
-                    type="file" 
-                    accept=".jpg, .jpeg, .png"
-                    onChange={(e) => {
-                      if (e.target.files && e.target.files[0]) {
-                        setFormData({ ...formData, imageFile: e.target.files[0] });
-                      }
-                    }}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2 py-1.5 text-xs text-slate-400 file:mr-2 file:py-1 file:px-2 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-emerald-600 file:text-slate-950 hover:file:bg-emerald-500 cursor-pointer"
-                  />
-                  <span className="text-[10px] text-slate-500 mt-1 block">Formatos: .jpg, .png</span>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">Fecha del Evento</label>
-                  {/* 🚀 CORRECCIÓN ICONO FECHA: [color-scheme:dark] fuerza el calendario nativo a modo oscuro (letras/íconos blancos) */}
-                  <input 
-                    type="date" 
-                    required
-                    value={formData.date}
-                    onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-emerald-500 [color-scheme:dark]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">Dirección Referencial</label>
-                  <input 
-                    type="text" 
-                    required
-                    value={formData.address}
-                    onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-emerald-500"
-                  />
-                </div>
-              </div>
-
-              <div className="flex justify-end gap-3 pt-4 border-t border-slate-800">
-                <button 
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-xs font-semibold rounded-lg transition-colors"
-                >
-                  Cancelar
-                </button>
-                <button 
-                  type="submit"
-                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-bold text-xs rounded-lg transition-colors"
-                >
-                  Guardar evento
-                </button>
-              </div>
-            </form>
-          </div>
+      {toast && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[70] flex items-center gap-3 px-4 py-3 rounded-xl bg-emerald-600 text-white text-sm font-semibold shadow-2xl" role="status">
+          <CheckCircle2 className="w-5 h-5 shrink-0" /> {toast}
+          <button onClick={() => setToast(null)} aria-label="Cerrar aviso" className="text-white/80 hover:text-white">
+            <X className="w-4 h-4" />
+          </button>
         </div>
       )}
 
-      {/* Se monta solo al abrirse para que cada apertura parta con el formulario vacío */}
+      {/* Se monta solo al abrirse      {/* Se monta solo al abrirse para que cada apertura parta con el formulario vacío */}
       {isAuthOpen && (
         <AuthModal
           isOpen

@@ -1,13 +1,15 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { Search, Loader2, Inbox, CalendarDays, MapPin, User as UserIcon, Tag, X } from 'lucide-react';
+import { Search, Loader2, Inbox, CalendarDays, MapPin, User as UserIcon, Tag, X, Pencil } from 'lucide-react';
 import { AccountStatus, EventStatus, apiJson } from '../../services/auth';
 import {
   ACCOUNT_STATUS_LABELS, EVENT_STATUS_LABELS, StatusPill, formatDate,
 } from '../../utils/labels';
 import StatusChangeForm, { StatusOption } from './StatusChangeForm';
 import { Chip } from './UsersTab';
+import EventFormModal from '../events/EventFormModal';
+import { Category, EventItem, fetchCategories } from '../../services/events';
 
 interface AdminEvent {
   id: string;
@@ -16,6 +18,9 @@ interface AdminEvent {
   price: number;
   date: string;
   address: string;
+  latitude: number;
+  longitude: number;
+  imageUrl: string | null;
   status: EventStatus;
   statusReason: string | null;
   statusChangedAt: string | null;
@@ -38,6 +43,13 @@ export default function EventsTab({ onChanged }: { onChanged: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<AdminEvent | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // El admin puede editar los datos de cualquier evento con el mismo formulario del organizador
+  const [editing, setEditing] = useState(false);
+  const [categories, setCategories] = useState<Category[]>([]);
+
+  useEffect(() => {
+    fetchCategories().then(setCategories).catch(() => setCategories([]));
+  }, []);
 
   useEffect(() => {
     const id = setTimeout(() => setDebouncedSearch(search), 300);
@@ -80,6 +92,17 @@ export default function EventsTab({ onChanged }: { onChanged: () => void }) {
         : prev.filter((e) => e.id !== updated.id),
     );
     setNotice(`"${updated.title}" ahora está ${EVENT_STATUS_LABELS[updated.status].label.toLowerCase()}.`);
+    onChanged();
+  };
+
+  const handleEdited = (saved: EventItem) => {
+    if (!selected) return;
+    // El formulario devuelve el evento sin los datos propios del panel de admin
+    const merged: AdminEvent = { ...selected, ...saved, description: saved.description, imageUrl: saved.imageUrl ?? null, organizer: selected.organizer };
+    setSelected(merged);
+    setEvents((prev) => prev.map((e) => (e.id === merged.id ? merged : e)));
+    setEditing(false);
+    setNotice(`Guardamos los cambios de "${merged.title}".`);
     onChanged();
   };
 
@@ -162,6 +185,12 @@ export default function EventsTab({ onChanged }: { onChanged: () => void }) {
                 <h3 className="text-lg font-bold text-white">{selected.title}</h3>
                 <StatusPill {...EVENT_STATUS_LABELS[selected.status]} />
               </div>
+              <button
+                onClick={() => { setEditing(true); setNotice(null); }}
+                className="mb-3 flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg bg-slate-800 hover:bg-indigo-600 transition-colors"
+              >
+                <Pencil className="w-3.5 h-3.5" /> Editar datos del evento
+              </button>
               {selected.description && <p className="text-xs text-slate-400 mb-4">{selected.description}</p>}
 
               <div className="grid sm:grid-cols-2 gap-x-6 gap-y-1.5 text-xs text-slate-300 mb-5">
@@ -199,6 +228,15 @@ export default function EventsTab({ onChanged }: { onChanged: () => void }) {
           )}
         </div>
       </div>
+
+      {editing && selected && (
+        <EventFormModal
+          categories={categories}
+          event={{ ...selected, description: selected.description ?? '' } as EventItem}
+          onClose={() => setEditing(false)}
+          onSaved={handleEdited}
+        />
+      )}
     </section>
   );
 }
