@@ -9,7 +9,8 @@ import {
   ApiError, AuthResponse, RegisterPayload, RejectedInfo, SuspendedInfo,
   loginUser, reapplyOrganizer, registerUser,
 } from '../services/auth';
-import { formatRut, isValidRut, isValidChileanMobile } from '../utils/rut';
+import { formatRut, isValidRut } from '../utils/rut';
+import { PHONE_PREFIX, formatLocalPhone, isValidLocalPhone, toFullPhone } from '../utils/phone';
 import { formatDate } from '../utils/labels';
 
 interface AuthModalProps {
@@ -89,7 +90,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialSuspended
             name: app.name,
             email: app.email,
             rut: formatRut(app.rut),
-            phone: app.phone,
+            phone: formatLocalPhone(app.phone),
             organizationName: app.organizationName ?? '',
             eventDescription: app.eventDescription,
             socialUrl: app.socialUrl ?? '',
@@ -112,7 +113,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialSuspended
 
     if (isOrganizer) {
       if (!isValidRut(form.rut)) errors.rut = 'RUT inválido, revisa el dígito verificador';
-      if (!isValidChileanMobile(form.phone)) errors.phone = 'Usa un celular chileno, ej: +56 9 1234 5678';
+      if (!isValidLocalPhone(form.phone)) errors.phone = 'Ingresa los 9 dígitos de tu celular, comenzando con 9';
       if (form.eventDescription.trim().length < MIN_DESCRIPTION) {
         errors.eventDescription = `Cuéntanos un poco más (mínimo ${MIN_DESCRIPTION} caracteres)`;
       }
@@ -129,7 +130,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialSuspended
 
   const organizerFields = () => ({
     rut: form.rut,
-    phone: form.phone.trim(),
+    phone: toFullPhone(form.phone),
     eventDescription: form.eventDescription.trim(),
     organizationName: form.organizationName.trim() || undefined,
     socialUrl: form.socialUrl.trim() || undefined,
@@ -513,16 +514,24 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialSuspended
                       />,
                     )}
                     {renderField('phone', 'Celular', <Phone className={iconClass} />,
-                      <input
-                        id="auth-phone"
-                        type="tel"
-                        autoComplete="tel"
-                        value={form.phone}
-                        onChange={(e) => setField('phone', e.target.value)}
-                        onBlur={() => markTouched('phone')}
-                        placeholder="+56 9 1234 5678"
-                        className={inputClass('phone')}
-                      />,
+                      <>
+                        {/* Prefijo fijo: solo se escriben los 9 dígitos del celular */}
+                        <span className="absolute left-9 top-2.5 text-sm text-slate-300 select-none pointer-events-none" aria-hidden>
+                          {PHONE_PREFIX}
+                        </span>
+                        <input
+                          id="auth-phone"
+                          type="tel"
+                          inputMode="numeric"
+                          autoComplete="tel-national"
+                          aria-label={`Celular, prefijo ${PHONE_PREFIX}`}
+                          value={form.phone}
+                          onChange={(e) => setField('phone', formatLocalPhone(e.target.value))}
+                          onBlur={() => markTouched('phone')}
+                          placeholder="9 1234 5678"
+                          className={inputClass('phone').replace('pl-10', 'pl-[4.25rem]')}
+                        />
+                      </>,
                     )}
                   </div>
 

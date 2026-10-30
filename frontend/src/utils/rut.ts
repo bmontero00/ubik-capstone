@@ -23,7 +23,3 @@ export function isValidRut(value: string): boolean {
   const expectedDv = expected === 11 ? '0' : expected === 10 ? 'K' : String(expected);
   return dv === expectedDv;
 }
-
-export function isValidChileanMobile(value: string): boolean {
-  return /^(\+?56)?\s?9\s?\d{4}\s?\d{4}$/.test(value.trim());
-}

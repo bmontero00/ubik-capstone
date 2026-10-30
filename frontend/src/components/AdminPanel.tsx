@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { ShieldCheck, Check, X, Loader2, Link2, Phone, IdCard, Building2, Inbox } from 'lucide-react';
 import { authFetch, OrganizerStatus } from '../services/auth';
 import { formatRut } from '../utils/rut';
+import { formatPhoneDisplay } from '../utils/phone';
 import ReasonField, { validateReason } from './admin/ReasonField';
 
 interface OrganizerRequest {
@@ -162,7 +163,7 @@ export default function AdminPanel() {
                   </p>
                   <div className="grid sm:grid-cols-2 gap-x-6 gap-y-1.5 text-xs text-slate-300 mb-3">
                     <span className="flex items-center gap-2"><IdCard className="w-3.5 h-3.5 text-slate-500" /> {formatRut(r.rut)}</span>
-                    <span className="flex items-center gap-2"><Phone className="w-3.5 h-3.5 text-slate-500" /> {r.phone}</span>
+                    <span className="flex items-center gap-2"><Phone className="w-3.5 h-3.5 text-slate-500" /> {formatPhoneDisplay(r.phone)}</span>
                     {r.organizationName && (
                       <span className="flex items-center gap-2"><Building2 className="w-3.5 h-3.5 text-slate-500" /> {r.organizationName}</span>
                     )}

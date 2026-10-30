@@ -8,6 +8,7 @@ import {
   ROLE_LABELS, StatusPill, formatDate,
 } from '../../utils/labels';
 import { formatRut } from '../../utils/rut';
+import { formatPhoneDisplay } from '../../utils/phone';
 import StatusChangeForm, { StatusOption } from './StatusChangeForm';
 
 interface UserRow {
@@ -278,7 +279,7 @@ function UserDetailPanel({
           <p className="text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">Datos de verificación</p>
           <div className="grid sm:grid-cols-2 gap-x-6 gap-y-1.5 text-xs text-slate-300 mb-2">
             <span className="flex items-center gap-2"><IdCard className="w-3.5 h-3.5 text-slate-500" /> {formatRut(profile.rut)}</span>
-            <span className="flex items-center gap-2"><Phone className="w-3.5 h-3.5 text-slate-500" /> {profile.phone}</span>
+            <span className="flex items-center gap-2"><Phone className="w-3.5 h-3.5 text-slate-500" /> {formatPhoneDisplay(profile.phone)}</span>
             {profile.organizationName && (
               <span className="flex items-center gap-2"><Building2 className="w-3.5 h-3.5 text-slate-500" /> {profile.organizationName}</span>
             )}
