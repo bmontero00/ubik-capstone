@@ -2,8 +2,9 @@ import { Controller, Post, Body, HttpCode, HttpStatus, Get, UseGuards } from '@n
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
+import { ReapplyDto } from './dto/reapply.dto';
 import { CurrentUser, JwtAuthGuard } from './auth.guards';
-import type { JwtPayload } from './auth.guards';
+import type { AuthenticatedUser } from './auth.guards';
 
 @Controller('auth')
 export class AuthController {
@@ -20,10 +21,16 @@ export class AuthController {
     return this.authService.login(dto);
   }
 
+  // Organizador rechazado vuelve a enviar su solicitud
+  @Post('organizer/reapply')
+  async reapply(@Body() dto: ReapplyDto) {
+    return this.authService.reapply(dto);
+  }
+
   // Datos actualizados del usuario (por ejemplo, si un admin aprobó su solicitud)
   @UseGuards(JwtAuthGuard)
   @Get('me')
-  async me(@CurrentUser() user: JwtPayload) {
+  async me(@CurrentUser() user: AuthenticatedUser) {
     return this.authService.getProfile(user.sub);
   }
 }

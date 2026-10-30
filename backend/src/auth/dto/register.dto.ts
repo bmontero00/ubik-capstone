@@ -22,7 +22,7 @@ export const PUBLIC_ACCOUNT_TYPES = ['ATTENDEE', 'ORGANIZER'] as const;
 export type PublicAccountType = (typeof PUBLIC_ACCOUNT_TYPES)[number];
 
 @ValidatorConstraint({ name: 'isValidRut' })
-class IsValidRutConstraint implements ValidatorConstraintInterface {
+export class IsValidRutConstraint implements ValidatorConstraintInterface {
   validate(value: unknown) {
     return typeof value === 'string' && isValidRut(value);
   }

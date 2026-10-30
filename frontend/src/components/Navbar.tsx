@@ -2,18 +2,14 @@
 
 import React from 'react';
 import { MapPin, User, LogOut } from 'lucide-react';
+import { ROLE_LABELS } from '../utils/labels';
+import type { UserRole } from '../services/auth';
 
 interface NavbarProps {
-  user: { name: string; email: string; role?: string } | null;
+  user: { name: string; email: string; role?: UserRole } | null;
   onLogout: () => void;
   onOpenAuth: () => void;
 }
-
-const ROLE_LABELS: Record<string, { label: string; className: string }> = {
-  ATTENDEE: { label: 'Comprador', className: 'bg-emerald-500/10 text-emerald-300 border-emerald-500/20' },
-  ORGANIZER: { label: 'Organizador', className: 'bg-indigo-500/10 text-indigo-300 border-indigo-500/25' },
-  ADMIN: { label: 'Admin', className: 'bg-amber-500/10 text-amber-300 border-amber-500/25' },
-};
 
 export default function Navbar({ user, onLogout, onOpenAuth }: NavbarProps) {
   return (

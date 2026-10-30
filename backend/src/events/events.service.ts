@@ -1,6 +1,12 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { EventStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import type { JwtPayload } from '../auth/auth.guards';
+import type { AuthenticatedUser } from '../auth/auth.guards';
+import { accountUnderReviewError } from '../auth/account-status';
+
+// Estados visibles en el catálogo público. Los cancelados y postergados se muestran
+// con su aviso para que los asistentes se enteren; los en revisión y finalizados no.
+export const PUBLIC_EVENT_STATUSES: EventStatus[] = ['PUBLISHED', 'POSTPONED', 'CANCELLED'];
 
 @Injectable()
 export class EventsService {
@@ -41,6 +47,7 @@ export class EventsService {
 
   async findAll(lat?: number, lng?: number, radiusKm?: number) {
     const events = await this.prisma.event.findMany({
+      where: { status: { in: PUBLIC_EVENT_STATUSES } },
       include: {
         category: { select: { id: true, name: true } },
         organizer: { select: { id: true, name: true, email: true } },
@@ -61,7 +68,8 @@ export class EventsService {
   }
 
   // Un organizador solo puede publicar si un administrador aprobó su solicitud
-  async assertCanPublish(user: JwtPayload) {
+  async assertCanPublish(user: AuthenticatedUser) {
+    if (user.status !== 'ACTIVE') throw accountUnderReviewError();
     if (user.role === 'ADMIN') return;
     const profile = await this.prisma.organizerProfile.findUnique({
       where: { userId: user.sub },

@@ -4,11 +4,13 @@ import React, { useState, useEffect } from 'react';
 import Navbar from '../components/Navbar';
 import AuthModal from '../components/AuthModal';
 import OrganizerStatusBanner from '../components/OrganizerStatusBanner';
-import AdminPanel from '../components/AdminPanel';
+import AccountStatusBanner from '../components/AccountStatusBanner';
+import AdminDashboard from '../components/admin/AdminDashboard';
 import {
-  AuthResponse, AuthUser, authFetch, canPublishEvents, clearSession, fetchCurrentUser,
-  loadStoredUser, saveSession, updateStoredUser,
+  ApiError, AuthResponse, AuthUser, EventStatus, SuspendedInfo, authFetch, canPublishEvents, clearSession,
+  fetchCurrentUser, isAccountActive, loadStoredUser, saveSession, updateStoredUser,
 } from '../services/auth';
+import { EVENT_STATUS_LABELS, StatusPill } from '../utils/labels';
 import dynamic from 'next/dynamic';
 
 const InteractiveMap = dynamic(() => import('../components/Map'), { 
@@ -30,12 +32,15 @@ interface EventItem {
   id: string; title: string; description: string; price: number;
   date: string; address: string; latitude: number; longitude: number;
   imageUrl?: string; distanceKm?: number; category: Category; organizer: Organizer;
+  status: EventStatus; statusReason?: string | null;
 }
 
 export default function HomePage() {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [refreshingUser, setRefreshingUser] = useState(false);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
+  // Si la cuenta se suspende con la sesión abierta, se cierra y se muestra el aviso
+  const [suspendedNotice, setSuspendedNotice] = useState<SuspendedInfo | null>(null);
   const [radius, setRadius] = useState<number>(15);
   const [searchQuery, setSearchQuery] = useState<string>(''); 
   const [events, setEvents] = useState<EventItem[]>([]);
@@ -77,10 +82,14 @@ export default function HomePage() {
       const fresh = await fetchCurrentUser();
       setUser(fresh);
       updateStoredUser(fresh);
-    } catch {
-      // Token vencido o inválido: se cierra la sesión local
+    } catch (err) {
+      // Token vencido, inválido o cuenta suspendida: se cierra la sesión local
       clearSession();
       setUser(null);
+      if (err instanceof ApiError && err.code === 'ACCOUNT_SUSPENDED') {
+        setSuspendedNotice(err.data);
+        setIsAuthOpen(true);
+      }
     } finally {
       setRefreshingUser(false);
     }
@@ -135,6 +144,7 @@ export default function HomePage() {
   };
 
   const canPublish = canPublishEvents(user);
+  const canReserve = isAccountActive(user);
 
   const handleSelectLocationForNewEvent = (lat: number, lng: number) => {
     setSelectedCoords({ lat, lng });
@@ -221,6 +231,118 @@ export default function HomePage() {
 
   const isFreeEvent = formData.priceInput.trim() === '' || Number(formData.priceInput) === 0;
 
+  // Buscador, mapa y catálogo. El admin lo ve dentro de la pestaña "Explorar"
+  const exploreContent = (
+    <>
+      <section className="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 mb-8 shadow-xl backdrop-blur-sm flex flex-col lg:flex-row gap-6 items-center">
+        <div className="relative w-full lg:w-1/2">
+          <input
+            type="text"
+            placeholder="Buscar por título, categoría (ej: Deporte, Vehículos)..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-10 pr-4 py-3 bg-slate-950 border border-slate-700 rounded-xl text-white focus:outline-none focus:border-indigo-500"
+          />
+        </div>
+        <div className="w-full lg:w-1/2 flex items-center gap-4 bg-slate-950 px-4 py-3 rounded-xl border border-slate-700">
+          <input
+            type="range"
+            min="1"
+            max="30"
+            value={radius}
+            onChange={(e) => setRadius(Number(e.target.value))}
+            className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+          />
+          <span className="font-semibold text-indigo-300 min-w-[50px] text-right">{radius} km</span>
+        </div>
+      </section>
+
+      <section className="mb-8 w-full h-[450px] bg-slate-800 rounded-2xl border border-slate-700 relative overflow-hidden shadow-2xl z-0">
+        <InteractiveMap 
+          events={filteredEvents} 
+          centerLat={defaultLat} 
+          centerLng={defaultLng} 
+          radiusKm={radius} 
+          onSelectLocationForNewEvent={canPublish ? handleSelectLocationForNewEvent : undefined}
+        />
+      </section>
+
+      <section>
+        <h3 className="text-xl font-bold text-white mb-6">
+          Catálogo de Eventos ({filteredEvents.length} resultados)
+        </h3>
+        {isLoading ? (
+          <div className="text-center py-10"><span className="text-indigo-400">Cargando actividades...</span></div>
+        ) : error ? (
+          <div className="bg-red-950/40 border border-red-800 text-red-300 p-4 rounded-xl">{error}</div>
+        ) : filteredEvents.length === 0 ? (
+          <div className="text-center py-12 bg-slate-900/40 rounded-2xl border border-slate-800 text-slate-400">
+            No hay coincidencias para tu búsqueda en este radio.
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {filteredEvents.map((evt) => {
+              const isFree = evt.price === 0;
+              return (
+                <article key={evt.id} className="flex flex-col bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden hover:border-slate-700 transition-all">
+                  {evt.imageUrl && (
+                    <div className="w-full h-40 bg-slate-950 overflow-hidden">
+                      <img 
+                        src={`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'}${evt.imageUrl}`} 
+                        alt={evt.title} 
+                        className="w-full h-full object-cover" 
+                      />
+                    </div>
+                  )}
+                  <div className="p-6 flex-1">
+                    <div className="flex justify-between items-center mb-3">
+                      <span className={`text-[10px] uppercase font-bold px-2 py-1 rounded border ${getCategoryBadge(evt.category?.name)}`}>
+                        {evt.category?.name || 'General'}
+                      </span>
+                      {evt.distanceKm && <span className="text-xs text-indigo-400">A {evt.distanceKm} km</span>}
+                    </div>
+                    <h4 className="text-lg font-bold text-white mb-2">{evt.title}</h4>
+                    {evt.status !== 'PUBLISHED' && (
+                      <div className="mb-3">
+                        <StatusPill {...EVENT_STATUS_LABELS[evt.status]} />
+                        {evt.statusReason && <p className="text-[11px] text-slate-400 mt-1">{evt.statusReason}</p>}
+                      </div>
+                    )}
+                    <p className="text-xs text-slate-400 line-clamp-2 mb-4">{evt.description}</p>
+                    <div className="text-xs text-slate-500 space-y-1">
+                      <p>📍 {evt.address}</p>
+                      <p>📅 {new Date(evt.date).toLocaleDateString('es-CL')}</p>
+                    </div>
+                  </div>
+                  <div className="bg-slate-950 px-6 py-4 flex justify-between items-center border-t border-slate-800">
+                    <span className="font-extrabold text-white">
+                      {isFree ? <span className="text-emerald-400">Entrada Liberada</span> : `$${evt.price.toLocaleString('es-CL')}`}
+                    </span>
+                    {!isFree && (
+                      <button
+                        disabled={!canReserve || evt.status !== 'PUBLISHED'}
+                        title={
+                          !canReserve
+                            ? 'Tu cuenta está en revisión: no puedes reservar entradas'
+                            : evt.status !== 'PUBLISHED'
+                              ? 'Este evento no acepta reservas'
+                              : undefined
+                        }
+                        className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-500 disabled:cursor-not-allowed text-white text-xs font-bold rounded-lg transition"
+                      >
+                        Reservar
+                      </button>
+                    )}
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        )}
+      </section>
+    </>
+  );
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans">
       <Navbar user={user} onOpenAuth={() => setIsAuthOpen(true)} onLogout={handleLogout} />
@@ -256,106 +378,23 @@ export default function HomePage() {
                   ¡Hola, {getFirstName(user?.name, user?.email)}! 👋
                 </h2>
                 <p className="text-slate-400 mt-1">
-                  Aquí tienes las actividades cerca de ti.
+                  {user.role === 'ADMIN' ? 'Panel de administración de UBIK.' : 'Aquí tienes las actividades cerca de ti.'}
                   {/* El organizador ya ve este tip en su aviso de estado */}
-                  {user.role === 'ADMIN' && <span className="text-emerald-400 text-xs font-semibold"> (Tip: Haz clic derecho en el mapa para crear un evento)</span>}
                 </p>
               </div>
             </header>
 
-            <OrganizerStatusBanner user={user} onRefresh={refreshUser} refreshing={refreshingUser} />
-            {user.role === 'ADMIN' && <AdminPanel />}
+            <AccountStatusBanner user={user} />
+            {/* Con la cuenta en revisión prima ese aviso sobre el de verificación */}
+            {isAccountActive(user) && (
+              <OrganizerStatusBanner user={user} onRefresh={refreshUser} refreshing={refreshingUser} />
+            )}
 
-            <section className="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 mb-8 shadow-xl backdrop-blur-sm flex flex-col lg:flex-row gap-6 items-center">
-              <div className="relative w-full lg:w-1/2">
-                <input
-                  type="text"
-                  placeholder="Buscar por título, categoría (ej: Deporte, Vehículos)..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-10 pr-4 py-3 bg-slate-950 border border-slate-700 rounded-xl text-white focus:outline-none focus:border-indigo-500"
-                />
-              </div>
-              <div className="w-full lg:w-1/2 flex items-center gap-4 bg-slate-950 px-4 py-3 rounded-xl border border-slate-700">
-                <input
-                  type="range"
-                  min="1"
-                  max="30"
-                  value={radius}
-                  onChange={(e) => setRadius(Number(e.target.value))}
-                  className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-indigo-500"
-                />
-                <span className="font-semibold text-indigo-300 min-w-[50px] text-right">{radius} km</span>
-              </div>
-            </section>
-
-            <section className="mb-8 w-full h-[450px] bg-slate-800 rounded-2xl border border-slate-700 relative overflow-hidden shadow-2xl z-0">
-              <InteractiveMap 
-                events={filteredEvents} 
-                centerLat={defaultLat} 
-                centerLng={defaultLng} 
-                radiusKm={radius} 
-                onSelectLocationForNewEvent={canPublish ? handleSelectLocationForNewEvent : undefined}
-              />
-            </section>
-
-            <section>
-              <h3 className="text-xl font-bold text-white mb-6">
-                Catálogo de Eventos ({filteredEvents.length} resultados)
-              </h3>
-              {isLoading ? (
-                <div className="text-center py-10"><span className="text-indigo-400">Cargando actividades...</span></div>
-              ) : error ? (
-                <div className="bg-red-950/40 border border-red-800 text-red-300 p-4 rounded-xl">{error}</div>
-              ) : filteredEvents.length === 0 ? (
-                <div className="text-center py-12 bg-slate-900/40 rounded-2xl border border-slate-800 text-slate-400">
-                  No hay coincidencias para tu búsqueda en este radio.
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {filteredEvents.map((evt) => {
-                    const isFree = evt.price === 0;
-                    return (
-                      <article key={evt.id} className="flex flex-col bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden hover:border-slate-700 transition-all">
-                        {evt.imageUrl && (
-                          <div className="w-full h-40 bg-slate-950 overflow-hidden">
-                            <img 
-                              src={`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'}${evt.imageUrl}`} 
-                              alt={evt.title} 
-                              className="w-full h-full object-cover" 
-                            />
-                          </div>
-                        )}
-                        <div className="p-6 flex-1">
-                          <div className="flex justify-between items-center mb-3">
-                            <span className={`text-[10px] uppercase font-bold px-2 py-1 rounded border ${getCategoryBadge(evt.category?.name)}`}>
-                              {evt.category?.name || 'General'}
-                            </span>
-                            {evt.distanceKm && <span className="text-xs text-indigo-400">A {evt.distanceKm} km</span>}
-                          </div>
-                          <h4 className="text-lg font-bold text-white mb-2">{evt.title}</h4>
-                          <p className="text-xs text-slate-400 line-clamp-2 mb-4">{evt.description}</p>
-                          <div className="text-xs text-slate-500 space-y-1">
-                            <p>📍 {evt.address}</p>
-                            <p>📅 {new Date(evt.date).toLocaleDateString('es-CL')}</p>
-                          </div>
-                        </div>
-                        <div className="bg-slate-950 px-6 py-4 flex justify-between items-center border-t border-slate-800">
-                          <span className="font-extrabold text-white">
-                            {isFree ? <span className="text-emerald-400">Entrada Liberada</span> : `$${evt.price.toLocaleString('es-CL')}`}
-                          </span>
-                          {!isFree && (
-                            <button className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg transition">
-                              Reservar
-                            </button>
-                          )}
-                        </div>
-                      </article>
-                    );
-                  })}
-                </div>
-              )}
-            </section>
+            {user.role === 'ADMIN' ? (
+              <AdminDashboard explore={exploreContent} onEventsChanged={fetchEvents} />
+            ) : (
+              exploreContent
+            )}
           </div>
         )}
       </main>
@@ -504,7 +543,12 @@ export default function HomePage() {
 
       {/* Se monta solo al abrirse para que cada apertura parta con el formulario vacío */}
       {isAuthOpen && (
-        <AuthModal isOpen onClose={() => setIsAuthOpen(false)} onSuccess={handleAuthSuccess} />
+        <AuthModal
+          isOpen
+          initialSuspended={suspendedNotice}
+          onClose={() => { setIsAuthOpen(false); setSuspendedNotice(null); }}
+          onSuccess={handleAuthSuccess}
+        />
       )}
     </div>
   );

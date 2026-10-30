@@ -14,7 +14,7 @@ import { EventsService } from './events.service';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
 import { CurrentUser, JwtAuthGuard, Roles, RolesGuard } from '../auth/auth.guards';
-import type { JwtPayload } from '../auth/auth.guards';
+import type { AuthenticatedUser } from '../auth/auth.guards';
 
 @Controller('events')
 export class EventsController {
@@ -51,7 +51,7 @@ export class EventsController {
   )
   async create(
     @Body() body: any,
-    @CurrentUser() user: JwtPayload,
+    @CurrentUser() user: AuthenticatedUser,
     @UploadedFile() file?: Express.Multer.File,
   ) {
     await this.eventsService.assertCanPublish(user);

@@ -22,6 +22,15 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // Estado de la cuenta, lo administra un ADMIN (motivo obligatorio si no es ACTIVE)
+  status             AccountStatus @default(ACTIVE)
+  statusReason       String?
+  statusChangedAt    DateTime?
+  statusChangedById  String?
+  statusChangedBy    User?         @relation("StatusChangedBy", fields: [statusChangedById], references: [id])
+  statusChangedUsers User[]        @relation("StatusChangedBy")
+  eventStatusChanges Event[]       @relation("EventStatusChangedBy")
+
   // Relación con los eventos creados por el usuario
   events Event[]
 
@@ -30,6 +39,22 @@ model User {
   reviewedProfiles OrganizerProfile[] @relation("ReviewedBy")
 
   @@map("users")
+}
+
+// ACTIVE: uso normal. UNDER_REVIEW: cuenta reportada, solo puede ver eventos.
+// SUSPENDED: no puede iniciar sesión.
+enum AccountStatus {
+  ACTIVE
+  UNDER_REVIEW
+  SUSPENDED
+}
+
+enum EventStatus {
+  PUBLISHED
+  UNDER_REVIEW
+  POSTPONED
+  CANCELLED
+  FINISHED
 }
 
 enum OrganizerStatus {
@@ -87,6 +112,13 @@ model Event {
 
   organizerId String
   organizer   User   @relation(fields: [organizerId], references: [id])
+
+  // Estado del evento, lo administra un ADMIN
+  status            EventStatus @default(PUBLISHED)
+  statusReason      String?
+  statusChangedAt   DateTime?
+  statusChangedById String?
+  statusChangedBy   User?       @relation("EventStatusChangedBy", fields: [statusChangedById], references: [id])
 
   @@map("events")
 }

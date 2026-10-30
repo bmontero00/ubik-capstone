@@ -3,19 +3,26 @@
 import React, { useState } from 'react';
 import {
   X, Lock, Mail, User as UserIcon, Loader2, Ticket, CalendarPlus, ArrowLeft, ShieldCheck,
-  Phone, IdCard, Building2, Link2, Eye, EyeOff, Check, Hourglass, Info,
+  Phone, IdCard, Building2, Link2, Eye, EyeOff, Check, Hourglass, Info, Ban, CircleX, RotateCcw, FilePlus,
 } from 'lucide-react';
-import { loginUser, registerUser, AuthResponse, RegisterPayload } from '../services/auth';
+import {
+  ApiError, AuthResponse, RegisterPayload, RejectedInfo, SuspendedInfo,
+  loginUser, reapplyOrganizer, registerUser,
+} from '../services/auth';
 import { formatRut, isValidRut, isValidChileanMobile } from '../utils/rut';
+import { formatDate } from '../utils/labels';
 
 interface AuthModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: (data: AuthResponse) => void;
+  // Si la sesión se cerró porque la cuenta fue suspendida, se abre directo en ese aviso
+  initialSuspended?: SuspendedInfo | null;
 }
 
-type View = 'login' | 'chooseType' | 'register' | 'submitted';
+type View = 'login' | 'chooseType' | 'register' | 'submitted' | 'suspended' | 'rejected';
 type AccountType = RegisterPayload['accountType'];
+type ReapplyMode = 'resume' | 'fresh' | null;
 
 const MIN_DESCRIPTION = 30;
 
@@ -34,8 +41,8 @@ type FormState = typeof emptyForm;
 type FieldErrors = Partial<Record<keyof FormState, string>>;
 
 // Se monta solo mientras está abierto, así cada apertura parte con el formulario vacío
-export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
-  const [view, setView] = useState<View>('login');
+export default function AuthModal({ isOpen, onClose, onSuccess, initialSuspended = null }: AuthModalProps) {
+  const [view, setView] = useState<View>(initialSuspended ? 'suspended' : 'login');
   const [accountType, setAccountType] = useState<AccountType>('ATTENDEE');
   const [form, setForm] = useState<FormState>(emptyForm);
   const [touched, setTouched] = useState<Partial<Record<keyof FormState, boolean>>>({});
@@ -43,10 +50,15 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [emailConflict, setEmailConflict] = useState(false);
+  const [suspended, setSuspended] = useState<SuspendedInfo | null>(initialSuspended);
+  const [rejected, setRejected] = useState<RejectedInfo | null>(null);
+  const [reapplyMode, setReapplyMode] = useState<ReapplyMode>(null);
 
   if (!isOpen) return null;
 
   const isOrganizer = view === 'register' && accountType === 'ORGANIZER';
+  const isReapply = view === 'register' && reapplyMode !== null;
 
   const setField = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -55,12 +67,37 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
   const goTo = (next: View) => {
     setView(next);
     setError(null);
+    setEmailConflict(false);
     setSubmitAttempted(false);
     setTouched({});
   };
 
   const chooseType = (type: AccountType) => {
     setAccountType(type);
+    setReapplyMode(null);
+    goTo('register');
+  };
+
+  // Re-postulación: retoma los datos rechazados o parte de cero (el correo se mantiene)
+  const startReapply = (mode: Exclude<ReapplyMode, null>) => {
+    if (!rejected) return;
+    const app = rejected.application;
+    setForm(
+      mode === 'resume'
+        ? {
+            ...emptyForm,
+            name: app.name,
+            email: app.email,
+            rut: formatRut(app.rut),
+            phone: app.phone,
+            organizationName: app.organizationName ?? '',
+            eventDescription: app.eventDescription,
+            socialUrl: app.socialUrl ?? '',
+          }
+        : { ...emptyForm, email: app.email },
+    );
+    setAccountType('ORGANIZER');
+    setReapplyMode(mode);
     goTo('register');
   };
 
@@ -68,8 +105,10 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
   const validate = (): FieldErrors => {
     const errors: FieldErrors = {};
     if (view === 'register' && !form.name.trim()) errors.name = 'Ingresa tu nombre completo';
-    if (!/^\S+@\S+\.\S+$/.test(form.email)) errors.email = 'Ingresa un correo válido';
-    if (form.password.length < 6) errors.password = 'Mínimo 6 caracteres';
+    if (!isReapply) {
+      if (!/^\S+@\S+\.\S+$/.test(form.email)) errors.email = 'Ingresa un correo válido';
+      if (form.password.length < 6) errors.password = 'Mínimo 6 caracteres';
+    }
 
     if (isOrganizer) {
       if (!isValidRut(form.rut)) errors.rut = 'RUT inválido, revisa el dígito verificador';
@@ -88,10 +127,20 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
   const errors = validate();
   const visibleError = (key: keyof FormState) => ((touched[key] || submitAttempted) ? errors[key] : undefined);
 
+  const organizerFields = () => ({
+    rut: form.rut,
+    phone: form.phone.trim(),
+    eventDescription: form.eventDescription.trim(),
+    organizationName: form.organizationName.trim() || undefined,
+    socialUrl: form.socialUrl.trim() || undefined,
+    acceptsTerms: form.acceptsTerms,
+  });
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitAttempted(true);
     setError(null);
+    setEmailConflict(false);
     if (Object.keys(errors).length > 0) return;
 
     setLoading(true);
@@ -102,37 +151,41 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
         return;
       }
 
+      if (isReapply && rejected) {
+        onSuccess(await reapplyOrganizer({ reapplyToken: rejected.reapplyToken, name: form.name.trim(), ...organizerFields() }));
+        setView('submitted');
+        return;
+      }
+
       const payload: RegisterPayload = {
         name: form.name.trim(),
         email: form.email.trim(),
         password: form.password,
         accountType,
+        ...(accountType === 'ORGANIZER' ? organizerFields() : {}),
       };
-      if (accountType === 'ORGANIZER') {
-        Object.assign(payload, {
-          rut: form.rut,
-          phone: form.phone.trim(),
-          eventDescription: form.eventDescription.trim(),
-          organizationName: form.organizationName.trim() || undefined,
-          socialUrl: form.socialUrl.trim() || undefined,
-          acceptsTerms: form.acceptsTerms,
-        });
-      }
-
-      const res = await registerUser(payload);
-      onSuccess(res);
+      onSuccess(await registerUser(payload));
       // Al organizador le explicamos qué pasa con su solicitud antes de cerrar
       if (accountType === 'ORGANIZER') setView('submitted');
       else onClose();
     } catch (err: any) {
-      setError(err.message || 'Error en la solicitud');
+      if (err instanceof ApiError && err.code === 'ACCOUNT_SUSPENDED') {
+        setSuspended(err.data);
+        goTo('suspended');
+      } else if (err instanceof ApiError && err.code === 'ORGANIZER_REJECTED') {
+        setRejected(err.data);
+        goTo('rejected');
+      } else {
+        setError(err.message || 'Error en la solicitud');
+        setEmailConflict(err instanceof ApiError && err.code === 'EMAIL_IN_USE');
+      }
     } finally {
       setLoading(false);
     }
   };
 
   const inputClass = (key: keyof FormState) =>
-    `w-full bg-slate-950 border rounded-xl pl-10 pr-3 py-2.5 text-sm text-white placeholder:text-slate-600 focus:outline-none transition-colors ${
+    `w-full bg-slate-950 border rounded-xl pl-10 pr-3 py-2.5 text-sm text-white placeholder:text-slate-600 focus:outline-none transition-colors disabled:opacity-60 disabled:cursor-not-allowed ${
       visibleError(key) ? 'border-rose-500/70 focus:border-rose-500' : 'border-slate-800 focus:border-emerald-500'
     }`;
 
@@ -160,6 +213,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
   );
 
   const iconClass = 'w-4 h-4';
+  const isWide = view === 'chooseType' || isOrganizer;
 
   return (
     <div
@@ -168,7 +222,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
       aria-modal="true"
     >
       <div
-        className={`relative w-full ${view === 'chooseType' || isOrganizer ? 'max-w-xl' : 'max-w-md'} max-h-[92vh] overflow-y-auto bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl text-white transition-[max-width]`}
+        className={`relative w-full ${isWide ? 'max-w-xl' : 'max-w-md'} max-h-[92vh] overflow-y-auto bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl text-white transition-[max-width]`}
       >
         <button
           onClick={onClose}
@@ -177,6 +231,81 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
         >
           <X className="w-5 h-5" />
         </button>
+
+        {view === 'suspended' && suspended && (
+          <div className="text-center py-2">
+            <div className="mx-auto mb-4 w-14 h-14 rounded-full bg-rose-500/15 border border-rose-500/30 flex items-center justify-center text-rose-300">
+              <Ban className="w-7 h-7" />
+            </div>
+            <h2 className="text-2xl font-bold tracking-tight mb-2">Cuenta suspendida</h2>
+            <p className="text-sm text-slate-400 mb-1">Tu cuenta se encuentra suspendida y no puedes iniciar sesión.</p>
+            <p className="text-sm text-slate-400 mb-4">
+              Para dudas o consultas envía un correo a{' '}
+              <a href={`mailto:${suspended.supportEmail}`} className="text-emerald-400 hover:underline font-semibold">
+                {suspended.supportEmail}
+              </a>
+              .
+            </p>
+            <ReasonToggle
+              reason={suspended.reason}
+              dateLabel="Suspendida el"
+              date={suspended.suspendedAt}
+              tone="rose"
+            />
+            <button
+              onClick={() => goTo('login')}
+              className="w-full mt-6 bg-slate-800 hover:bg-slate-700 text-white font-semibold py-2.5 rounded-xl transition-colors"
+            >
+              Volver al inicio de sesión
+            </button>
+          </div>
+        )}
+
+        {view === 'rejected' && rejected && (
+          <div className="py-2">
+            <h2 className="text-2xl font-bold text-center tracking-tight mb-2">Cuenta de organizador</h2>
+            <p className="text-sm text-slate-400 text-center mb-5">Revisa el estado de tu solicitud para continuar</p>
+
+            <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 mb-5">
+              <div className="flex gap-3">
+                <CircleX className="w-5 h-5 shrink-0 text-rose-400 mt-0.5" />
+                <div className="flex-1 text-sm text-rose-100">
+                  <p className="font-semibold text-rose-200">
+                    La creación de tu cuenta de organizador fue rechazada por un administrador.
+                  </p>
+                  <ReasonToggle reason={rejected.reason} dateLabel="Revisada el" date={rejected.reviewedAt} tone="rose" compact />
+                </div>
+              </div>
+            </div>
+
+            <p className="text-sm text-slate-300 mb-4">
+              Puedes volver a postular corrigiendo tu información. ¿Cómo quieres continuar?
+            </p>
+
+            <div className="grid sm:grid-cols-2 gap-3">
+              <button
+                onClick={() => startReapply('resume')}
+                className="flex flex-col items-start text-left gap-1 p-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 transition-colors"
+              >
+                <span className="flex items-center gap-2 font-bold"><RotateCcw className="w-4 h-4" /> Retomar última solicitud</span>
+                <span className="text-xs text-slate-900/80">Tus datos anteriores quedan cargados para corregir lo necesario</span>
+              </button>
+              <button
+                onClick={() => startReapply('fresh')}
+                className="flex flex-col items-start text-left gap-1 p-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-white border border-slate-700 transition-colors"
+              >
+                <span className="flex items-center gap-2 font-bold"><FilePlus className="w-4 h-4" /> Crear desde cero</span>
+                <span className="text-xs text-slate-400">Comienza con el formulario vacío</span>
+              </button>
+            </div>
+
+            <div className="mt-6 text-center text-xs text-slate-400">
+              <button type="button" onClick={() => goTo('login')} className="text-emerald-400 hover:underline font-semibold">
+                Volver al inicio de sesión
+              </button>
+            </div>
+          </div>
+        )}
 
         {view === 'chooseType' && (
           <>
@@ -188,7 +317,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
                 icon={<Ticket className="w-6 h-6" />}
                 accent="emerald"
                 title="Quiero asistir"
-                subtitle="Cuenta de comprador"
+                subtitle="Cuenta de asistente"
                 features={['Descubre eventos cerca de ti', 'Compra o reserva entradas', 'Revisa tu historial de eventos']}
                 footer="Acceso inmediato"
                 onClick={() => chooseType('ATTENDEE')}
@@ -218,13 +347,17 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
             <div className="mx-auto mb-4 w-14 h-14 rounded-full bg-indigo-500/15 border border-indigo-500/30 flex items-center justify-center text-indigo-300">
               <Hourglass className="w-7 h-7" />
             </div>
-            <h2 className="text-2xl font-bold tracking-tight mb-2">¡Solicitud enviada!</h2>
+            <h2 className="text-2xl font-bold tracking-tight mb-2">
+              {reapplyMode ? '¡Nueva solicitud enviada!' : '¡Solicitud enviada!'}
+            </h2>
             <p className="text-sm text-slate-400 mb-6">
-              Tu cuenta ya está creada. Un administrador revisará tus datos antes de que puedas publicar eventos.
+              {reapplyMode
+                ? 'Un administrador revisará nuevamente tus datos antes de que puedas publicar eventos.'
+                : 'Tu cuenta ya está creada. Un administrador revisará tus datos antes de que puedas publicar eventos.'}
             </p>
 
             <ol className="text-left space-y-3 bg-slate-950 border border-slate-800 rounded-xl p-4 mb-6">
-              <Step state="done" title="Cuenta creada" text="Ya puedes iniciar sesión con tu correo." />
+              <Step state="done" title={reapplyMode ? 'Solicitud corregida' : 'Cuenta creada'} text="Ya puedes iniciar sesión con tu correo." />
               <Step state="current" title="Revisión del administrador" text="Validamos tu identidad para evitar eventos falsos." />
               <Step state="next" title="Publica tus eventos" text="Te mostraremos el aviso en tu panel cuando seas aprobado." />
             </ol>
@@ -243,27 +376,53 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
             {view === 'register' && (
               <button
                 type="button"
-                onClick={() => goTo('chooseType')}
+                onClick={() => goTo(isReapply ? 'rejected' : 'chooseType')}
                 className="flex items-center gap-1 text-xs text-slate-400 hover:text-white mb-3 transition-colors"
               >
-                <ArrowLeft className="w-3.5 h-3.5" /> Cambiar tipo de cuenta
+                <ArrowLeft className="w-3.5 h-3.5" /> {isReapply ? 'Volver' : 'Cambiar tipo de cuenta'}
               </button>
             )}
 
             <h2 className="text-2xl font-bold text-center tracking-tight mb-2">
-              {view === 'login' ? 'Bienvenido a UBIK' : isOrganizer ? 'Cuenta de organizador' : 'Crear cuenta en UBIK'}
+              {view === 'login'
+                ? 'Bienvenido a UBIK'
+                : isReapply
+                  ? 'Nueva solicitud de organizador'
+                  : isOrganizer
+                    ? 'Cuenta de organizador'
+                    : 'Crear cuenta en UBIK'}
             </h2>
             <p className="text-sm text-slate-400 text-center mb-6">
               {view === 'login'
                 ? 'Accede para descubrir y gestionar eventos en tu zona'
-                : isOrganizer
-                  ? 'Completa tus datos y los de verificación para publicar eventos'
-                  : 'Únete para encontrar eventos culturales y comunitarios'}
+                : isReapply
+                  ? reapplyMode === 'resume'
+                    ? 'Revisa y corrige los datos de tu última solicitud'
+                    : 'Completa nuevamente tus datos de verificación'
+                  : isOrganizer
+                    ? 'Completa tus datos y los de verificación para publicar eventos'
+                    : 'Únete para encontrar eventos culturales y comunitarios'}
             </p>
+
+            {isReapply && rejected && (
+              <div className="mb-4 p-3 rounded-lg bg-rose-500/10 border border-rose-500/25 text-xs text-rose-100">
+                Tu solicitud anterior fue rechazada.
+                <ReasonToggle reason={rejected.reason} dateLabel="Revisada el" date={rejected.reviewedAt} tone="rose" compact />
+              </div>
+            )}
 
             {error && (
               <div className="mb-4 p-3 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-400 text-sm">
                 {error}
+                {emailConflict && (
+                  <button
+                    type="button"
+                    onClick={() => { setForm((prev) => ({ ...emptyForm, email: prev.email })); goTo('login'); }}
+                    className="block mt-2 text-emerald-400 hover:underline font-semibold text-xs"
+                  >
+                    Iniciar sesión con este correo
+                  </button>
+                )}
               </div>
             )}
 
@@ -293,36 +452,39 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
                   type="email"
                   autoComplete={view === 'login' ? 'username' : 'email'}
                   value={form.email}
+                  disabled={isReapply}
                   onChange={(e) => setField('email', e.target.value)}
                   onBlur={() => markTouched('email')}
                   placeholder="tu@correo.cl"
                   className={inputClass('email')}
                 />,
+                isReapply ? 'La solicitud se asocia a tu cuenta existente' : undefined,
               )}
 
-              {renderField('password', 'Contraseña', <Lock className={iconClass} />,
-                <>
-                  <input
-                    id="auth-password"
-                    type={showPassword ? 'text' : 'password'}
-                    autoComplete={view === 'login' ? 'current-password' : 'new-password'}
-                    value={form.password}
-                    onChange={(e) => setField('password', e.target.value)}
-                    onBlur={() => markTouched('password')}
-                    placeholder="••••••••"
-                    className={`${inputClass('password')} pr-10`}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword((v) => !v)}
-                    aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
-                    className="absolute right-3 top-2.5 text-slate-500 hover:text-slate-300"
-                  >
-                    {showPassword ? <EyeOff className={iconClass} /> : <Eye className={iconClass} />}
-                  </button>
-                </>,
-                view === 'register' ? 'Mínimo 6 caracteres' : undefined,
-              )}
+              {!isReapply &&
+                renderField('password', 'Contraseña', <Lock className={iconClass} />,
+                  <>
+                    <input
+                      id="auth-password"
+                      type={showPassword ? 'text' : 'password'}
+                      autoComplete={view === 'login' ? 'current-password' : 'new-password'}
+                      value={form.password}
+                      onChange={(e) => setField('password', e.target.value)}
+                      onBlur={() => markTouched('password')}
+                      placeholder="••••••••"
+                      className={`${inputClass('password')} pr-10`}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword((v) => !v)}
+                      aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                      className="absolute right-3 top-2.5 text-slate-500 hover:text-slate-300"
+                    >
+                      {showPassword ? <EyeOff className={iconClass} /> : <Eye className={iconClass} />}
+                    </button>
+                  </>,
+                  view === 'register' ? 'Mínimo 6 caracteres' : undefined,
+                )}
 
               {isOrganizer && (
                 <>
@@ -437,7 +599,13 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
                 className="w-full bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-slate-950 font-bold py-2.5 rounded-xl transition-all shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 mt-2"
               >
                 {loading && <Loader2 className="w-4 h-4 animate-spin" />}
-                {view === 'login' ? 'Ingresar a la plataforma' : isOrganizer ? 'Enviar solicitud' : 'Crear mi cuenta'}
+                {view === 'login'
+                  ? 'Ingresar a la plataforma'
+                  : isReapply
+                    ? 'Enviar nueva solicitud'
+                    : isOrganizer
+                      ? 'Enviar solicitud'
+                      : 'Crear mi cuenta'}
               </button>
 
               {isOrganizer && (
@@ -447,19 +615,55 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
               )}
             </form>
 
-            <div className="mt-6 text-center text-xs text-slate-400">
-              {view === 'login' ? '¿Aún no tienes cuenta?' : '¿Ya tienes una cuenta registrada?'}{' '}
-              <button
-                type="button"
-                onClick={() => goTo(view === 'login' ? 'chooseType' : 'login')}
-                className="text-emerald-400 hover:underline font-semibold ml-1"
-              >
-                {view === 'login' ? 'Regístrate aquí' : 'Inicia sesión'}
-              </button>
-            </div>
+            {!isReapply && (
+              <div className="mt-6 text-center text-xs text-slate-400">
+                {view === 'login' ? '¿Aún no tienes cuenta?' : '¿Ya tienes una cuenta registrada?'}{' '}
+                <button
+                  type="button"
+                  onClick={() => goTo(view === 'login' ? 'chooseType' : 'login')}
+                  className="text-emerald-400 hover:underline font-semibold ml-1"
+                >
+                  {view === 'login' ? 'Regístrate aquí' : 'Inicia sesión'}
+                </button>
+              </div>
+            )}
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+// Botón de texto "Ver motivo" que despliega el motivo que dejó el administrador
+export function ReasonToggle({
+  reason, date, dateLabel, tone = 'rose', compact = false,
+}: {
+  reason: string | null;
+  date?: string | null;
+  dateLabel: string;
+  tone?: 'rose' | 'amber';
+  compact?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const color = tone === 'rose' ? 'text-rose-300' : 'text-amber-300';
+  const box = tone === 'rose' ? 'bg-rose-950/40 border-rose-500/25' : 'bg-amber-950/30 border-amber-500/25';
+
+  return (
+    <div className={compact ? 'mt-1' : 'text-left'}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className={`text-xs font-semibold underline underline-offset-2 hover:no-underline ${color}`}
+      >
+        {open ? 'Ocultar motivo' : 'Ver motivo'}
+      </button>
+      {open && (
+        <div className={`mt-2 p-3 rounded-lg border text-xs leading-relaxed text-slate-200 ${box}`}>
+          <p>{reason || 'El administrador no dejó un motivo detallado.'}</p>
+          {date && <p className="mt-1 text-slate-400">{dateLabel} {formatDate(date, true)}</p>}
+        </div>
+      )}
     </div>
   );
 }
