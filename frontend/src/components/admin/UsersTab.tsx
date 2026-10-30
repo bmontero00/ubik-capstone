@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { Search, Loader2, Inbox, IdCard, Phone, Building2, Link2, CalendarDays, Mail, X } from 'lucide-react';
+import { Search, Loader2, Inbox, IdCard, Phone, Building2, Link2, CalendarDays, Mail, X, Lock } from 'lucide-react';
 import { AccountStatus, EventStatus, OrganizerStatus, UserRole, apiJson } from '../../services/auth';
 import {
   ACCOUNT_STATUS_LABELS, EVENT_STATUS_LABELS, ORGANIZER_STATUS_LABELS,
@@ -10,6 +10,7 @@ import {
 import { formatRut } from '../../utils/rut';
 import { formatPhoneDisplay } from '../../utils/phone';
 import StatusChangeForm, { StatusOption } from './StatusChangeForm';
+import RejectionHistory, { RejectionEntry } from './RejectionHistory';
 
 interface UserRow {
   id: string;
@@ -20,7 +21,7 @@ interface UserRow {
   statusReason: string | null;
   statusChangedAt: string | null;
   createdAt: string;
-  organizerProfile: { status: OrganizerStatus } | null;
+  organizerProfile: { status: OrganizerStatus; reviewedAt: string | null; _count: { reviews: number } } | null;
   _count: { events: number };
 }
 
@@ -35,12 +36,15 @@ interface UserDetail extends Omit<UserRow, 'organizerProfile'> {
     socialUrl: string | null;
     rejectionReason: string | null;
     reviewedAt: string | null;
+    submittedAt: string;
     createdAt: string;
+    _count: { reviews: number }; // cantidad de rechazos
+    reviews: RejectionEntry[]; // historial de rechazos, el más reciente primero
   } | null;
   events: { id: string; title: string; date: string; status: EventStatus }[];
 }
 
-type Group = 'active' | 'flagged';
+type Group = 'active' | 'flagged' | 'rejected';
 type RoleFilter = 'ALL' | 'ATTENDEE' | 'ORGANIZER';
 type FlaggedFilter = 'ALL' | 'UNDER_REVIEW' | 'SUSPENDED';
 
@@ -76,7 +80,7 @@ export default function UsersTab({ onChanged }: { onChanged: () => void }) {
 
   const query = useMemo(() => {
     const params = new URLSearchParams({ group });
-    if (role !== 'ALL') params.set('role', role);
+    if (role !== 'ALL' && group !== 'rejected') params.set('role', role);
     if (group === 'flagged' && flaggedStatus !== 'ALL') params.set('status', flaggedStatus);
     if (debouncedSearch.trim()) params.set('search', debouncedSearch.trim());
     return params.toString();
@@ -135,6 +139,7 @@ export default function UsersTab({ onChanged }: { onChanged: () => void }) {
         <div className="flex bg-slate-900 border border-slate-800 rounded-xl p-1 text-xs font-semibold" role="tablist">
           <SegmentButton active={group === 'active'} onClick={() => changeGroup('active')}>Usuarios activos</SegmentButton>
           <SegmentButton active={group === 'flagged'} onClick={() => changeGroup('flagged')}>Suspendidos y en revisión</SegmentButton>
+          <SegmentButton active={group === 'rejected'} onClick={() => changeGroup('rejected')}>Rechazados</SegmentButton>
         </div>
 
         <div className="relative flex-1">
@@ -143,19 +148,27 @@ export default function UsersTab({ onChanged }: { onChanged: () => void }) {
             type="search"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Buscar por nombre o correo..."
+            placeholder={group === 'rejected' ? 'Buscar organizador rechazado por nombre...' : 'Buscar por nombre o correo...'}
             className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-9 pr-3 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500"
           />
         </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-2 mb-4 text-xs">
-        <span className="text-slate-500 font-semibold mr-1">Tipo:</span>
-        {(['ALL', 'ATTENDEE', 'ORGANIZER'] as RoleFilter[]).map((r) => (
-          <Chip key={r} active={role === r} onClick={() => setRole(r)}>
-            {r === 'ALL' ? 'Todos' : r === 'ATTENDEE' ? 'Asistentes' : 'Organizadores'}
-          </Chip>
-        ))}
+        {group === 'rejected' ? (
+          <span className="text-slate-500">
+            Organizadores con la solicitud rechazada, del rechazo más reciente al más antiguo. Solo se puede consultar su información.
+          </span>
+        ) : (
+          <>
+            <span className="text-slate-500 font-semibold mr-1">Tipo:</span>
+            {(['ALL', 'ATTENDEE', 'ORGANIZER'] as RoleFilter[]).map((r) => (
+              <Chip key={r} active={role === r} onClick={() => setRole(r)}>
+                {r === 'ALL' ? 'Todos' : r === 'ATTENDEE' ? 'Asistentes' : 'Organizadores'}
+              </Chip>
+            ))}
+          </>
+        )}
         {group === 'flagged' && (
           <>
             <span className="text-slate-500 font-semibold ml-3 mr-1">Estado:</span>
@@ -189,7 +202,13 @@ export default function UsersTab({ onChanged }: { onChanged: () => void }) {
           ) : users.length === 0 ? (
             <div className="flex flex-col items-center py-10 text-slate-500 text-sm">
               <Inbox className="w-7 h-7 mb-2" />
-              {group === 'active' ? 'No hay usuarios activos con estos filtros.' : 'No hay cuentas suspendidas ni en revisión.'}
+              {
+                {
+                  active: 'No hay usuarios activos con estos filtros.',
+                  flagged: 'No hay cuentas suspendidas ni en revisión.',
+                  rejected: debouncedSearch.trim() ? 'Ningún organizador rechazado coincide con la búsqueda.' : 'No hay organizadores rechazados.',
+                }[group]
+              }
             </div>
           ) : (
             <ul className="max-h-[600px] overflow-y-auto divide-y divide-slate-800">
@@ -206,10 +225,23 @@ export default function UsersTab({ onChanged }: { onChanged: () => void }) {
                     <span className="flex-1 min-w-0">
                       <span className="block text-sm font-semibold text-white truncate">{u.name}</span>
                       <span className="block text-xs text-slate-400 truncate">{u.email}</span>
+                      {group === 'rejected' && u.organizerProfile && (
+                        <span className="block text-[11px] text-rose-300/80 mt-0.5">
+                          Rechazado el {formatDate(u.organizerProfile.reviewedAt)}
+                        </span>
+                      )}
                     </span>
                     <span className="flex flex-col items-end gap-1">
-                      <StatusPill {...ROLE_LABELS[u.role]} />
-                      {u.status !== 'ACTIVE' && <StatusPill {...ACCOUNT_STATUS_LABELS[u.status]} />}
+                      {group === 'rejected' && u.organizerProfile ? (
+                        <span className="text-[10px] font-bold text-rose-300 bg-rose-500/10 border border-rose-500/25 rounded px-1.5 py-0.5 whitespace-nowrap">
+                          {u.organizerProfile._count.reviews} {u.organizerProfile._count.reviews === 1 ? 'rechazo' : 'rechazos'}
+                        </span>
+                      ) : (
+                        <>
+                          <StatusPill {...ROLE_LABELS[u.role]} />
+                          {u.status !== 'ACTIVE' && <StatusPill {...ACCOUNT_STATUS_LABELS[u.status]} />}
+                        </>
+                      )}
                     </span>
                   </button>
                 </li>
@@ -222,7 +254,9 @@ export default function UsersTab({ onChanged }: { onChanged: () => void }) {
           {!selectedId ? (
             <div className="flex flex-col items-center py-16 text-slate-500 text-sm text-center">
               <Inbox className="w-8 h-8 mb-2" />
-              Selecciona un usuario del listado para ver su información y cambiar su estado.
+              {group === 'rejected'
+                ? 'Selecciona un organizador para ver su información y su historial de rechazos.'
+                : 'Selecciona un usuario del listado para ver su información y cambiar su estado.'}
             </div>
           ) : detailLoading || !detail ? (
             <div className="flex justify-center py-16 text-indigo-400"><Loader2 className="w-6 h-6 animate-spin" /></div>
@@ -242,6 +276,8 @@ function UserDetailPanel({
   onUpdateStatus: (status: AccountStatus, reason: string) => Promise<void>;
 }) {
   const profile = detail.organizerProfile;
+  const isRejected = profile?.status === 'REJECTED';
+  const rejections = profile?.reviews ?? [];
 
   return (
     <div>
@@ -260,7 +296,11 @@ function UserDetailPanel({
 
       <dl className="grid grid-cols-2 gap-3 text-xs mb-5">
         <Info label="Registrado el" value={formatDate(detail.createdAt)} />
-        <Info label="Eventos creados" value={String(detail._count.events)} />
+        {isRejected ? (
+          <Info label="Último rechazo" value={formatDate(profile.reviewedAt)} />
+        ) : (
+          <Info label="Eventos creados" value={String(detail._count.events)} />
+        )}
       </dl>
 
       {detail.statusReason && (
@@ -274,7 +314,7 @@ function UserDetailPanel({
         </div>
       )}
 
-      {profile && (
+      {profile && !isRejected && (
         <div className="mb-5">
           <p className="text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">Datos de verificación</p>
           <div className="grid sm:grid-cols-2 gap-x-6 gap-y-1.5 text-xs text-slate-300 mb-2">
@@ -312,16 +352,30 @@ function UserDetailPanel({
         </div>
       )}
 
-      <div className="pt-4 border-t border-slate-800">
-        <p className="text-xs font-bold text-slate-300 uppercase tracking-wider mb-3">Cambiar estado de la cuenta</p>
-        <StatusChangeForm
-          current={detail.status}
-          options={ACCOUNT_OPTIONS}
-          reasonPlaceholder="Ej. Recibimos reportes por publicar eventos falsos."
-          confirmText={{ SUSPENDED: `${detail.name} no podrá volver a iniciar sesión hasta que reactives su cuenta. ¿Confirmas la suspensión?` }}
-          onSubmit={onUpdateStatus}
-        />
-      </div>
+      {isRejected ? (
+        <div className="mb-5 flex gap-3 p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-300">
+          <Lock className="w-4 h-4 shrink-0 text-slate-500 mt-0.5" />
+          <span>
+            <strong className="text-slate-200">Estado bloqueado.</strong> La solicitud de este organizador fue rechazada, por lo
+            que solo puedes consultar su información. Si vuelve a postular, su nueva solicitud aparecerá en la pestaña
+            Solicitudes.
+          </span>
+        </div>
+      ) : (
+        <div className="pt-4 border-t border-slate-800 mb-5">
+          <p className="text-xs font-bold text-slate-300 uppercase tracking-wider mb-3">Cambiar estado de la cuenta</p>
+          <StatusChangeForm
+            current={detail.status}
+            options={ACCOUNT_OPTIONS}
+            reasonPlaceholder="Ej. Recibimos reportes por publicar eventos falsos."
+            confirmText={{ SUSPENDED: `${detail.name} no podrá volver a iniciar sesión hasta que reactives su cuenta. ¿Confirmas la suspensión?` }}
+            onSubmit={onUpdateStatus}
+          />
+        </div>
+      )}
+
+      {/* Al final del detalle: rechazos anteriores (también si luego fue aprobado) */}
+      <RejectionHistory key={detail.id} entries={rejections} />
     </div>
   );
 }

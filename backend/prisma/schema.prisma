@@ -37,6 +37,7 @@ model User {
   // Datos de verificación (solo para usuarios ORGANIZER)
   organizerProfile OrganizerProfile?  @relation("ProfileOwner")
   reviewedProfiles OrganizerProfile[] @relation("ReviewedBy")
+  organizerReviews OrganizerReview[]
 
   @@map("users")
 }
@@ -66,24 +67,50 @@ enum OrganizerStatus {
 // Solicitud de verificación de un organizador. Un administrador debe
 // aprobarla antes de que el organizador pueda publicar eventos.
 model OrganizerProfile {
-  id               String          @id @default(uuid())
-  userId           String          @unique
-  user             User            @relation("ProfileOwner", fields: [userId], references: [id], onDelete: Cascade)
-  rut              String          @unique
+  id               String            @id @default(uuid())
+  userId           String            @unique
+  user             User              @relation("ProfileOwner", fields: [userId], references: [id], onDelete: Cascade)
+  rut              String            @unique
   phone            String
   organizationName String?
   eventDescription String
   socialUrl        String?
-  status           OrganizerStatus @default(PENDING)
+  status           OrganizerStatus   @default(PENDING)
   rejectionReason  String?
   approvalNote     String?
   reviewedAt       DateTime?
   reviewedById     String?
-  reviewedBy       User?           @relation("ReviewedBy", fields: [reviewedById], references: [id])
-  createdAt        DateTime        @default(now())
-  updatedAt        DateTime        @updatedAt
+  reviewedBy       User?             @relation("ReviewedBy", fields: [reviewedById], references: [id])
+  submittedAt      DateTime          @default(now()) // Fecha del último envío (cambia al re-postular)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  reviews          OrganizerReview[]
 
   @@map("organizer_profiles")
+}
+
+// Historial de revisiones: cada aprobación o rechazo guarda una copia de la
+// solicitud tal como estaba, porque al re-postular el perfil se sobrescribe.
+model OrganizerReview {
+  id               String           @id @default(uuid())
+  profileId        String
+  profile          OrganizerProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  decision         OrganizerStatus
+  reason           String
+  reviewedAt       DateTime         @default(now())
+  reviewedById     String?
+  reviewedBy       User?            @relation(fields: [reviewedById], references: [id], onDelete: SetNull)
+  // Copia de la solicitud revisada
+  submittedAt      DateTime
+  applicantName    String
+  rut              String
+  phone            String
+  organizationName String?
+  eventDescription String
+  socialUrl        String?
+
+  @@index([profileId, reviewedAt])
+  @@map("organizer_reviews")
 }
 
 model Category {

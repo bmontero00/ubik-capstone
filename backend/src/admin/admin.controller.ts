@@ -68,7 +68,7 @@ export class AdminController {
     @Query('search') search?: string,
   ) {
     return this.adminService.listUsers({
-      group: group === 'flagged' ? 'flagged' : 'active',
+      group: group === 'flagged' || group === 'rejected' ? group : 'active',
       role: pick(Role, role),
       status: pick(AccountStatus, status),
       search,

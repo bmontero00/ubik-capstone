@@ -8,6 +8,7 @@ import type { AdminTab } from './AdminDashboard';
 export interface Overview {
   users: { role: UserRole; status: AccountStatus; count: number }[];
   pendingOrganizers: number;
+  rejectedOrganizers: number;
   events: { status: EventStatus; count: number }[];
   upcomingEvents: number;
 }
@@ -60,7 +61,7 @@ export default function OverviewTab({ overview, onNavigate }: OverviewTabProps) 
     {
       label: 'Organizadores activos',
       value: countUsers((u) => u.role === 'ORGANIZER' && u.status === 'ACTIVE'),
-      hint: 'Incluye verificados y pendientes',
+      hint: `Verificados y pendientes · ${overview.rejectedOrganizers} rechazados aparte`,
       icon: Users,
       tone: 'text-indigo-300 bg-indigo-500/15',
       tab: 'users',

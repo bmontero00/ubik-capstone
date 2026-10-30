@@ -206,6 +206,7 @@ export class AuthService {
             eventDescription: dto.eventDescription.trim(),
             socialUrl: dto.socialUrl?.trim() || null,
             status: 'PENDING',
+            submittedAt: new Date(),
             rejectionReason: null,
             approvalNote: null,
             reviewedAt: null,

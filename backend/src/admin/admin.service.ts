@@ -5,8 +5,10 @@ import { PrismaService } from '../prisma/prisma.service';
 // El admin solo gestiona asistentes y organizadores, nunca a otros administradores
 const MANAGED_ROLES: Role[] = ['ATTENDEE', 'ORGANIZER'];
 
+export type UserGroup = 'active' | 'flagged' | 'rejected';
+
 export interface UserFilters {
-  group?: 'active' | 'flagged';
+  group?: UserGroup;
   role?: Role;
   status?: AccountStatus;
   search?: string;
@@ -26,9 +28,19 @@ const userListSelect = {
   statusReason: true,
   statusChangedAt: true,
   createdAt: true,
-  organizerProfile: { select: { status: true } },
+  organizerProfile: {
+    select: {
+      status: true,
+      reviewedAt: true,
+      _count: { select: { reviews: { where: { decision: 'REJECTED' } } } },
+    },
+  },
   _count: { select: { events: true } },
 } satisfies Prisma.UserSelect;
+
+// Los organizadores rechazados tienen su propia pestaña y no se mezclan con el resto
+const NOT_REJECTED: Prisma.UserWhereInput = { NOT: { organizerProfile: { is: { status: 'REJECTED' } } } };
+const IS_REJECTED: Prisma.UserWhereInput = { role: 'ORGANIZER', organizerProfile: { is: { status: 'REJECTED' } } };
 
 @Injectable()
 export class AdminService {
@@ -37,9 +49,10 @@ export class AdminService {
   // --- Resumen ---
 
   async getOverview() {
-    const [usersByRoleStatus, pendingOrganizers, eventsByStatus, upcomingEvents] = await Promise.all([
-      this.prisma.user.groupBy({ by: ['role', 'status'], _count: { _all: true } }),
+    const [usersByRoleStatus, pendingOrganizers, rejectedOrganizers, eventsByStatus, upcomingEvents] = await Promise.all([
+      this.prisma.user.groupBy({ by: ['role', 'status'], where: NOT_REJECTED, _count: { _all: true } }),
       this.prisma.organizerProfile.count({ where: { status: 'PENDING' } }),
+      this.prisma.user.count({ where: IS_REJECTED }),
       this.prisma.event.groupBy({ by: ['status'], _count: { _all: true } }),
       this.prisma.event.count({ where: { status: 'PUBLISHED', date: { gte: new Date() } } }),
     ]);
@@ -47,6 +60,7 @@ export class AdminService {
     return {
       users: usersByRoleStatus.map((g) => ({ role: g.role, status: g.status, count: g._count._all })),
       pendingOrganizers,
+      rejectedOrganizers,
       events: eventsByStatus.map((g) => ({ status: g.status, count: g._count._all })),
       upcomingEvents,
     };
@@ -67,25 +81,70 @@ export class AdminService {
 
   // reason ya viene validado por IsReason (obligatorio, 10 a 500 caracteres)
   async reviewOrganizer(profileId: string, adminId: string, approve: boolean, reason: string) {
-    const profile = await this.prisma.organizerProfile.findUnique({ where: { id: profileId } });
+    const profile = await this.prisma.organizerProfile.findUnique({
+      where: { id: profileId },
+      include: { user: { select: { name: true } } },
+    });
     if (!profile) throw new NotFoundException('Solicitud no encontrada');
 
-    return this.prisma.organizerProfile.update({
-      where: { id: profileId },
-      data: {
-        status: approve ? 'APPROVED' : 'REJECTED',
-        rejectionReason: approve ? null : reason,
-        approvalNote: approve ? reason : null,
-        reviewedAt: new Date(),
-        reviewedById: adminId,
-      },
-      include: { user: { select: { id: true, name: true, email: true, createdAt: true } } },
-    });
+    const decision: OrganizerStatus = approve ? 'APPROVED' : 'REJECTED';
+    const reviewedAt = new Date();
+
+    // El perfil guarda el estado actual y el historial una copia de lo que se revisó
+    const [updated] = await this.prisma.$transaction([
+      this.prisma.organizerProfile.update({
+        where: { id: profileId },
+        data: {
+          status: decision,
+          rejectionReason: approve ? null : reason,
+          approvalNote: approve ? reason : null,
+          reviewedAt,
+          reviewedById: adminId,
+        },
+        include: { user: { select: { id: true, name: true, email: true, createdAt: true } } },
+      }),
+      this.prisma.organizerReview.create({
+        data: {
+          profileId,
+          decision,
+          reason,
+          reviewedAt,
+          reviewedById: adminId,
+          submittedAt: profile.submittedAt,
+          applicantName: profile.user.name,
+          rut: profile.rut,
+          phone: profile.phone,
+          organizationName: profile.organizationName,
+          eventDescription: profile.eventDescription,
+          socialUrl: profile.socialUrl,
+        },
+      }),
+    ]);
+    return updated;
   }
 
   // --- Usuarios ---
 
   listUsers({ group = 'active', role, status, search }: UserFilters) {
+    const searchFilter: Prisma.UserWhereInput = search?.trim()
+      ? {
+          OR: [
+            { name: { contains: search.trim(), mode: 'insensitive' } },
+            { email: { contains: search.trim(), mode: 'insensitive' } },
+          ],
+        }
+      : {};
+
+    // Rechazados: solo organizadores, del rechazo más reciente al más antiguo
+    if (group === 'rejected') {
+      return this.prisma.user.findMany({
+        where: { ...IS_REJECTED, ...searchFilter },
+        select: userListSelect,
+        orderBy: { organizerProfile: { reviewedAt: 'desc' } },
+        take: 200,
+      });
+    }
+
     const statusFilter: Prisma.UserWhereInput['status'] = status
       ? status
       : group === 'flagged'
@@ -96,12 +155,7 @@ export class AdminService {
       where: {
         role: role && MANAGED_ROLES.includes(role) ? role : { in: MANAGED_ROLES },
         status: statusFilter,
-        ...(search?.trim() && {
-          OR: [
-            { name: { contains: search.trim(), mode: 'insensitive' } },
-            { email: { contains: search.trim(), mode: 'insensitive' } },
-          ],
-        }),
+        AND: [NOT_REJECTED, searchFilter],
       },
       select: userListSelect,
       orderBy: group === 'flagged' ? { statusChangedAt: 'desc' } : { createdAt: 'desc' },
@@ -126,7 +180,27 @@ export class AdminService {
             rejectionReason: true,
             approvalNote: true,
             reviewedAt: true,
+            submittedAt: true,
             createdAt: true,
+            _count: { select: { reviews: { where: { decision: 'REJECTED' } } } },
+            // Historial de rechazos, el más reciente primero
+            reviews: {
+              where: { decision: 'REJECTED' },
+              orderBy: { reviewedAt: 'desc' },
+              select: {
+                id: true,
+                reason: true,
+                reviewedAt: true,
+                reviewedBy: { select: { id: true, name: true } },
+                submittedAt: true,
+                applicantName: true,
+                rut: true,
+                phone: true,
+                organizationName: true,
+                eventDescription: true,
+                socialUrl: true,
+              },
+            },
           },
         },
         events: {
@@ -141,10 +215,18 @@ export class AdminService {
   }
 
   async updateUserStatus(id: string, adminId: string, status: AccountStatus, reason: string) {
-    const user = await this.prisma.user.findUnique({ where: { id }, select: { role: true } });
+    const user = await this.prisma.user.findUnique({
+      where: { id },
+      select: { role: true, organizerProfile: { select: { status: true } } },
+    });
     if (!user) throw new NotFoundException('Usuario no encontrado');
     if (!MANAGED_ROLES.includes(user.role)) {
       throw new ForbiddenException('No puedes cambiar el estado de un administrador');
+    }
+    if (user.organizerProfile?.status === 'REJECTED') {
+      throw new ForbiddenException(
+        'No se puede cambiar el estado de un organizador con la solicitud rechazada; solo puede consultarse su información',
+      );
     }
     await this.prisma.user.update({
       where: { id },
