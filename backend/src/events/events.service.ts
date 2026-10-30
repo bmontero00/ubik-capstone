@@ -59,6 +59,13 @@ export class EventsService {
     return events;
   }
 
+  async findAllCategories() {
+    return this.prisma.category.findMany({
+      select: { id: true, name: true },
+      orderBy: { name: 'asc' },
+    });
+  }
+
   async findOne(id: string) {
     const event = await this.prisma.event.findUnique({
       where: { id },

@@ -72,7 +72,7 @@ export default function HomePage() {
   const fetchCategories = async () => {
     try {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
-      const res = await fetch(`${apiUrl}/categories`);
+      const res = await fetch(`${apiUrl}/events/categories`);
       if (res.ok) {
         const data = await res.json();
         setCategories(data);
