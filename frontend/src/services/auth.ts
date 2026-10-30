@@ -16,6 +16,7 @@ export interface AuthUser {
   organizerStatus: OrganizerStatus | null;
   rejectionReason: string | null;
   organizationName: string | null;
+  approvalNoticePending: boolean; // primer ingreso tras la aprobación de la solicitud
 }
 
 export interface AuthResponse {
@@ -131,6 +132,11 @@ export function authFetch(path: string, init: RequestInit = {}) {
 
 export async function fetchCurrentUser(): Promise<AuthUser> {
   return parseResponse(await authFetch('/auth/me'), 'No se pudo recuperar la sesión');
+}
+
+// Marca como visto el aviso de cuenta de organizador verificada
+export async function markApprovalNoticeSeen(): Promise<void> {
+  await authFetch('/auth/organizer/approval-notice/seen', { method: 'POST' });
 }
 
 // Para llamadas autenticadas que devuelven JSON (panel de administración)

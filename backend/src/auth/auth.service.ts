@@ -28,7 +28,7 @@ const userSelect = {
   statusReason: true,
   statusChangedAt: true,
   organizerProfile: {
-    select: { status: true, rejectionReason: true, organizationName: true },
+    select: { status: true, rejectionReason: true, organizationName: true, approvalSeenAt: true },
   },
 } satisfies Prisma.UserSelect;
 
@@ -117,6 +117,7 @@ export class AuthService {
             rejectionReason: true,
             reviewedAt: true,
             organizationName: true,
+            approvalSeenAt: true,
             rut: true,
             phone: true,
             eventDescription: true,
@@ -209,6 +210,7 @@ export class AuthService {
             submittedAt: new Date(),
             rejectionReason: null,
             approvalNote: null,
+            approvalSeenAt: null,
             reviewedAt: null,
             reviewedById: null,
           },
@@ -233,6 +235,14 @@ export class AuthService {
     return this.toPublicUser(user);
   }
 
+  // El organizador ya vio el aviso de cuenta verificada; no se vuelve a mostrar
+  async markApprovalNoticeSeen(userId: string) {
+    await this.prisma.organizerProfile.updateMany({
+      where: { userId, status: 'APPROVED', approvalSeenAt: null },
+      data: { approvalSeenAt: new Date() },
+    });
+  }
+
   private async assertRutAvailable(rut: string, ownProfileId?: string) {
     const rutInUse = await this.prisma.organizerProfile.findUnique({ where: { rut }, select: { id: true } });
     if (rutInUse && rutInUse.id !== ownProfileId) {
@@ -247,6 +257,8 @@ export class AuthService {
       organizerStatus: organizerProfile?.status ?? null,
       rejectionReason: organizerProfile?.rejectionReason ?? null,
       organizationName: organizerProfile?.organizationName ?? null,
+      // true solo en el primer ingreso después de que un admin aprueba la solicitud
+      approvalNoticePending: organizerProfile?.status === 'APPROVED' && !organizerProfile.approvalSeenAt,
     };
   }
 

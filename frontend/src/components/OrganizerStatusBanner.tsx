@@ -1,27 +1,40 @@
 'use client';
 
 import React from 'react';
-import { Hourglass, CircleX, CircleCheck, RefreshCw } from 'lucide-react';
+import { Hourglass, CircleX, CircleCheck, RefreshCw, X } from 'lucide-react';
 import { AuthUser } from '../services/auth';
 
 interface OrganizerStatusBannerProps {
   user: AuthUser;
   onRefresh: () => void;
   refreshing: boolean;
+  // El aviso de cuenta verificada se muestra solo en el primer ingreso tras la aprobación
+  showApprovedNotice: boolean;
+  onDismissApproved: () => void;
 }
 
 // Le muestra al organizador en qué estado está su solicitud de verificación
-export default function OrganizerStatusBanner({ user, onRefresh, refreshing }: OrganizerStatusBannerProps) {
+export default function OrganizerStatusBanner({
+  user, onRefresh, refreshing, showApprovedNotice, onDismissApproved,
+}: OrganizerStatusBannerProps) {
   if (user.role !== 'ORGANIZER' || !user.organizerStatus) return null;
 
   if (user.organizerStatus === 'APPROVED') {
+    if (!showApprovedNotice) return null;
     return (
-      <div className="mb-6 flex items-center gap-3 p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-sm text-emerald-200">
+      <div className="mb-6 flex items-center gap-3 p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-sm text-emerald-200" role="status">
         <CircleCheck className="w-5 h-5 shrink-0 text-emerald-400" />
-        <span>
+        <span className="flex-1">
           <strong className="text-emerald-300">Cuenta de organizador verificada.</strong> Haz clic derecho en el mapa
           para publicar un evento en ese punto.
         </span>
+        <button
+          onClick={onDismissApproved}
+          aria-label="Cerrar aviso"
+          className="shrink-0 text-emerald-300/70 hover:text-white transition-colors"
+        >
+          <X className="w-4 h-4" />
+        </button>
       </div>
     );
   }

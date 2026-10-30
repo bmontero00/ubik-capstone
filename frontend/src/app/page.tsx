@@ -8,7 +8,7 @@ import AccountStatusBanner from '../components/AccountStatusBanner';
 import AdminDashboard from '../components/admin/AdminDashboard';
 import {
   ApiError, AuthResponse, AuthUser, EventStatus, SuspendedInfo, authFetch, canPublishEvents, clearSession,
-  fetchCurrentUser, isAccountActive, loadStoredUser, saveSession, updateStoredUser,
+  fetchCurrentUser, isAccountActive, loadStoredUser, markApprovalNoticeSeen, saveSession, updateStoredUser,
 } from '../services/auth';
 import { EVENT_STATUS_LABELS, StatusPill } from '../utils/labels';
 import dynamic from 'next/dynamic';
@@ -136,6 +136,7 @@ export default function HomePage() {
   const handleLogout = () => {
     clearSession();
     setUser(null);
+    setShowApprovedNotice(false);
   };
 
   const handleAuthSuccess = (data: AuthResponse) => {
@@ -144,6 +145,18 @@ export default function HomePage() {
   };
 
   const canPublish = canPublishEvents(user);
+
+  // Aviso de cuenta verificada: se muestra en el primer ingreso tras la aprobación y se
+  // marca como visto de inmediato, así no vuelve a aparecer en los siguientes ingresos
+  const [showApprovedNotice, setShowApprovedNotice] = useState(false);
+  useEffect(() => {
+    if (!user?.approvalNoticePending) return;
+    setShowApprovedNotice(true);
+    const seen = { ...user, approvalNoticePending: false };
+    setUser(seen);
+    updateStoredUser(seen);
+    markApprovalNoticeSeen().catch(() => {});
+  }, [user?.approvalNoticePending]);
   const canReserve = isAccountActive(user);
 
   const handleSelectLocationForNewEvent = (lat: number, lng: number) => {
@@ -379,7 +392,10 @@ export default function HomePage() {
                 </h2>
                 <p className="text-slate-400 mt-1">
                   {user.role === 'ADMIN' ? 'Panel de administración de UBIK.' : 'Aquí tienes las actividades cerca de ti.'}
-                  {/* El organizador ya ve este tip en su aviso de estado */}
+                  {/* Tip permanente para quien puede publicar (el aviso de verificación solo sale una vez) */}
+                  {canPublish && !showApprovedNotice && (
+                    <span className="text-emerald-400 text-xs font-semibold"> (Tip: Haz clic derecho en el mapa para crear un evento)</span>
+                  )}
                 </p>
               </div>
             </header>
@@ -387,7 +403,13 @@ export default function HomePage() {
             <AccountStatusBanner user={user} />
             {/* Con la cuenta en revisión prima ese aviso sobre el de verificación */}
             {isAccountActive(user) && (
-              <OrganizerStatusBanner user={user} onRefresh={refreshUser} refreshing={refreshingUser} />
+              <OrganizerStatusBanner
+                user={user}
+                onRefresh={refreshUser}
+                refreshing={refreshingUser}
+                showApprovedNotice={showApprovedNotice}
+                onDismissApproved={() => setShowApprovedNotice(false)}
+              />
             )}
 
             {user.role === 'ADMIN' ? (

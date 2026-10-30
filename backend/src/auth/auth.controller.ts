@@ -27,6 +27,14 @@ export class AuthController {
     return this.authService.reapply(dto);
   }
 
+  // El organizador vio el aviso de cuenta verificada
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @Post('organizer/approval-notice/seen')
+  async approvalNoticeSeen(@CurrentUser() user: AuthenticatedUser) {
+    await this.authService.markApprovalNoticeSeen(user.sub);
+  }
+
   // Datos actualizados del usuario (por ejemplo, si un admin aprobó su solicitud)
   @UseGuards(JwtAuthGuard)
   @Get('me')

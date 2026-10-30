@@ -98,6 +98,7 @@ export class AdminService {
           status: decision,
           rejectionReason: approve ? null : reason,
           approvalNote: approve ? reason : null,
+          approvalSeenAt: null, // el aviso de aprobación se muestra en el próximo ingreso
           reviewedAt,
           reviewedById: adminId,
         },
