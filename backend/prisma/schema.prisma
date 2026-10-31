@@ -23,14 +23,15 @@ model User {
   updatedAt DateTime @updatedAt
 
   // Estado de la cuenta, lo administra un ADMIN (motivo obligatorio si no es ACTIVE)
-  status             AccountStatus @default(ACTIVE)
+  status             AccountStatus    @default(ACTIVE)
   statusReason       String?
   statusChangedAt    DateTime?
   statusChangedById  String?
-  statusChangedBy    User?         @relation("StatusChangedBy", fields: [statusChangedById], references: [id])
-  statusChangedUsers User[]        @relation("StatusChangedBy")
-  eventStatusChanges Event[]       @relation("EventStatusChangedBy")
+  statusChangedBy    User?            @relation("StatusChangedBy", fields: [statusChangedById], references: [id])
+  statusChangedUsers User[]           @relation("StatusChangedBy")
+  eventStatusChanges Event[]          @relation("EventStatusChangedBy")
   entradasBitacora   BitacoraEvento[] @relation("AutorBitacora")
+  compras            Compra[]
 
   // Relación con los eventos creados por el usuario
   events Event[]
@@ -153,13 +154,17 @@ model Event {
   // Anuncios del organizador y registro de cambios, visibles en el detalle del evento
   bitacora BitacoraEvento[]
 
+  // Compras de entradas (o confirmaciones de asistencia si el evento es gratuito)
+  compras  Compra[]
+  entradas Entrada[]
+
   @@map("events")
 }
 
 enum TipoBitacora {
-  CREACION      // el evento se publicó
-  ANUNCIO       // mensaje del organizador (o del equipo UBIK) a la comunidad
-  CAMBIO_DATOS  // se modificaron datos del evento (fecha, lugar, precio…)
+  CREACION // el evento se publicó
+  ANUNCIO // mensaje del organizador (o del equipo UBIK) a la comunidad
+  CAMBIO_DATOS // se modificaron datos del evento (fecha, lugar, precio…)
   CAMBIO_ESTADO // cambió el estado (postergado, cancelado, en revisión…)
 }
 
@@ -180,4 +185,56 @@ model BitacoraEvento {
 
   @@index([eventoId, fechaCreacion])
   @@map("bitacora_eventos")
+}
+
+enum EstadoCompra {
+  PENDIENTE_PAGO // datos listos, esperando el pago (se reservan las entradas por unos minutos)
+  PAGADA // pago aprobado: entradas válidas
+  CONFIRMADA // evento gratuito: asistencia confirmada, sin pago
+  CANCELADA // el comprador abandonó el pago
+  EXPIRADA // venció el plazo para pagar
+}
+
+// Una compra agrupa las entradas de un evento que adquiere un asistente en una sola transacción
+model Compra {
+  id             String       @id @default(uuid())
+  codigo         String       @unique // código legible para el comprador, ej. UBK-7F3K9Q
+  estado         EstadoCompra
+  cantidad       Int
+  precioUnitario Float
+  total          Float
+  medioPago      String? // ej. WEBPAY, MERCADO_PAGO (SIMULADO mientras no exista pasarela)
+  fechaCreacion  DateTime     @default(now())
+  expiraEn       DateTime? // límite para pagar una compra pendiente
+  fechaPago      DateTime?
+
+  eventoId    String
+  evento      Event     @relation(fields: [eventoId], references: [id], onDelete: Cascade)
+  compradorId String
+  comprador   User      @relation(fields: [compradorId], references: [id], onDelete: Cascade)
+  entradas    Entrada[]
+
+  @@index([compradorId, fechaCreacion])
+  @@index([eventoId, estado])
+  @@map("compras")
+}
+
+// Entrada nominativa: cada una queda a nombre de un asistente
+model Entrada {
+  id            String   @id @default(uuid())
+  codigo        String   @unique // código que se presenta en el acceso
+  nombre        String
+  apellido      String
+  rut           String // normalizado "12345678-5"
+  telefono      String // "+56912345678"
+  correo        String
+  fechaCreacion DateTime @default(now())
+
+  compraId String
+  compra   Compra @relation(fields: [compraId], references: [id], onDelete: Cascade)
+  eventoId String
+  evento   Event  @relation(fields: [eventoId], references: [id], onDelete: Cascade)
+
+  @@index([eventoId, rut])
+  @@map("entradas")
 }

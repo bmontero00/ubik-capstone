@@ -11,6 +11,7 @@ import {
 import { EVENT_STATUS_LABELS, StatusPill } from '../../utils/labels';
 import { categoryColor } from '../../utils/mapTiles';
 import EventBitacora from './EventBitacora';
+import TicketSelector from '../tickets/TicketSelector';
 
 const LocationPicker = dynamic(() => import('./LocationPicker'), {
   ssr: false,
@@ -22,8 +23,13 @@ interface EventDetailModalProps {
   // Datos del catálogo para mostrar algo de inmediato mientras carga el detalle
   preview?: EventItem;
   viewer: { id: string; isAdmin: boolean } | null;
-  // Solo los asistentes ven el botón de reservar
-  reserve?: { enabled: boolean; blockedReason?: string };
+  // Solo los asistentes compran entradas (o confirman asistencia si el evento es gratuito)
+  tickets?: {
+    blockedReason?: string; // ej. cuenta en revisión
+    owned: (eventId: string) => number; // entradas vigentes que ya tiene para el evento
+    onContinue: (event: EventItem, quantity: number) => void;
+    onViewTickets: () => void;
+  };
   onClose: () => void;
   onAnnouncementsChange?: () => void;
   onOpenOrganizer?: (organizerId: string) => void;
@@ -38,7 +44,7 @@ const STATUS_BANNER: Partial<Record<EventDetail['status'], { icon: React.Element
 };
 
 export default function EventDetailModal({
-  eventId, preview, viewer, reserve, onClose, onAnnouncementsChange, onOpenOrganizer,
+  eventId, preview, viewer, tickets, onClose, onAnnouncementsChange, onOpenOrganizer,
 }: EventDetailModalProps) {
   const [detail, setDetail] = useState<EventDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -171,6 +177,19 @@ export default function EventDetailModal({
               </InfoTile>
             </div>
 
+            {tickets && (event.status === 'PUBLISHED' || event.status === 'POSTPONED') && (
+              <div className="mt-4">
+                <TicketSelector
+                  price={event.price}
+                  available={event.status === 'PUBLISHED' && !!upcoming}
+                  blockedReason={tickets.blockedReason ?? (event.status === 'POSTPONED' ? 'La venta de entradas está pausada mientras el evento está postergado.' : undefined)}
+                  owned={tickets.owned(event.id)}
+                  onContinue={(quantity) => tickets.onContinue(event, quantity)}
+                  onViewTickets={tickets.onViewTickets}
+                />
+              </div>
+            )}
+
             {event.description && (
               <div className="mt-6">
                 <h3 className="text-xs uppercase tracking-wider font-bold text-slate-500 mb-2">Sobre el evento</h3>
@@ -194,15 +213,6 @@ export default function EventDetailModal({
 
             {/* Acciones */}
             <div className="mt-6 flex flex-col sm:flex-row gap-2">
-              {reserve && event.price > 0 && (
-                <button
-                  disabled={!reserve.enabled || event.status !== 'PUBLISHED'}
-                  title={reserve.blockedReason ?? (event.status !== 'PUBLISHED' ? 'Este evento no acepta reservas' : undefined)}
-                  className="flex-1 flex items-center justify-center gap-2 px-5 py-3 text-sm font-bold rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-500 disabled:cursor-not-allowed transition-colors"
-                >
-                  <Ticket className="w-4 h-4" /> Reservar entrada · {formatPrice(event.price)}
-                </button>
-              )}
               <button
                 onClick={share}
                 className="flex items-center justify-center gap-2 px-5 py-3 text-sm font-semibold rounded-xl bg-slate-800 hover:bg-slate-700 transition-colors"

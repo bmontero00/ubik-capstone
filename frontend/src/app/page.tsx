@@ -11,7 +11,10 @@ import EventFormModal from '../components/events/EventFormModal';
 import MyEventsPanel from '../components/events/MyEventsPanel';
 import EventDetailModal from '../components/events/EventDetailModal';
 import OrganizerProfileModal from '../components/organizers/OrganizerProfileModal';
-import { CalendarPlus, Compass, LayoutList, CheckCircle2, X, ArrowRight } from 'lucide-react';
+import CheckoutModal, { CheckoutEvent } from '../components/tickets/CheckoutModal';
+import MyTicketsPanel from '../components/tickets/MyTicketsPanel';
+import { Compra, compraValida, fetchMisCompras } from '../services/compras';
+import { CalendarPlus, Compass, LayoutList, CheckCircle2, X, ArrowRight, Ticket } from 'lucide-react';
 import {
   ApiError, AuthResponse, AuthUser, SuspendedInfo, canPublishEvents, clearSession,
   fetchCurrentUser, isAccountActive, loadStoredUser, markApprovalNoticeSeen, saveSession, updateStoredUser,
@@ -56,6 +59,12 @@ export default function HomePage() {
   const [organizerProfile, setOrganizerProfile] = useState<{ id: string; fromEvent?: { id: string; preview?: EventItem } } | null>(null);
   // Vista del organizador: explorar el catálogo o administrar sus eventos
   const [organizerView, setOrganizerView] = useState<'explore' | 'mine'>('explore');
+  // Vista del asistente: explorar o sus entradas
+  const [attendeeView, setAttendeeView] = useState<'explore' | 'tickets'>('explore');
+  const [compras, setCompras] = useState<Compra[]>([]);
+  const [comprasState, setComprasState] = useState<{ loading: boolean; error: string | null }>({ loading: false, error: null });
+  // Compra en curso: cantidad elegida en el detalle, o una compra pendiente que se retoma
+  const [checkout, setCheckout] = useState<{ event: CheckoutEvent; quantity: number; resume?: Compra } | null>(null);
   const [myEventsKey, setMyEventsKey] = useState(0);
   const [toast, setToast] = useState<string | null>(null);
 
@@ -149,11 +158,44 @@ export default function HomePage() {
     updateStoredUser(seen);
     markApprovalNoticeSeen().catch(() => {});
   }, [user?.approvalNoticePending]);
-  const canReserve = isAccountActive(user);
-  // Reservar es solo para asistentes: organizadores y administradores no ven el botón
+  // Comprar entradas es solo para asistentes: organizadores y administradores no ven esa opción
   const isAttendee = user?.role === 'ATTENDEE';
-  const reserveOptions = isAttendee
-    ? { enabled: canReserve, blockedReason: canReserve ? undefined : 'Tu cuenta está en revisión: no puedes reservar entradas' }
+  const canBuy = isAccountActive(user);
+
+  const loadCompras = async () => {
+    setComprasState((s) => ({ ...s, loading: compras.length === 0, error: null }));
+    try {
+      setCompras(await fetchMisCompras());
+      setComprasState({ loading: false, error: null });
+    } catch (err) {
+      setComprasState({ loading: false, error: (err as Error).message || 'No se pudieron cargar tus entradas' });
+    }
+  };
+  useEffect(() => {
+    if (isAttendee) loadCompras();
+    else setCompras([]);
+  }, [isAttendee, user?.id]);
+
+  // Entradas válidas por evento (una compra pendiente no cuenta: un nuevo intento la reemplaza)
+  const ownedTickets = (eventId: string) =>
+    compras.filter((c) => c.evento.id === eventId && compraValida(c)).reduce((n, c) => n + c.cantidad, 0);
+  const upcomingTickets = compras
+    .filter((c) => compraValida(c) && new Date(c.evento.date).getTime() >= Date.now())
+    .reduce((n, c) => n + c.cantidad, 0);
+
+  const ticketOptions = isAttendee
+    ? {
+        blockedReason: canBuy ? undefined : 'Tu cuenta está en revisión: por ahora no puedes comprar entradas.',
+        owned: ownedTickets,
+        onContinue: (event: EventItem, quantity: number) => {
+          closeDetail();
+          setCheckout({ event, quantity });
+        },
+        onViewTickets: () => {
+          closeDetail();
+          setAttendeeView('tickets');
+        },
+      }
     : undefined;
 
   const openDetail = (evt: EventItem) => setDetail({ id: evt.id, preview: evt });
@@ -270,29 +312,12 @@ export default function HomePage() {
                 event={{ ...evt, categoryName: evt.category?.name, distanceFrom: location.coords ? undefined : 'Santiago centro' }}
                 onOpen={() => openDetail(evt)}
                 footerAction={
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => openDetail(evt)}
-                      className="flex items-center gap-1 px-3 py-1.5 text-xs font-bold rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-100 transition"
-                    >
-                      Ver más <ArrowRight className="w-3.5 h-3.5" />
-                    </button>
-                    {isAttendee && evt.price > 0 && (
-                      <button
-                        disabled={!canReserve || evt.status !== 'PUBLISHED'}
-                        title={
-                          !canReserve
-                            ? 'Tu cuenta está en revisión: no puedes reservar entradas'
-                            : evt.status !== 'PUBLISHED'
-                              ? 'Este evento no acepta reservas'
-                              : undefined
-                        }
-                        className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-500 disabled:cursor-not-allowed text-white text-xs font-bold rounded-lg transition"
-                      >
-                        Reservar
-                      </button>
-                    )}
-                  </div>
+                  <button
+                    onClick={() => openDetail(evt)}
+                    className="group flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-xl text-white bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 shadow-lg shadow-indigo-900/40 transition-all"
+                  >
+                    Ver más <ArrowRight className="w-3.5 h-3.5 transition-transform group-hover:translate-x-0.5" />
+                  </button>
                 }
               />
             ))}
@@ -410,6 +435,46 @@ export default function HomePage() {
                   />
                 )}
               </>
+            ) : isAttendee ? (
+              <>
+                <nav className="mb-6 inline-flex bg-slate-900/80 border border-slate-800 rounded-2xl p-1.5 gap-1" role="tablist">
+                  {([
+                    { id: 'explore', label: 'Explorar', icon: Compass },
+                    { id: 'tickets', label: 'Mis entradas', icon: Ticket },
+                  ] as const).map(({ id, label, icon: Icon }) => (
+                    <button
+                      key={id}
+                      role="tab"
+                      aria-selected={attendeeView === id}
+                      onClick={() => {
+                        setAttendeeView(id);
+                        if (id === 'tickets') loadCompras();
+                      }}
+                      className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-colors ${
+                        attendeeView === id ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                      }`}
+                    >
+                      <Icon className="w-4 h-4" /> {label}
+                      {id === 'tickets' && upcomingTickets > 0 && (
+                        <span className="min-w-[20px] px-1.5 py-0.5 text-[10px] font-bold rounded-full bg-emerald-500 text-slate-950">{upcomingTickets}</span>
+                      )}
+                    </button>
+                  ))}
+                </nav>
+                {attendeeView === 'explore' ? (
+                  exploreContent
+                ) : (
+                  <MyTicketsPanel
+                    compras={compras}
+                    loading={comprasState.loading}
+                    error={comprasState.error}
+                    onExplore={() => setAttendeeView('explore')}
+                    onOpenEvent={(id) => setDetail({ id, preview: events.find((e) => e.id === id) })}
+                    onResumePayment={(c) => setCheckout({ event: c.evento, quantity: c.cantidad, resume: c })}
+                    onChanged={loadCompras}
+                  />
+                )}
+              </>
             ) : (
               exploreContent
             )}
@@ -434,12 +499,27 @@ export default function HomePage() {
           eventId={detail.id}
           preview={detail.preview}
           viewer={user ? { id: user.id, isAdmin: user.role === 'ADMIN' } : null}
-          reserve={reserveOptions}
+          tickets={ticketOptions}
           onClose={closeDetail}
           onAnnouncementsChange={() => setMyEventsKey((k) => k + 1)}
           onOpenOrganizer={(id) => {
             setOrganizerProfile({ id, fromEvent: detail });
             closeDetail();
+          }}
+        />
+      )}
+
+      {checkout && user && (
+        <CheckoutModal
+          event={checkout.event}
+          quantity={checkout.quantity}
+          resume={checkout.resume}
+          buyer={{ name: user.name, email: user.email }}
+          onClose={() => setCheckout(null)}
+          onChanged={loadCompras}
+          onViewTickets={() => {
+            setCheckout(null);
+            setAttendeeView('tickets');
           }}
         />
       )}
