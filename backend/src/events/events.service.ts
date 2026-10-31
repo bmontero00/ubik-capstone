@@ -86,7 +86,9 @@ export class EventsService {
       },
     });
     const canManage = !!viewer && (viewer.role === 'ADMIN' || viewer.sub === event?.organizerId);
-    if (!event || (!PUBLIC_EVENT_STATUSES.includes(event.status) && !canManage)) {
+    // Los finalizados no salen en el catálogo, pero su detalle sigue disponible (ej. desde el perfil del organizador)
+    const publiclyVisible = event && (PUBLIC_EVENT_STATUSES.includes(event.status) || event.status === 'FINISHED');
+    if (!event || (!publiclyVisible && !canManage)) {
       throw new NotFoundException('Este evento no existe o ya no está disponible');
     }
 

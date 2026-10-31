@@ -26,6 +26,7 @@ interface EventDetailModalProps {
   reserve?: { enabled: boolean; blockedReason?: string };
   onClose: () => void;
   onAnnouncementsChange?: () => void;
+  onOpenOrganizer?: (organizerId: string) => void;
 }
 
 // Aviso destacado para los estados que afectan a los asistentes
@@ -36,7 +37,9 @@ const STATUS_BANNER: Partial<Record<EventDetail['status'], { icon: React.Element
   FINISHED: { icon: Lock, title: 'Este evento ya finalizó', className: 'bg-slate-500/10 border-slate-500/30 text-slate-200' },
 };
 
-export default function EventDetailModal({ eventId, preview, viewer, reserve, onClose, onAnnouncementsChange }: EventDetailModalProps) {
+export default function EventDetailModal({
+  eventId, preview, viewer, reserve, onClose, onAnnouncementsChange, onOpenOrganizer,
+}: EventDetailModalProps) {
   const [detail, setDetail] = useState<EventDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -122,9 +125,24 @@ export default function EventDetailModal({ eventId, preview, viewer, reserve, on
         ) : (
           <div className="px-5 sm:px-8 pb-8">
             <h2 className="text-2xl sm:text-3xl font-extrabold text-white leading-tight break-words">{event.title}</h2>
-            <p className="mt-2 text-sm text-slate-400 flex items-center gap-1.5">
-              Organiza <span className="font-semibold text-slate-200">{organizerName(event)}</span>
-              <BadgeCheck className="w-4 h-4 text-emerald-400" aria-label="Organizador verificado" />
+            <p className="mt-2 text-sm text-slate-400 flex flex-wrap items-center gap-1.5">
+              Organiza
+              {onOpenOrganizer ? (
+                <button
+                  onClick={() => onOpenOrganizer(event.organizer.id)}
+                  title="Ver el perfil del organizador"
+                  className="group inline-flex items-center gap-1.5 px-2 py-0.5 -my-0.5 rounded-lg font-semibold text-slate-100 hover:bg-slate-800 transition-colors"
+                >
+                  <span className="underline decoration-slate-600 underline-offset-4 group-hover:decoration-indigo-400">{organizerName(event)}</span>
+                  <BadgeCheck className="w-4 h-4 text-emerald-400" aria-label="Organizador verificado" />
+                  <span className="text-xs text-indigo-300 font-medium">Ver perfil</span>
+                </button>
+              ) : (
+                <>
+                  <span className="font-semibold text-slate-200">{organizerName(event)}</span>
+                  <BadgeCheck className="w-4 h-4 text-emerald-400" aria-label="Organizador verificado" />
+                </>
+              )}
             </p>
 
             {banner && (

@@ -10,6 +10,7 @@ import EventCard from '../components/events/EventCard';
 import EventFormModal from '../components/events/EventFormModal';
 import MyEventsPanel from '../components/events/MyEventsPanel';
 import EventDetailModal from '../components/events/EventDetailModal';
+import OrganizerProfileModal from '../components/organizers/OrganizerProfileModal';
 import { CalendarPlus, Compass, LayoutList, CheckCircle2, X, ArrowRight } from 'lucide-react';
 import {
   ApiError, AuthResponse, AuthUser, SuspendedInfo, canPublishEvents, clearSession,
@@ -51,6 +52,8 @@ export default function HomePage() {
   const [eventForm, setEventForm] = useState<{ event?: EventItem; duplicateFrom?: EventItem; location?: { lat: number; lng: number } } | null>(null);
   // Detalle del evento ("Ver más"); se puede abrir con un enlace compartido (?evento=<id>)
   const [detail, setDetail] = useState<{ id: string; preview?: EventItem } | null>(null);
+  // Perfil público del organizador; recuerda el evento desde el que se abrió para poder volver
+  const [organizerProfile, setOrganizerProfile] = useState<{ id: string; fromEvent?: { id: string; preview?: EventItem } } | null>(null);
   // Vista del organizador: explorar el catálogo o administrar sus eventos
   const [organizerView, setOrganizerView] = useState<'explore' | 'mine'>('explore');
   const [myEventsKey, setMyEventsKey] = useState(0);
@@ -434,6 +437,31 @@ export default function HomePage() {
           reserve={reserveOptions}
           onClose={closeDetail}
           onAnnouncementsChange={() => setMyEventsKey((k) => k + 1)}
+          onOpenOrganizer={(id) => {
+            setOrganizerProfile({ id, fromEvent: detail });
+            closeDetail();
+          }}
+        />
+      )}
+
+      {organizerProfile && (
+        <OrganizerProfileModal
+          key={organizerProfile.id}
+          organizerId={organizerProfile.id}
+          onClose={() => setOrganizerProfile(null)}
+          back={
+            organizerProfile.fromEvent && {
+              label: 'Volver al evento',
+              onBack: () => {
+                setDetail(organizerProfile.fromEvent!);
+                setOrganizerProfile(null);
+              },
+            }
+          }
+          onOpenEvent={(id) => {
+            setOrganizerProfile(null);
+            setDetail({ id, preview: events.find((e) => e.id === id) });
+          }}
         />
       )}
 
