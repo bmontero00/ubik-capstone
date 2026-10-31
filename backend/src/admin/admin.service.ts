@@ -1,6 +1,7 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { AccountStatus, EventStatus, OrganizerStatus, Prisma, Role } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { cambioEstado } from '../events/bitacora';
 
 // El admin solo gestiona asistentes y organizadores, nunca a otros administradores
 const MANAGED_ROLES: Role[] = ['ATTENDEE', 'ORGANIZER'];
@@ -266,22 +267,35 @@ export class AdminService {
   }
 
   async updateEventStatus(id: string, adminId: string, status: EventStatus, reason: string) {
-    const event = await this.prisma.event.findUnique({ where: { id }, select: { id: true } });
+    const event = await this.prisma.event.findUnique({ where: { id }, select: { id: true, status: true } });
     if (!event) throw new NotFoundException('Evento no encontrado');
 
-    return this.prisma.event.update({
-      where: { id },
-      data: {
-        status,
-        statusReason: reason,
-        statusChangedAt: new Date(),
-        statusChangedById: adminId,
-      },
-      include: {
-        category: { select: { id: true, name: true } },
-        organizer: { select: { id: true, name: true, email: true, status: true } },
-        statusChangedBy: { select: { id: true, name: true } },
-      },
-    });
+    // El cambio queda en la bitácora del evento (firmado como "Equipo UBIK")
+    const [updated] = await this.prisma.$transaction([
+      this.prisma.event.update({
+        where: { id },
+        data: {
+          status,
+          statusReason: reason,
+          statusChangedAt: new Date(),
+          statusChangedById: adminId,
+        },
+        include: {
+          category: { select: { id: true, name: true } },
+          organizer: { select: { id: true, name: true, email: true, status: true } },
+          statusChangedBy: { select: { id: true, name: true } },
+        },
+      }),
+      this.prisma.bitacoraEvento.create({
+        data: {
+          tipo: 'CAMBIO_ESTADO',
+          eventoId: id,
+          autorId: adminId,
+          mensaje: reason,
+          cambios: [cambioEstado(event.status, status)] as unknown as Prisma.InputJsonValue,
+        },
+      }),
+    ]);
+    return updated;
   }
 }

@@ -17,7 +17,7 @@ const pinIcon = L.icon({
 interface LocationPickerProps {
   lat: number;
   lng: number;
-  onChange: (lat: number, lng: number) => void;
+  onChange?: (lat: number, lng: number) => void; // sin onChange el mapa es solo de lectura (detalle del evento)
 }
 
 // Centra el mapa cuando la ubicación cambia desde fuera (por ejemplo, al elegir una dirección)
@@ -34,7 +34,7 @@ function Recenter({ lat, lng }: { lat: number; lng: number }) {
   return null;
 }
 
-function ClickToMove({ onChange }: { onChange: LocationPickerProps['onChange'] }) {
+function ClickToMove({ onChange }: { onChange: NonNullable<LocationPickerProps['onChange']> }) {
   useMapEvents({ click: (e) => onChange(e.latlng.lat, e.latlng.lng) });
   return null;
 }
@@ -46,18 +46,18 @@ export default function LocationPicker({ lat, lng, onChange }: LocationPickerPro
     () => ({
       dragend() {
         const pos = markerRef.current?.getLatLng();
-        if (pos) onChange(pos.lat, pos.lng);
+        if (pos) onChange?.(pos.lat, pos.lng);
       },
     }),
     [onChange],
   );
 
   return (
-    <MapContainer center={[lat, lng]} zoom={15} scrollWheelZoom className="w-full h-full z-0 bg-slate-950">
+    <MapContainer center={[lat, lng]} zoom={15} scrollWheelZoom={!!onChange} className="w-full h-full z-0 bg-slate-950">
       <TileLayer url={DARK_TILES.url} attribution={DARK_TILES.attribution} className={DARK_TILES.className} maxZoom={DARK_TILES.maxZoom} />
-      <Marker position={[lat, lng]} icon={pinIcon} draggable eventHandlers={handlers} ref={markerRef} />
+      <Marker position={[lat, lng]} icon={pinIcon} draggable={!!onChange} eventHandlers={handlers} ref={markerRef} />
       <Recenter lat={lat} lng={lng} />
-      <ClickToMove onChange={onChange} />
+      {onChange && <ClickToMove onChange={onChange} />}
     </MapContainer>
   );
 }

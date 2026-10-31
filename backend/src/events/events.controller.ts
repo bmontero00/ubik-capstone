@@ -3,6 +3,8 @@ import {
   Get,
   Post,
   Patch,
+  Delete,
+  HttpCode,
   Param,
   Body,
   Query,
@@ -15,9 +17,9 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { EventsService } from './events.service';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
-import { CurrentUser, JwtAuthGuard, Roles, RolesGuard } from '../auth/auth.guards';
+import { CurrentUser, JwtAuthGuard, OptionalJwtAuthGuard, Roles, RolesGuard } from '../auth/auth.guards';
 import type { AuthenticatedUser } from '../auth/auth.guards';
-import { CancelEventDto, CreateEventDto, UpdateEventDto } from './dto/event.dto';
+import { CancelEventDto, CreateAnnouncementDto, CreateEventDto, PostponeEventDto, UpdateEventDto } from './dto/event.dto';
 
 // Imagen del evento: se guarda en ./uploads (expuesta en main.ts), máximo 5 MB, jpg o png
 const eventImageInterceptor = FileInterceptor('image', {
@@ -66,7 +68,7 @@ export class EventsController {
   ) {
     await this.eventsService.assertCanPublish(user);
     // El organizador sale del token, nunca del formulario
-    return this.eventsService.create(dto, user.sub, file ? `/uploads/${file.filename}` : null);
+    return this.eventsService.create(dto, user, file ? `/uploads/${file.filename}` : null);
   }
 
   // El organizador edita solo sus eventos; el admin puede editar cualquiera
@@ -90,6 +92,40 @@ export class EventsController {
     return this.eventsService.cancel(id, user, dto.reason);
   }
 
+  @Patch(':id/postpone')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ORGANIZER', 'ADMIN')
+  async postpone(@Param('id') id: string, @Body() dto: PostponeEventDto, @CurrentUser() user: AuthenticatedUser) {
+    return this.eventsService.postpone(id, user, dto.date, dto.reason);
+  }
+
+  @Patch(':id/resume')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ORGANIZER', 'ADMIN')
+  async resume(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.eventsService.resume(id, user);
+  }
+
+  // Anuncios del organizador en la bitácora del evento
+  @Post(':id/bitacora')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ORGANIZER', 'ADMIN')
+  async addAnnouncement(@Param('id') id: string, @Body() dto: CreateAnnouncementDto, @CurrentUser() user: AuthenticatedUser) {
+    return this.eventsService.addAnnouncement(id, user, dto);
+  }
+
+  @Delete(':id/bitacora/:entradaId')
+  @HttpCode(204)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ORGANIZER', 'ADMIN')
+  async removeAnnouncement(
+    @Param('id') id: string,
+    @Param('entradaId') entradaId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    await this.eventsService.removeAnnouncement(id, entradaId, user);
+  }
+
   @Get()
   async findAll(
     @Query('lat') lat?: string,
@@ -101,5 +137,12 @@ export class EventsController {
       lng ? Number(lng) : undefined,
       radius ? Number(radius) : undefined,
     );
+  }
+
+  // Detalle público con la bitácora; con sesión, su organizador y los admins ven más
+  @Get(':id')
+  @UseGuards(OptionalJwtAuthGuard)
+  async findOne(@Param('id') id: string, @CurrentUser() user?: AuthenticatedUser) {
+    return this.eventsService.findOne(id, user);
   }
 }

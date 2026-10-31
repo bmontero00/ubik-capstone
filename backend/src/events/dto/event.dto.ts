@@ -1,6 +1,7 @@
 import { Transform, Type } from 'class-transformer';
 import {
-  IsBoolean, IsISO8601, IsInt, IsLatitude, IsLongitude, IsNotEmpty, IsOptional, IsString, Length, Max, Min,
+  IsBoolean, IsISO8601, IsInt, IsLatitude, IsLongitude, IsNotEmpty, IsOptional, IsString, IsUUID, Length, Matches,
+  Max, Min,
 } from 'class-validator';
 import { IsReason } from '../../common/reason.validator';
 
@@ -13,6 +14,10 @@ export const EVENT_LIMITS = {
   addressMin: 3,
   addressMax: 200,
   priceMax: 10_000_000,
+  announcementTitleMin: 3,
+  announcementTitleMax: 80,
+  announcementMin: 10,
+  announcementMax: 1000,
 };
 
 const trim = () => Transform(({ value }) => (typeof value === 'string' ? value.normalize('NFC').trim() : value));
@@ -60,6 +65,11 @@ export class CreateEventDto {
   @IsString()
   @IsNotEmpty({ message: 'Selecciona una categoría' })
   categoryId: string;
+
+  // Al duplicar un evento sin subir una imagen nueva, se reutiliza la del evento original
+  @IsOptional()
+  @IsUUID('4', { message: 'El evento de origen no es válido' })
+  sourceEventId?: string;
 }
 
 export class UpdateEventDto {
@@ -121,4 +131,31 @@ export class UpdateEventDto {
 export class CancelEventDto {
   @IsReason()
   reason: string;
+}
+
+export class PostponeEventDto {
+  @IsISO8601({}, { message: 'La nueva fecha y hora no son válidas' })
+  date: string;
+
+  @IsReason()
+  reason: string;
+}
+
+// Anuncio del organizador a la comunidad del evento
+export class CreateAnnouncementDto {
+  @IsOptional()
+  @trim()
+  @IsString()
+  @Length(EVENT_LIMITS.announcementTitleMin, EVENT_LIMITS.announcementTitleMax, {
+    message: `El título del anuncio debe tener entre ${EVENT_LIMITS.announcementTitleMin} y ${EVENT_LIMITS.announcementTitleMax} caracteres`,
+  })
+  titulo?: string;
+
+  @trim()
+  @IsString({ message: 'Escribe el mensaje del anuncio' })
+  @Length(EVENT_LIMITS.announcementMin, EVENT_LIMITS.announcementMax, {
+    message: `El anuncio debe tener entre ${EVENT_LIMITS.announcementMin} y ${EVENT_LIMITS.announcementMax} caracteres`,
+  })
+  @Matches(/\p{L}/u, { message: 'El anuncio debe contener texto' })
+  mensaje: string;
 }

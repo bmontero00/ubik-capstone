@@ -32,9 +32,10 @@ export const categoryBadge = (categoryName?: string) => {
 };
 
 // Tarjeta del catálogo; también se usa como vista previa en el formulario de eventos
-export default function EventCard({ event, footerAction, placeholderImage = false }: {
+export default function EventCard({ event, footerAction, placeholderImage = false, onOpen }: {
   event: EventCardData;
   footerAction?: React.ReactNode;
+  onOpen?: () => void; // abre el detalle al hacer clic en la imagen o el título
   placeholderImage?: boolean; // muestra un espacio para la imagen aunque no haya
 }) {
   const src = event.imagePreview ?? imageSrc(event.imageUrl);
@@ -43,8 +44,8 @@ export default function EventCard({ event, footerAction, placeholderImage = fals
   return (
     <article className="flex flex-col bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden hover:border-slate-700 transition-all h-full">
       {src ? (
-        <div className="w-full h-40 bg-slate-950 overflow-hidden">
-          <img src={src} alt={event.title} className="w-full h-full object-cover" />
+        <div className={`w-full h-40 bg-slate-950 overflow-hidden ${onOpen ? 'cursor-pointer' : ''}`} onClick={onOpen}>
+          <img src={src} alt={event.title} className={`w-full h-full object-cover ${onOpen ? 'hover:scale-105 transition-transform duration-300' : ''}`} />
         </div>
       ) : placeholderImage ? (
         <div className="w-full h-40 bg-slate-950 flex flex-col items-center justify-center text-slate-600 text-xs gap-1">
@@ -62,7 +63,13 @@ export default function EventCard({ event, footerAction, placeholderImage = fals
             </span>
           )}
         </div>
-        <h4 className="text-lg font-bold text-white mb-2 break-words">{event.title || 'Título del evento'}</h4>
+        <h4 className="text-lg font-bold text-white mb-2 break-words">
+          {onOpen ? (
+            <button type="button" onClick={onOpen} className="text-left hover:text-indigo-300 transition-colors">{event.title}</button>
+          ) : (
+            event.title || 'Título del evento'
+          )}
+        </h4>
         {event.status && event.status !== 'PUBLISHED' && (
           <div className="mb-3">
             <StatusPill {...EVENT_STATUS_LABELS[event.status]} />

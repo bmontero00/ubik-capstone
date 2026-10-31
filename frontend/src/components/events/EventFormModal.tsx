@@ -4,7 +4,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import {
   X, Check, ChevronLeft, ChevronRight, Loader2, Search, MapPin, CalendarDays, Clock, Ticket, Gift,
-  ImagePlus, Trash2, RefreshCw, Pencil, Eye, Sparkles,
+  ImagePlus, Trash2, RefreshCw, Pencil, Eye, Sparkles, Copy,
 } from 'lucide-react';
 import EventCard from './EventCard';
 import {
@@ -24,6 +24,7 @@ interface EventFormModalProps {
   categories: Category[];
   event?: EventItem; // si viene, el formulario edita ese evento
   initialLocation?: { lat: number; lng: number } | null; // punto elegido con clic derecho en el mapa
+  duplicateFrom?: EventItem; // crea un evento nuevo con los datos de otro (solo cambia la fecha)
   onClose: () => void;
   onSaved: (event: EventItem, created: boolean) => void;
 }
@@ -32,22 +33,24 @@ const pad = (n: number) => String(n).padStart(2, '0');
 const toLocalDate = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const toLocalTime = (d: Date) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 
-function initialState(event?: EventItem, location?: { lat: number; lng: number } | null): EventFormState {
-  if (event) {
-    const d = new Date(event.date);
+function initialState(event?: EventItem, location?: { lat: number; lng: number } | null, duplicate?: EventItem): EventFormState {
+  const source = event ?? duplicate;
+  if (source) {
+    // Al duplicar se mantiene la hora, pero la fecha parte mañana para que no quede en el pasado
+    const d = event ? new Date(event.date) : new Date(new Date(source.date).setFullYear(...tomorrowParts()));
     return {
-      title: event.title,
-      categoryId: event.category.id,
-      description: event.description ?? '',
+      title: source.title,
+      categoryId: source.category.id,
+      description: source.description ?? '',
       date: toLocalDate(d),
       time: toLocalTime(d),
-      address: event.address,
-      latitude: event.latitude,
-      longitude: event.longitude,
-      isFree: event.price === 0,
-      price: event.price === 0 ? '' : String(event.price),
+      address: source.address,
+      latitude: source.latitude,
+      longitude: source.longitude,
+      isFree: source.price === 0,
+      price: source.price === 0 ? '' : String(source.price),
       image: null,
-      currentImageUrl: event.imageUrl ?? null,
+      currentImageUrl: source.imageUrl ?? null,
       removeImage: false,
     };
   }
@@ -69,6 +72,11 @@ function initialState(event?: EventItem, location?: { lat: number; lng: number }
   };
 }
 
+const tomorrowParts = (): [number, number, number] => {
+  const t = new Date(Date.now() + 864e5);
+  return [t.getFullYear(), t.getMonth(), t.getDate()];
+};
+
 // Atajos de fecha: hoy, mañana y el próximo sábado
 function quickDates() {
   const today = new Date();
@@ -82,12 +90,14 @@ function quickDates() {
   ];
 }
 
-export default function EventFormModal({ categories, event, initialLocation, onClose, onSaved }: EventFormModalProps) {
+export default function EventFormModal({ categories, event, initialLocation, duplicateFrom, onClose, onSaved }: EventFormModalProps) {
   const isEdit = !!event;
-  const initial = useMemo(() => initialState(event, initialLocation), [event, initialLocation]);
+  const isDuplicate = !isEdit && !!duplicateFrom;
+  const initial = useMemo(() => initialState(event, initialLocation, duplicateFrom), [event, initialLocation, duplicateFrom]);
   const [form, setForm] = useState<EventFormState>(initial);
-  const [step, setStep] = useState(0);
-  const [maxVisited, setMaxVisited] = useState(isEdit ? STEPS.length - 1 : 0);
+  // Al duplicar se parte en el paso de la fecha, que es lo que normalmente cambia
+  const [step, setStep] = useState(isDuplicate ? 1 : 0);
+  const [maxVisited, setMaxVisited] = useState(isEdit || isDuplicate ? STEPS.length - 1 : 0);
   const [showErrors, setShowErrors] = useState(false);
   const [saving, setSaving] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -162,6 +172,8 @@ export default function EventFormModal({ categories, event, initialLocation, onC
       price: finalPrice(form),
       image: form.image,
       ...(isEdit && form.removeImage && !form.image ? { removeImage: true } : {}),
+      // Duplicado sin imagen nueva: el backend reutiliza la portada del evento original
+      ...(isDuplicate && !form.image && !form.removeImage && form.currentImageUrl ? { sourceEventId: duplicateFrom!.id } : {}),
     };
     try {
       const saved = isEdit ? await updateEvent(event!.id, payload) : await createEvent(payload);
@@ -185,10 +197,12 @@ export default function EventFormModal({ categories, event, initialLocation, onC
           <div className="flex items-start justify-between gap-4 mb-4">
             <div>
               <h2 id="event-form-title" className="text-xl font-bold tracking-tight flex items-center gap-2">
-                {isEdit ? <Pencil className="w-5 h-5 text-indigo-300" /> : <Sparkles className="w-5 h-5 text-emerald-300" />}
-                {isEdit ? 'Editar evento' : 'Crear un evento'}
+                {isEdit ? <Pencil className="w-5 h-5 text-indigo-300" /> : isDuplicate ? <Copy className="w-5 h-5 text-sky-300" /> : <Sparkles className="w-5 h-5 text-emerald-300" />}
+                {isEdit ? 'Editar evento' : isDuplicate ? 'Duplicar evento' : 'Crear un evento'}
               </h2>
-              <p className="text-xs text-slate-400 mt-0.5">{STEPS[step].subtitle}</p>
+              <p className="text-xs text-slate-400 mt-0.5">
+                {isDuplicate && step === 1 ? 'Copiamos todos los datos de tu evento: elige la nueva fecha y revisa lo demás.' : STEPS[step].subtitle}
+              </p>
             </div>
             <button onClick={requestClose} aria-label="Cerrar" className="text-slate-400 hover:text-white transition-colors">
               <X className="w-5 h-5" />

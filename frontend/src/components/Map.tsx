@@ -31,6 +31,7 @@ interface MapProps {
   locating?: boolean;
   onLocate?: () => void;
   onSelectLocationForNewEvent?: (lat: number, lng: number) => void;
+  onOpenEvent?: (id: string) => void; // botón "Ver más" del popup
 }
 
 // Pin con el color de la categoría del evento
@@ -106,7 +107,7 @@ function MapContextMenu({ onRightClick }: { onRightClick: (lat: number, lng: num
 }
 
 export default function Map({
-  events, centerLat, centerLng, radiusKm, userLocation, locating, onLocate, onSelectLocationForNewEvent,
+  events, centerLat, centerLng, radiusKm, userLocation, locating, onLocate, onSelectLocationForNewEvent, onOpenEvent,
 }: MapProps) {
   const [contextMenu, setContextMenu] = useState<{ lat: number; lng: number; x: number; y: number } | null>(null);
   const icons = useMemo(() => new globalThis.Map<string, L.DivIcon>(), []);
@@ -183,6 +184,15 @@ export default function Map({
                 <span className="text-xs text-slate-600 block mt-1">{formatEventDate(evt.date)}</span>
                 <span className="text-xs text-slate-500 block">{evt.address}</span>
                 <span className="text-xs font-bold text-indigo-600 block mt-1">{formatPrice(evt.price)}</span>
+                {onOpenEvent && (
+                  <button
+                    type="button"
+                    onClick={() => onOpenEvent(evt.id)}
+                    className="mt-2 w-full px-3 py-1.5 text-xs font-bold rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white transition-colors"
+                  >
+                    Ver más
+                  </button>
+                )}
               </div>
             </Popup>
           </Marker>

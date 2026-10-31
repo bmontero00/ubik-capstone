@@ -63,6 +63,22 @@ export class JwtAuthGuard implements CanActivate {
   }
 }
 
+// Igual que JwtAuthGuard, pero deja pasar a quien no inició sesión (request.user queda vacío).
+// Sirve para rutas públicas que muestran más información a su dueño o a un admin.
+@Injectable()
+export class OptionalJwtAuthGuard extends JwtAuthGuard {
+  async canActivate(context: ExecutionContext): Promise<boolean> {
+    const request = context.switchToHttp().getRequest();
+    if (!request.headers.authorization) return true;
+    try {
+      await super.canActivate(context);
+    } catch {
+      request.user = undefined;
+    }
+    return true;
+  }
+}
+
 export const ROLES_KEY = 'roles';
 export const Roles = (...roles: Role[]) => SetMetadata(ROLES_KEY, roles);
 

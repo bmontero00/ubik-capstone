@@ -9,7 +9,8 @@ import AdminDashboard from '../components/admin/AdminDashboard';
 import EventCard from '../components/events/EventCard';
 import EventFormModal from '../components/events/EventFormModal';
 import MyEventsPanel from '../components/events/MyEventsPanel';
-import { CalendarPlus, Compass, LayoutList, CheckCircle2, X } from 'lucide-react';
+import EventDetailModal from '../components/events/EventDetailModal';
+import { CalendarPlus, Compass, LayoutList, CheckCircle2, X, ArrowRight } from 'lucide-react';
 import {
   ApiError, AuthResponse, AuthUser, SuspendedInfo, canPublishEvents, clearSession,
   fetchCurrentUser, isAccountActive, loadStoredUser, markApprovalNoticeSeen, saveSession, updateStoredUser,
@@ -47,7 +48,9 @@ export default function HomePage() {
   const [isClient, setIsClient] = useState(false);
 
   // Formulario de eventos: sin "event" crea uno nuevo; con "event" lo edita
-  const [eventForm, setEventForm] = useState<{ event?: EventItem; location?: { lat: number; lng: number } } | null>(null);
+  const [eventForm, setEventForm] = useState<{ event?: EventItem; duplicateFrom?: EventItem; location?: { lat: number; lng: number } } | null>(null);
+  // Detalle del evento ("Ver más"); se puede abrir con un enlace compartido (?evento=<id>)
+  const [detail, setDetail] = useState<{ id: string; preview?: EventItem } | null>(null);
   // Vista del organizador: explorar el catálogo o administrar sus eventos
   const [organizerView, setOrganizerView] = useState<'explore' | 'mine'>('explore');
   const [myEventsKey, setMyEventsKey] = useState(0);
@@ -65,6 +68,8 @@ export default function HomePage() {
       refreshUser(); // Trae el estado actualizado (ej. si un admin aprobó la solicitud)
     }
     fetchCategories();
+    const shared = new URLSearchParams(window.location.search).get('evento');
+    if (shared) setDetail({ id: shared });
   }, []);
 
   const refreshUser = async () => {
@@ -142,6 +147,19 @@ export default function HomePage() {
     markApprovalNoticeSeen().catch(() => {});
   }, [user?.approvalNoticePending]);
   const canReserve = isAccountActive(user);
+  // Reservar es solo para asistentes: organizadores y administradores no ven el botón
+  const isAttendee = user?.role === 'ATTENDEE';
+  const reserveOptions = isAttendee
+    ? { enabled: canReserve, blockedReason: canReserve ? undefined : 'Tu cuenta está en revisión: no puedes reservar entradas' }
+    : undefined;
+
+  const openDetail = (evt: EventItem) => setDetail({ id: evt.id, preview: evt });
+  const openDetailById = (id: string) => setDetail({ id, preview: events.find((e) => e.id === id) });
+  const closeDetail = () => {
+    setDetail(null);
+    // Quita el ?evento= del enlace compartido para que no se vuelva a abrir al recargar
+    if (window.location.search.includes('evento=')) window.history.replaceState(null, '', window.location.pathname);
+  };
   const isApprovedOrganizer = user?.role === 'ORGANIZER' && user.organizerStatus === 'APPROVED';
 
   // Crear evento: el formulario parte desde la ubicación del usuario, o Santiago centro
@@ -225,6 +243,7 @@ export default function HomePage() {
           locating={location.status === 'locating'}
           onLocate={location.request}
           onSelectLocationForNewEvent={canPublish ? handleSelectLocationForNewEvent : undefined}
+          onOpenEvent={openDetailById}
         />
       </section>
 
@@ -246,22 +265,31 @@ export default function HomePage() {
               <EventCard
                 key={evt.id}
                 event={{ ...evt, categoryName: evt.category?.name, distanceFrom: location.coords ? undefined : 'Santiago centro' }}
+                onOpen={() => openDetail(evt)}
                 footerAction={
-                  evt.price > 0 && (
+                  <div className="flex items-center gap-2">
                     <button
-                      disabled={!canReserve || evt.status !== 'PUBLISHED'}
-                      title={
-                        !canReserve
-                          ? 'Tu cuenta está en revisión: no puedes reservar entradas'
-                          : evt.status !== 'PUBLISHED'
-                            ? 'Este evento no acepta reservas'
-                            : undefined
-                      }
-                      className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-500 disabled:cursor-not-allowed text-white text-xs font-bold rounded-lg transition"
+                      onClick={() => openDetail(evt)}
+                      className="flex items-center gap-1 px-3 py-1.5 text-xs font-bold rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-100 transition"
                     >
-                      Reservar
+                      Ver más <ArrowRight className="w-3.5 h-3.5" />
                     </button>
-                  )
+                    {isAttendee && evt.price > 0 && (
+                      <button
+                        disabled={!canReserve || evt.status !== 'PUBLISHED'}
+                        title={
+                          !canReserve
+                            ? 'Tu cuenta está en revisión: no puedes reservar entradas'
+                            : evt.status !== 'PUBLISHED'
+                              ? 'Este evento no acepta reservas'
+                              : undefined
+                        }
+                        className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-500 disabled:cursor-not-allowed text-white text-xs font-bold rounded-lg transition"
+                      >
+                        Reservar
+                      </button>
+                    )}
+                  </div>
                 }
               />
             ))}
@@ -373,6 +401,8 @@ export default function HomePage() {
                     refreshKey={myEventsKey}
                     onCreate={() => openNewEventForm()}
                     onEdit={(event) => setEventForm({ event })}
+                    onDuplicate={(event) => setEventForm({ duplicateFrom: event })}
+                    onOpen={openDetail}
                     onChanged={fetchEvents}
                   />
                 )}
@@ -389,8 +419,21 @@ export default function HomePage() {
           categories={categories}
           event={eventForm.event}
           initialLocation={eventForm.location}
+          duplicateFrom={eventForm.duplicateFrom}
           onClose={() => setEventForm(null)}
           onSaved={handleEventSaved}
+        />
+      )}
+
+      {detail && (
+        <EventDetailModal
+          key={detail.id}
+          eventId={detail.id}
+          preview={detail.preview}
+          viewer={user ? { id: user.id, isAdmin: user.role === 'ADMIN' } : null}
+          reserve={reserveOptions}
+          onClose={closeDetail}
+          onAnnouncementsChange={() => setMyEventsKey((k) => k + 1)}
         />
       )}
 
@@ -403,7 +446,7 @@ export default function HomePage() {
         </div>
       )}
 
-      {/* Se monta solo al abrirse      {/* Se monta solo al abrirse para que cada apertura parta con el formulario vacío */}
+      {/* Se monta solo al abrirse para que cada apertura parta con el formulario vacío */}
       {isAuthOpen && (
         <AuthModal
           isOpen

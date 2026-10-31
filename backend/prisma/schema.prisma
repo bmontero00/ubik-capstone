@@ -30,6 +30,7 @@ model User {
   statusChangedBy    User?         @relation("StatusChangedBy", fields: [statusChangedById], references: [id])
   statusChangedUsers User[]        @relation("StatusChangedBy")
   eventStatusChanges Event[]       @relation("EventStatusChangedBy")
+  entradasBitacora   BitacoraEvento[] @relation("AutorBitacora")
 
   // Relación con los eventos creados por el usuario
   events Event[]
@@ -149,5 +150,34 @@ model Event {
   statusChangedById String?
   statusChangedBy   User?       @relation("EventStatusChangedBy", fields: [statusChangedById], references: [id])
 
+  // Anuncios del organizador y registro de cambios, visibles en el detalle del evento
+  bitacora BitacoraEvento[]
+
   @@map("events")
+}
+
+enum TipoBitacora {
+  CREACION      // el evento se publicó
+  ANUNCIO       // mensaje del organizador (o del equipo UBIK) a la comunidad
+  CAMBIO_DATOS  // se modificaron datos del evento (fecha, lugar, precio…)
+  CAMBIO_ESTADO // cambió el estado (postergado, cancelado, en revisión…)
+}
+
+// Bitácora del evento. Los cambios se registran solos; los anuncios los escribe el organizador.
+model BitacoraEvento {
+  id            String       @id @default(uuid())
+  tipo          TipoBitacora
+  titulo        String?
+  mensaje       String?
+  // Detalle de lo modificado: [{ campo, anterior, nuevo }]
+  cambios       Json?
+  fechaCreacion DateTime     @default(now())
+
+  eventoId String
+  evento   Event  @relation(fields: [eventoId], references: [id], onDelete: Cascade)
+  autorId  String
+  autor    User   @relation("AutorBitacora", fields: [autorId], references: [id])
+
+  @@index([eventoId, fechaCreacion])
+  @@map("bitacora_eventos")
 }
