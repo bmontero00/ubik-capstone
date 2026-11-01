@@ -47,6 +47,7 @@ export interface OrganizerProfile {
 export async function fetchOrganizerProfile(id: string): Promise<OrganizerProfile> {
   const res = await fetch(`${API_URL}/organizers/${id}`);
   const data = await res.json().catch(() => ({}));
+  if (res.status >= 500) throw new Error('No pudimos cargar el perfil en este momento. Intenta de nuevo en unos segundos.');
   if (!res.ok) throw new Error(data.message || 'No se pudo cargar el perfil del organizador');
   return data;
 }

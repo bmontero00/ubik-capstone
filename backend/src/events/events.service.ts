@@ -82,6 +82,15 @@ export class EventsService {
       where: { id },
       include: {
         ...publicInclude,
+        organizer: {
+          select: {
+            id: true,
+            name: true,
+            role: true,
+            status: true,
+            organizerProfile: { select: { organizationName: true, status: true } },
+          },
+        },
         bitacora: { include: bitacoraInclude, orderBy: { fechaCreacion: 'desc' } },
       },
     });
@@ -92,9 +101,19 @@ export class EventsService {
       throw new NotFoundException('Este evento no existe o ya no está disponible');
     }
 
-    const { bitacora, ...rest } = event;
+    const { bitacora, organizer, ...rest } = event;
+    // Solo los organizadores verificados y activos tienen perfil público. Los eventos creados por un
+    // admin se muestran como del "Equipo UBIK"; los de cuentas antiguas, sin enlace al perfil.
+    const perfilPublico =
+      organizer.role === 'ORGANIZER' && organizer.status === 'ACTIVE' && organizer.organizerProfile?.status === 'APPROVED';
     return {
       ...rest,
+      organizer: {
+        id: organizer.id,
+        name: organizer.role === 'ADMIN' ? 'Equipo UBIK' : organizer.name,
+        organizerProfile: organizer.organizerProfile && { organizationName: organizer.organizerProfile.organizationName },
+        perfilPublico,
+      },
       canManage,
       canAnnounce: canManage && (viewer!.role === 'ADMIN' || ORGANIZER_ANNOUNCE_STATUSES.includes(event.status)),
       bitacora: serializeBitacora(bitacora, canManage),

@@ -18,7 +18,13 @@ export interface EventItem {
   distanceKm?: number;
   category: Category;
   // El correo solo llega en "Mis eventos" y en el panel de administración
-  organizer: { id: string; name: string; email?: string; organizerProfile?: { organizationName: string | null } | null };
+  organizer: {
+    id: string;
+    name: string;
+    email?: string;
+    organizerProfile?: { organizationName: string | null } | null;
+    perfilPublico?: boolean; // solo en el detalle: si tiene perfil público para enlazar
+  };
   status: EventStatus;
   statusReason?: string | null;
   statusChangedAt?: string | null;

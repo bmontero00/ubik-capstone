@@ -133,7 +133,7 @@ export default function EventDetailModal({
             <h2 className="text-2xl sm:text-3xl font-extrabold text-white leading-tight break-words">{event.title}</h2>
             <p className="mt-2 text-sm text-slate-400 flex flex-wrap items-center gap-1.5">
               Organiza
-              {onOpenOrganizer ? (
+              {onOpenOrganizer && detail?.organizer.perfilPublico ? (
                 <button
                   onClick={() => onOpenOrganizer(event.organizer.id)}
                   title="Ver el perfil del organizador"
@@ -146,7 +146,7 @@ export default function EventDetailModal({
               ) : (
                 <>
                   <span className="font-semibold text-slate-200">{organizerName(event)}</span>
-                  <BadgeCheck className="w-4 h-4 text-emerald-400" aria-label="Organizador verificado" />
+                  {detail?.organizer.perfilPublico && <BadgeCheck className="w-4 h-4 text-emerald-400" aria-label="Organizador verificado" />}
                 </>
               )}
             </p>

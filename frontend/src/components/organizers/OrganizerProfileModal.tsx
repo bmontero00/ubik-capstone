@@ -35,9 +35,11 @@ export default function OrganizerProfileModal({ organizerId, onClose, onOpenEven
   const [profile, setProfile] = useState<OrganizerProfile | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<'upcoming' | 'past'>('upcoming');
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     let active = true;
+    setError(null);
     fetchOrganizerProfile(organizerId)
       .then((p) => {
         if (!active) return;
@@ -47,7 +49,7 @@ export default function OrganizerProfileModal({ organizerId, onClose, onOpenEven
       })
       .catch((e) => active && setError(e.message));
     return () => { active = false; };
-  }, [organizerId]);
+  }, [organizerId, attempt]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
@@ -94,7 +96,16 @@ export default function OrganizerProfileModal({ organizerId, onClose, onOpenEven
 
         {!profile ? (
           <div className="p-12 flex justify-center text-indigo-400">
-            {error ? <p className="text-sm text-rose-300">{error}</p> : <Loader2 className="w-6 h-6 animate-spin" />}
+            {error ? (
+              <div className="text-center">
+                <p className="text-sm text-rose-300">{error}</p>
+                <button onClick={() => setAttempt((n) => n + 1)} className="mt-3 px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-100">
+                  Reintentar
+                </button>
+              </div>
+            ) : (
+              <Loader2 className="w-6 h-6 animate-spin" />
+            )}
           </div>
         ) : (
           <div className="px-5 sm:px-8 pb-8">
