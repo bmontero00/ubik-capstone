@@ -1,3 +1,5 @@
+'use client';
+
 import React, { useId } from 'react';
 
 // Logo de UBIK: una U que acoge un pin de ubicación (la comunidad que se reúne en un lugar).

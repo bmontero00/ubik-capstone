@@ -19,6 +19,10 @@ interface AuthModalProps {
   onSuccess: (data: AuthResponse) => void;
   // Si la sesión se cerró porque la cuenta fue suspendida, se abre directo en ese aviso
   initialSuspended?: SuspendedInfo | null;
+  // Abre directo en el registro de organizador (ej. desde "¿Organizas eventos?" en la portada)
+  initialView?: 'login' | 'registerOrganizer';
+  // Por qué se pide la sesión (ej. "Inicia sesión para comprar tus entradas")
+  reason?: string | null;
 }
 
 type View = 'login' | 'chooseType' | 'register' | 'submitted' | 'suspended' | 'rejected';
@@ -42,9 +46,11 @@ type FormState = typeof emptyForm;
 type FieldErrors = Partial<Record<keyof FormState, string>>;
 
 // Se monta solo mientras está abierto, así cada apertura parte con el formulario vacío
-export default function AuthModal({ isOpen, onClose, onSuccess, initialSuspended = null }: AuthModalProps) {
-  const [view, setView] = useState<View>(initialSuspended ? 'suspended' : 'login');
-  const [accountType, setAccountType] = useState<AccountType>('ATTENDEE');
+export default function AuthModal({
+  isOpen, onClose, onSuccess, initialSuspended = null, initialView = 'login', reason = null,
+}: AuthModalProps) {
+  const [view, setView] = useState<View>(initialSuspended ? 'suspended' : initialView === 'registerOrganizer' ? 'register' : 'login');
+  const [accountType, setAccountType] = useState<AccountType>(initialView === 'registerOrganizer' ? 'ORGANIZER' : 'ATTENDEE');
   const [form, setForm] = useState<FormState>(emptyForm);
   const [touched, setTouched] = useState<Partial<Record<keyof FormState, boolean>>>({});
   const [submitAttempted, setSubmitAttempted] = useState(false);
@@ -393,6 +399,9 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialSuspended
                     ? 'Cuenta de organizador'
                     : 'Crear cuenta en UBIK'}
             </h2>
+            {reason && (
+              <p className="mb-4 px-3 py-2 rounded-xl bg-emerald-500/10 border border-emerald-500/25 text-emerald-200 text-xs text-center">{reason}</p>
+            )}
             <p className="text-sm text-slate-400 text-center mb-6">
               {view === 'login'
                 ? 'Accede para descubrir y gestionar eventos en tu zona'

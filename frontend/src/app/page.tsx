@@ -13,6 +13,8 @@ import EventDetailModal from '../components/events/EventDetailModal';
 import OrganizerProfileModal from '../components/organizers/OrganizerProfileModal';
 import CheckoutModal, { CheckoutEvent } from '../components/tickets/CheckoutModal';
 import MyTicketsPanel from '../components/tickets/MyTicketsPanel';
+import Landing from '../components/landing/Landing';
+import Footer from '../components/Footer';
 import { Compra, compraValida, fetchMisCompras } from '../services/compras';
 import { CalendarPlus, Compass, LayoutList, CheckCircle2, X, ArrowRight, Ticket } from 'lucide-react';
 import {
@@ -41,10 +43,14 @@ export default function HomePage() {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [refreshingUser, setRefreshingUser] = useState(false);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
+  // Cómo se abre el modal de sesión: vista inicial y el motivo por el que se pide
+  const [authOptions, setAuthOptions] = useState<{ view: 'login' | 'registerOrganizer'; reason: string | null }>({ view: 'login', reason: null });
+  // Compra iniciada sin sesión: se retoma apenas la persona inicia sesión o crea su cuenta
+  const [pendingPurchase, setPendingPurchase] = useState<{ event: EventItem; quantity: number } | null>(null);
   // Si la cuenta se suspende con la sesión abierta, se cierra y se muestra el aviso
   const [suspendedNotice, setSuspendedNotice] = useState<SuspendedInfo | null>(null);
   const [radius, setRadius] = useState<number>(15);
-  const [searchQuery, setSearchQuery] = useState<string>(''); 
+  const [searchQuery, setSearchQuery] = useState<string>('');
   const [events, setEvents] = useState<EventItem[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -140,9 +146,21 @@ export default function HomePage() {
     setShowApprovedNotice(false);
   };
 
+  const openAuth = (view: 'login' | 'registerOrganizer' = 'login', reason: string | null = null) => {
+    setAuthOptions({ view, reason });
+    setIsAuthOpen(true);
+  };
+
   const handleAuthSuccess = (data: AuthResponse) => {
     saveSession(data);
     setUser(data.user);
+    if (!pendingPurchase) return;
+    // Retoma la compra que la persona empezó antes de iniciar sesión
+    const { role, status } = data.user;
+    if (role === 'ATTENDEE' && status === 'ACTIVE') setCheckout(pendingPurchase);
+    else if (role === 'ATTENDEE') setToast('Tu cuenta está en revisión: por ahora no puedes comprar entradas.');
+    else setToast('Las entradas se compran con una cuenta de asistente.');
+    setPendingPurchase(null);
   };
 
   const canPublish = canPublishEvents(user);
@@ -182,6 +200,19 @@ export default function HomePage() {
   const upcomingTickets = compras
     .filter((c) => compraValida(c) && new Date(c.evento.date).getTime() >= Date.now())
     .reduce((n, c) => n + c.cantidad, 0);
+
+  // Sin sesión también se puede elegir entradas: al continuar se pide iniciar sesión y luego se retoma
+  const guestTicketOptions = !user
+    ? {
+        owned: () => 0,
+        onContinue: (event: EventItem, quantity: number) => {
+          closeDetail();
+          setPendingPurchase({ event, quantity });
+          openAuth('login', `Inicia sesión o crea tu cuenta de asistente para comprar ${quantity === 1 ? 'tu entrada' : `tus ${quantity} entradas`} de "${event.title}".`);
+        },
+        onViewTickets: () => {},
+      }
+    : undefined;
 
   const ticketOptions = isAttendee
     ? {
@@ -250,7 +281,8 @@ export default function HomePage() {
   // Buscador, mapa y catálogo. El admin lo ve dentro de la pestaña "Explorar"
   const exploreContent = (
     <>
-      <RequestLocationOnMount status={location.status} request={location.request} />
+      {/* Con sesión se pide la ubicación al mostrar el mapa; sin sesión, solo si la persona la pide */}
+      {user && <RequestLocationOnMount status={location.status} request={location.request} />}
       <LocationNotice status={location.status} accuracy={location.coords?.accuracy} onRetry={location.request} />
       <section className="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 mb-8 shadow-xl backdrop-blur-sm flex flex-col lg:flex-row gap-6 items-center">
         <div className="relative w-full lg:w-1/2">
@@ -278,7 +310,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section className="mb-8 w-full h-[450px] bg-slate-800 rounded-2xl border border-slate-700 relative overflow-hidden shadow-2xl z-0">
+      <section className="w-full h-[450px] bg-slate-800 rounded-2xl border border-slate-700 relative overflow-hidden shadow-2xl z-0">
         <InteractiveMap
           events={filteredEvents}
           centerLat={centerLat}
@@ -292,68 +324,61 @@ export default function HomePage() {
         />
       </section>
 
-      <section>
-        <h3 className="text-xl font-bold text-white mb-6">
-          Catálogo de Eventos ({filteredEvents.length} resultados)
-        </h3>
-        {isLoading ? (
-          <div className="text-center py-10"><span className="text-indigo-400">Cargando actividades...</span></div>
-        ) : error ? (
-          <div className="bg-red-950/40 border border-red-800 text-red-300 p-4 rounded-xl">{error}</div>
-        ) : filteredEvents.length === 0 ? (
-          <div className="text-center py-12 bg-slate-900/40 rounded-2xl border border-slate-800 text-slate-400">
-            No hay coincidencias para tu búsqueda en este radio.
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredEvents.map((evt) => (
-              <EventCard
-                key={evt.id}
-                event={{ ...evt, categoryName: evt.category?.name, distanceFrom: location.coords ? undefined : 'Santiago centro' }}
-                onOpen={() => openDetail(evt)}
-                footerAction={
-                  <button
-                    onClick={() => openDetail(evt)}
-                    className="group flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-xl text-white bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 shadow-lg shadow-indigo-900/40 transition-all"
-                  >
-                    Ver más <ArrowRight className="w-3.5 h-3.5 transition-transform group-hover:translate-x-0.5" />
-                  </button>
-                }
-              />
-            ))}
-          </div>
-        )}
-      </section>
+      {/* Con sesión, el listado va bajo el mapa (también sirve para recorrer los eventos con teclado
+          o lector de pantalla). En la portada lo reemplaza el carrusel de próximos eventos. */}
+      {user && (
+        <section className="mt-8" aria-labelledby="catalogo-title">
+          <h3 id="catalogo-title" className="text-xl font-bold text-white mb-5">
+            Eventos en este radio <span className="text-slate-500 font-semibold">({filteredEvents.length})</span>
+          </h3>
+          {isLoading ? (
+            <div className="text-center py-10"><span className="text-indigo-400">Cargando actividades...</span></div>
+          ) : error ? (
+            <div className="bg-red-950/40 border border-red-800 text-red-300 p-4 rounded-xl">{error}</div>
+          ) : filteredEvents.length === 0 ? (
+            <div className="text-center py-12 bg-slate-900/40 rounded-2xl border border-slate-800 text-slate-400">
+              No hay coincidencias para tu búsqueda en este radio.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {filteredEvents.map((evt) => (
+                <EventCard
+                  key={evt.id}
+                  event={{ ...evt, categoryName: evt.category?.name, distanceFrom: location.coords ? undefined : 'Santiago centro' }}
+                  placeholderImage
+                  onOpen={() => openDetail(evt)}
+                  footerAction={
+                    <button
+                      onClick={() => openDetail(evt)}
+                      className="group flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-xl text-slate-950 bg-gradient-to-r from-emerald-400 to-cyan-400 hover:from-emerald-300 hover:to-cyan-300 shadow-lg shadow-emerald-900/30 transition-all"
+                    >
+                      Ver más <ArrowRight className="w-3.5 h-3.5 transition-transform group-hover:translate-x-0.5" />
+                    </button>
+                  }
+                />
+              ))}
+            </div>
+          )}
+        </section>
+      )}
     </>
   );
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans">
-      <Navbar user={user} onOpenAuth={() => setIsAuthOpen(true)} onLogout={handleLogout} />
+    <div className="min-h-screen flex flex-col bg-slate-950 text-slate-100 font-sans">
+      <Navbar user={user} onOpenAuth={() => openAuth()} onLogout={handleLogout} />
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+      <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
         {!user ? (
-          <section className="flex flex-col items-center justify-center py-20 text-center animate-fade-in">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-950/80 border border-indigo-800 text-indigo-300 text-xs font-semibold mb-6 tracking-wide uppercase">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-              LA CONEXIÓN AL ALCANCE DE TODOS
-            </div>
-            <h1 className="text-5xl sm:text-6xl font-extrabold tracking-tight text-white mb-6 leading-tight">
-              Descubre tu entorno con <br/>
-              <span className="bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
-                UBIK
-              </span>
-            </h1>
-            <p className="text-lg text-slate-400 max-w-2xl mb-12 leading-relaxed">
-              Explora, filtra y asiste a eventos sociales y comunitarios según tu ubicación exacta.
-            </p>
-            <button 
-              onClick={() => setIsAuthOpen(true)}
-              className="px-10 py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl transition-all shadow-lg hover:shadow-indigo-500/25 active:scale-95 text-lg flex items-center gap-3 mx-auto"
-            >
-              Comenzar a Explorar
-            </button>
-          </section>
+          <Landing
+            categories={categories}
+            explore={exploreContent}
+            activeQuery={searchQuery}
+            onSearch={setSearchQuery}
+            onOpenEvent={openDetail}
+            onBecomeOrganizer={() => openAuth('registerOrganizer')}
+            onLogin={() => openAuth()}
+          />
         ) : (
           <div className="animate-fade-in">
             <header className="mb-8 flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
@@ -482,6 +507,8 @@ export default function HomePage() {
         )}
       </main>
 
+      <Footer />
+
       {eventForm && (
         <EventFormModal
           categories={categories}
@@ -499,7 +526,7 @@ export default function HomePage() {
           eventId={detail.id}
           preview={detail.preview}
           viewer={user ? { id: user.id, isAdmin: user.role === 'ADMIN' } : null}
-          tickets={ticketOptions}
+          tickets={ticketOptions ?? guestTicketOptions}
           onClose={closeDetail}
           onAnnouncementsChange={() => setMyEventsKey((k) => k + 1)}
           onOpenOrganizer={(id) => {
@@ -559,7 +586,9 @@ export default function HomePage() {
         <AuthModal
           isOpen
           initialSuspended={suspendedNotice}
-          onClose={() => { setIsAuthOpen(false); setSuspendedNotice(null); }}
+          initialView={authOptions.view}
+          reason={authOptions.reason}
+          onClose={() => { setIsAuthOpen(false); setSuspendedNotice(null); setPendingPurchase(null); }}
           onSuccess={handleAuthSuccess}
         />
       )}

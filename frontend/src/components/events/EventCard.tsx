@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { CalendarDays, MapPin, ImageIcon } from 'lucide-react';
 import { EventStatus } from '../../services/auth';
 import { formatEventDate, imageSrc } from '../../services/events';
@@ -38,14 +38,16 @@ export default function EventCard({ event, footerAction, placeholderImage = fals
   onOpen?: () => void; // abre el detalle al hacer clic en la imagen o el título
   placeholderImage?: boolean; // muestra un espacio para la imagen aunque no haya
 }) {
-  const src = event.imagePreview ?? imageSrc(event.imageUrl);
+  // Si la imagen no carga (ej. el archivo no existe en este servidor), se muestra el espacio vacío
+  const [broken, setBroken] = useState(false);
+  const src = broken ? null : event.imagePreview ?? imageSrc(event.imageUrl);
   const isFree = event.price === 0;
 
   return (
     <article className="flex flex-col bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden hover:border-slate-700 transition-all h-full">
       {src ? (
         <div className={`w-full h-40 bg-slate-950 overflow-hidden ${onOpen ? 'cursor-pointer' : ''}`} onClick={onOpen}>
-          <img src={src} alt={event.title} className={`w-full h-full object-cover ${onOpen ? 'hover:scale-105 transition-transform duration-300' : ''}`} />
+          <img src={src} alt={event.title} onError={() => setBroken(true)} className={`w-full h-full object-cover ${onOpen ? 'hover:scale-105 transition-transform duration-300' : ''}`} />
         </div>
       ) : placeholderImage ? (
         <div className="w-full h-40 bg-slate-950 flex flex-col items-center justify-center text-slate-600 text-xs gap-1">

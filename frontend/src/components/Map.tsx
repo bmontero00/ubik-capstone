@@ -6,7 +6,7 @@ import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import { LocateFixed, Loader2 } from 'lucide-react';
 import { DARK_TILES, categoryColor } from '../utils/mapTiles';
-import { formatEventDate, formatPrice } from '../services/events';
+import { formatEventDate, formatPrice, imageSrc } from '../services/events';
 import { EVENT_STATUS_LABELS } from '../utils/labels';
 
 interface MapEvent {
@@ -17,6 +17,7 @@ interface MapEvent {
   address: string;
   latitude: number;
   longitude: number;
+  imageUrl?: string | null;
   status?: keyof typeof EVENT_STATUS_LABELS;
   category?: { name: string };
 }
@@ -159,9 +160,8 @@ export default function Map({
             )}
             <Marker position={[userLocation.lat, userLocation.lng]} icon={userIcon} zIndexOffset={1000}>
               <Popup>
-                <strong>Tu ubicación actual</strong>
-                <br />
-                Desde aquí calculamos la distancia a los eventos.
+                <strong className="block text-sm text-white">Tu ubicación actual</strong>
+                <span className="text-xs text-slate-400">Desde aquí calculamos la distancia a los eventos.</span>
               </Popup>
             </Marker>
           </>
@@ -170,29 +170,36 @@ export default function Map({
         {events.map((evt) => (
           <Marker key={evt.id} position={[evt.latitude, evt.longitude]} icon={iconFor(evt)}>
             <Popup>
-              <div className="text-slate-800 min-w-[180px]">
+              <div className="w-[220px]">
+                {imageSrc(evt.imageUrl) && (
+                  <img src={imageSrc(evt.imageUrl)!} alt="" className="w-full h-24 object-cover rounded-xl mb-2.5" onError={(e) => (e.currentTarget.style.display = 'none')} />
+                )}
                 <span
-                  className="inline-block text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded mb-1"
-                  style={{ background: `${categoryColor(evt.category?.name)}33`, color: '#1e293b' }}
+                  className="inline-block text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md text-slate-950"
+                  style={{ background: categoryColor(evt.category?.name) }}
                 >
                   {evt.category?.name}
                 </span>
-                <strong className="text-sm block leading-snug">{evt.title}</strong>
+                <strong className="block mt-1.5 text-sm font-bold text-white leading-snug">{evt.title}</strong>
                 {evt.status && evt.status !== 'PUBLISHED' && (
-                  <span className="text-[11px] font-bold text-rose-600 block">{EVENT_STATUS_LABELS[evt.status].label}</span>
+                  <span className="block text-[11px] font-bold text-rose-300">{EVENT_STATUS_LABELS[evt.status].label}</span>
                 )}
-                <span className="text-xs text-slate-600 block mt-1">{formatEventDate(evt.date)}</span>
-                <span className="text-xs text-slate-500 block">{evt.address}</span>
-                <span className="text-xs font-bold text-indigo-600 block mt-1">{formatPrice(evt.price)}</span>
-                {onOpenEvent && (
-                  <button
-                    type="button"
-                    onClick={() => onOpenEvent(evt.id)}
-                    className="mt-2 w-full px-3 py-1.5 text-xs font-bold rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white transition-colors"
-                  >
-                    Ver más
-                  </button>
-                )}
+                <span className="block mt-1 text-xs text-slate-300">{formatEventDate(evt.date)}</span>
+                <span className="block text-xs text-slate-500 truncate">{evt.address}</span>
+                <div className="mt-2.5 flex items-center justify-between gap-2">
+                  <span className={`text-sm font-extrabold ${evt.price === 0 ? 'text-emerald-300' : 'text-white'}`}>
+                    {evt.price === 0 ? 'Gratis' : formatPrice(evt.price)}
+                  </span>
+                  {onOpenEvent && (
+                    <button
+                      type="button"
+                      onClick={() => onOpenEvent(evt.id)}
+                      className="px-3 py-1.5 text-xs font-bold rounded-lg text-slate-950 bg-gradient-to-r from-emerald-400 to-cyan-400 hover:from-emerald-300 hover:to-cyan-300 transition-colors"
+                    >
+                      Ver más
+                    </button>
+                  )}
+                </div>
               </div>
             </Popup>
           </Marker>
