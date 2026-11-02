@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Minus, Plus, Ticket, ArrowRight, Info, TicketCheck } from 'lucide-react';
+import { Minus, Plus, Ticket, ArrowRight, Info, TicketCheck, Hourglass } from 'lucide-react';
 import { formatPrice } from '../../services/events';
 import { TICKET_LIMITS } from './ticketRules';
 
@@ -10,16 +10,35 @@ interface TicketSelectorProps {
   available: boolean; // el evento está publicado y es futuro
   blockedReason?: string; // ej. cuenta en revisión
   owned: number; // entradas vigentes que el asistente ya tiene para este evento
+  includesFee?: boolean; // el precio incluye cargo por servicio
+  salesPaused?: boolean; // condición especial en revisión: la venta se libera pronto
   onContinue: (quantity: number) => void;
   onViewTickets?: () => void;
 }
 
 // Elección de la cantidad de entradas en el detalle del evento (como en las ticketeras: cantidad → datos → pago)
-export default function TicketSelector({ price, available, blockedReason, owned, onContinue, onViewTickets }: TicketSelectorProps) {
+export default function TicketSelector({
+  price, available, blockedReason, owned, includesFee, salesPaused, onContinue, onViewTickets,
+}: TicketSelectorProps) {
   const max = Math.max(0, Math.min(TICKET_LIMITS.maxPorCompra, TICKET_LIMITS.maxPorEvento - owned));
   const [quantity, setQuantity] = useState(1);
   const free = price === 0;
   const disabled = !available || !!blockedReason || max === 0;
+
+  if (salesPaused) {
+    return (
+      <div className="rounded-2xl border border-amber-500/30 bg-gradient-to-br from-amber-500/10 via-slate-950 to-slate-950 p-4 sm:p-5 flex gap-3">
+        <Hourglass className="w-6 h-6 text-amber-300 shrink-0" />
+        <div>
+          <p className="font-bold text-amber-100">La venta de entradas se liberará muy pronto</p>
+          <p className="text-sm text-slate-400 mt-1">
+            Estamos terminando de preparar este evento. Vuelve en unos días o revisa sus novedades: te contaremos aquí apenas puedas comprar.
+          </p>
+          {price > 0 && <p className="text-xs text-slate-500 mt-2">Valor de la entrada: <span className="font-semibold text-slate-300">{formatPrice(price)}</span></p>}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="rounded-2xl border border-indigo-500/30 bg-gradient-to-br from-indigo-600/15 via-slate-950 to-slate-950 p-4 sm:p-5">
@@ -29,7 +48,7 @@ export default function TicketSelector({ price, available, blockedReason, owned,
             <Ticket className="w-3.5 h-3.5" /> {free ? 'Entrada liberada' : 'Entrada general'}
           </p>
           <p className="text-xl font-extrabold text-white mt-0.5">{free ? 'Gratis' : formatPrice(price)}</p>
-          {!free && <p className="text-[11px] text-slate-500">por persona</p>}
+          {!free && <p className="text-[11px] text-slate-500">por persona{includesFee && ' · incluye cargo por servicio'}</p>}
         </div>
 
         {!disabled && (

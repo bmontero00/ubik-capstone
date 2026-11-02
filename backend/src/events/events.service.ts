@@ -5,6 +5,8 @@ import type { AuthenticatedUser } from '../auth/auth.guards';
 import { accountUnderReviewError } from '../auth/account-status';
 import { CreateAnnouncementDto, CreateEventDto, UpdateEventDto } from './dto/event.dto';
 import { bitacoraInclude, cambioEstado, diffEvent, serializeBitacora } from './bitacora';
+import { ParametrosService } from '../parametros/parametros.service';
+import { conPrecios, precioFinal } from '../parametros/cargos';
 
 // Estados visibles en el catálogo público. Los cancelados y postergados se muestran
 // con su aviso para que los asistentes se enteren; los en revisión y finalizados no.
@@ -29,12 +31,25 @@ const eventInclude = {
 
 @Injectable()
 export class EventsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly parametros: ParametrosService,
+  ) {}
+
+  // Lo que el formulario de eventos necesita saber antes de crear (ej. el % de cargo vigente)
+  async configuracionPublica() {
+    return { porcentajeCargoServicio: await this.parametros.porcentajeCargoVigente() };
+  }
 
   async create(dto: CreateEventDto, user: AuthenticatedUser, imageUrl: string | null) {
     await this.assertCategoryExists(dto.categoryId);
     const date = this.parseFutureDate(dto.date);
-    const { sourceEventId, ...fields } = dto;
+    const { sourceEventId, solicitarCondicionEspecial, justificacionCondicion, porcentajeSolicitado, ...fields } = dto;
+    if (solicitarCondicionEspecial && dto.price <= 0) {
+      throw new BadRequestException('Los eventos gratuitos no tienen cargo por servicio: no necesitas solicitar una condición especial');
+    }
+    // El % de cargo queda fijo para este evento aunque después cambie el de la plataforma
+    const porcentajeCargo = await this.parametros.porcentajeCargoVigente();
 
     // Duplicar: sin imagen nueva se reutiliza la del evento original (solo de un evento propio)
     if (!imageUrl && sourceEventId) {
@@ -45,16 +60,24 @@ export class EventsService {
       if (source && (source.organizerId === user.sub || user.role === 'ADMIN')) imageUrl = source.imageUrl;
     }
 
-    return this.prisma.event.create({
+    const created = await this.prisma.event.create({
       data: {
         ...fields,
         date,
         organizerId: user.sub,
         imageUrl,
+        porcentajeCargo,
+        // Con una condición especial pendiente, la venta queda en pausa hasta que un admin responda
+        ...(solicitarCondicionEspecial && {
+          estadoCondicion: 'PENDIENTE',
+          justificacionCondicion,
+          porcentajeSolicitado: porcentajeSolicitado ?? null,
+        }),
         bitacora: { create: { tipo: 'CREACION', autorId: user.sub } },
       },
       include: eventInclude,
     });
+    return conPrecios(created, true);
   }
 
   async findAll(lat?: number, lng?: number, radiusKm?: number) {
@@ -68,12 +91,12 @@ export class EventsService {
       return events
         .map((evt) => {
           const distance = this.calculateHaversine(lat, lng, evt.latitude, evt.longitude);
-          return { ...evt, distanceKm: Math.round(distance * 10) / 10 };
+          return { ...conPrecios(evt), distanceKm: Math.round(distance * 10) / 10 };
         })
         .filter((evt) => evt.distanceKm <= radiusKm);
     }
 
-    return events;
+    return events.map((evt) => conPrecios(evt));
   }
 
   // Detalle con la bitácora. Los eventos no públicos solo los ven su organizador y los admins.
@@ -107,7 +130,7 @@ export class EventsService {
     const perfilPublico =
       organizer.role === 'ORGANIZER' && organizer.status === 'ACTIVE' && organizer.organizerProfile?.status === 'APPROVED';
     return {
-      ...rest,
+      ...conPrecios(rest, canManage),
       organizer: {
         id: organizer.id,
         name: organizer.role === 'ADMIN' ? 'Equipo UBIK' : organizer.name,
@@ -138,7 +161,7 @@ export class EventsService {
       orderBy: { date: 'desc' },
     });
     return events.map(({ bitacora, _count, ...evt }) => ({
-      ...evt,
+      ...conPrecios(evt, true),
       ultimoAvisoEquipo: serializeBitacora(bitacora, true)[0] ?? null,
       totalAnuncios: _count.bitacora,
     }));
@@ -163,13 +186,17 @@ export class EventsService {
     });
 
     const categories = await this.prisma.category.findMany({ select: { id: true, name: true } });
-    const cambios = diffEvent(event, updated, (cid) => categories.find((c) => c.id === cid)?.name);
+    const cambios = diffEvent(event, updated, (cid) => categories.find((c) => c.id === cid)?.name)
+      // En la bitácora el precio se muestra como lo ve el público (con el cargo del evento)
+      .map((c) => (c.campo === 'precio'
+        ? { ...c, anterior: precioFinal(Number(c.anterior), event.porcentajeCargo), nuevo: precioFinal(Number(c.nuevo), event.porcentajeCargo) }
+        : c));
     if (cambios.length) {
       await this.prisma.bitacoraEvento.create({
         data: { tipo: 'CAMBIO_DATOS', eventoId: id, autorId: user.sub, cambios: cambios as unknown as Prisma.InputJsonValue },
       });
     }
-    return updated;
+    return conPrecios(updated, true);
   }
 
   // El organizador cancela su propio evento; queda visible con el aviso y el motivo
@@ -235,7 +262,7 @@ export class EventsService {
         },
       }),
     ]);
-    return updated;
+    return conPrecios(updated, true);
   }
 
   async addAnnouncement(id: string, user: AuthenticatedUser, dto: CreateAnnouncementDto) {

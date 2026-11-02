@@ -48,6 +48,12 @@ export class EventsController {
     return this.eventsService.findAllCategories();
   }
 
+  // Datos públicos para el formulario de eventos (ej. % de cargo por servicio vigente)
+  @Get('configuracion-publica')
+  async getPublicConfig() {
+    return this.eventsService.configuracionPublica();
+  }
+
   // Eventos del organizador que inició sesión (todos sus estados)
   @Get('mine')
   @UseGuards(JwtAuthGuard, RolesGuard)

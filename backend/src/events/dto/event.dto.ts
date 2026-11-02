@@ -1,8 +1,9 @@
 import { Transform, Type } from 'class-transformer';
 import {
-  IsBoolean, IsISO8601, IsInt, IsLatitude, IsLongitude, IsNotEmpty, IsOptional, IsString, IsUUID, Length, Matches,
-  Max, Min,
+  IsBoolean, IsISO8601, IsInt, IsLatitude, IsLongitude, IsNotEmpty, IsNumber, IsOptional, IsString, IsUUID, Length,
+  Matches, Max, Min, ValidateIf,
 } from 'class-validator';
+import { PORCENTAJE_CARGO_MAX } from '../../parametros/cargos';
 import { IsReason } from '../../common/reason.validator';
 
 // Límites compartidos con el formulario del frontend (frontend/src/components/events/eventRules.ts)
@@ -70,6 +71,25 @@ export class CreateEventDto {
   @IsOptional()
   @IsUUID('4', { message: 'El evento de origen no es válido' })
   sourceEventId?: string;
+
+  // Solicitud de condición especial de cargo (solo al crear y en eventos con valor).
+  // Mientras un admin no responda, la venta de entradas queda en pausa.
+  @IsOptional()
+  @toBoolean()
+  @IsBoolean()
+  solicitarCondicionEspecial?: boolean;
+
+  @ValidateIf((o: CreateEventDto) => o.solicitarCondicionEspecial === true)
+  @IsReason()
+  justificacionCondicion?: string;
+
+  // % que propone el organizador (opcional): el admin decide el definitivo
+  @ValidateIf((o: CreateEventDto) => o.solicitarCondicionEspecial === true && o.porcentajeSolicitado !== undefined)
+  @toNumber()
+  @IsNumber({}, { message: 'El porcentaje propuesto no es válido' })
+  @Min(0, { message: 'El porcentaje propuesto no puede ser negativo' })
+  @Max(PORCENTAJE_CARGO_MAX, { message: `El porcentaje propuesto puede ser como máximo ${PORCENTAJE_CARGO_MAX}%` })
+  porcentajeSolicitado?: number;
 }
 
 export class UpdateEventDto {

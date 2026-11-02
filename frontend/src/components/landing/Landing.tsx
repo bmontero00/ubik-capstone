@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import UbikLogo from '../UbikLogo';
 import { API_URL } from '../../services/auth';
-import { Category, EventItem, formatEventDate, formatPrice, imageSrc, relativeTime } from '../../services/events';
+import { Category, EventItem, formatEventDate, formatPrice, imageSrc, publicPrice, relativeTime } from '../../services/events';
 import { categoryColor } from '../../utils/mapTiles';
 
 interface LandingProps {
@@ -296,7 +296,10 @@ function UpcomingCard({ event, onOpen }: { event: EventItem; onOpen: () => void 
           <p className="font-bold text-white truncate">{event.title}</p>
           <p className="text-xs text-slate-400 mt-1 flex items-center gap-1.5"><CalendarDays className="w-3.5 h-3.5 shrink-0" /> {formatEventDate(event.date)}</p>
           <p className="text-xs text-slate-500 mt-0.5 flex items-center gap-1.5 truncate"><MapPin className="w-3.5 h-3.5 shrink-0" /> <span className="truncate">{event.address}</span></p>
-          <p className={`text-sm font-bold mt-2 ${event.price === 0 ? 'text-emerald-300' : 'text-white'}`}>{event.price === 0 ? 'Entrada liberada' : formatPrice(event.price)}</p>
+          <p className={`text-sm font-bold mt-2 ${event.price === 0 ? 'text-emerald-300' : 'text-white'}`}>
+            {event.price === 0 ? 'Entrada liberada' : formatPrice(publicPrice(event))}
+            {event.ventaPausada && <span className="ml-2 text-[11px] font-semibold text-amber-200">· Venta próximamente</span>}
+          </p>
         </div>
       </button>
     </li>

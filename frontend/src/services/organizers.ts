@@ -7,6 +7,7 @@ export interface OrganizerEvent {
   date: string;
   address: string;
   price: number;
+  precioFinal?: number;
   imageUrl: string | null;
   status: EventStatus;
   category: Category;

@@ -1,21 +1,23 @@
 'use client';
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { LayoutDashboard, ShieldCheck, Users, CalendarCog, ChartColumn, Compass } from 'lucide-react';
+import { LayoutDashboard, ShieldCheck, Users, CalendarCog, ChartColumn, Compass, Percent } from 'lucide-react';
 import { apiJson } from '../../services/auth';
 import AdminPanel from '../AdminPanel';
 import OverviewTab, { Overview } from './OverviewTab';
 import UsersTab from './UsersTab';
 import EventsTab from './EventsTab';
 import ReportsTab from './ReportsTab';
+import CargosTab from './CargosTab';
 
-export type AdminTab = 'overview' | 'requests' | 'users' | 'events' | 'reports' | 'explore';
+export type AdminTab = 'overview' | 'requests' | 'users' | 'events' | 'cargos' | 'reports' | 'explore';
 
 const TABS: { id: AdminTab; label: string; icon: React.ElementType }[] = [
   { id: 'overview', label: 'Resumen', icon: LayoutDashboard },
   { id: 'requests', label: 'Solicitudes', icon: ShieldCheck },
   { id: 'users', label: 'Gestión de usuarios', icon: Users },
   { id: 'events', label: 'Gestión de eventos', icon: CalendarCog },
+  { id: 'cargos', label: 'Cargos', icon: Percent },
   { id: 'reports', label: 'Reportes', icon: ChartColumn },
   { id: 'explore', label: 'Explorar', icon: Compass },
 ];
@@ -64,6 +66,7 @@ export default function AdminDashboard({ explore, onEventsChanged }: AdminDashbo
   const badges: Partial<Record<AdminTab, number>> = {
     requests: overview?.pendingOrganizers ?? 0,
     users: flaggedUsers,
+    cargos: overview?.pendingConditions ?? 0,
   };
 
   return (
@@ -102,6 +105,7 @@ export default function AdminDashboard({ explore, onEventsChanged }: AdminDashbo
       {tab === 'requests' && <AdminPanel />}
       {tab === 'users' && <UsersTab onChanged={loadOverview} />}
       {tab === 'events' && <EventsTab onChanged={() => { loadOverview(); onEventsChanged(); }} />}
+      {tab === 'cargos' && <CargosTab onChanged={() => { loadOverview(); onEventsChanged(); }} />}
       {tab === 'reports' && <ReportsTab />}
       {tab === 'explore' && explore}
     </div>

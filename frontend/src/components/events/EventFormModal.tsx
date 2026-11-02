@@ -4,13 +4,15 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import {
   X, Check, ChevronLeft, ChevronRight, Loader2, Search, MapPin, CalendarDays, Clock, Ticket, Gift,
-  ImagePlus, Trash2, RefreshCw, Pencil, Eye, Sparkles, Copy,
+  ImagePlus, Trash2, RefreshCw, Pencil, Eye, Sparkles, Copy, Percent, Hourglass, BadgePercent,
 } from 'lucide-react';
 import EventCard from './EventCard';
 import {
   EVENT_LIMITS, EventFormState, FieldErrors, STEPS, finalPrice, toDateTime, validateStep,
 } from './eventRules';
-import { Category, EventItem, EventPayload, createEvent, formatPrice, imageSrc, updateEvent } from '../../services/events';
+import {
+  Category, EventItem, EventPayload, createEvent, fetchPublicConfig, formatPercent, formatPrice, imageSrc, priceWithFee, updateEvent,
+} from '../../services/events';
 import { PlaceResult, reverseGeocode, searchPlaces } from '../../utils/geocoding';
 
 const LocationPicker = dynamic(() => import('./LocationPicker'), {
@@ -52,6 +54,9 @@ function initialState(event?: EventItem, location?: { lat: number; lng: number }
       image: null,
       currentImageUrl: source.imageUrl ?? null,
       removeImage: false,
+      solicitarCondicion: false,
+      justificacionCondicion: '',
+      porcentajeSolicitado: '',
     };
   }
   const tomorrow = new Date(Date.now() + 864e5);
@@ -69,6 +74,9 @@ function initialState(event?: EventItem, location?: { lat: number; lng: number }
     image: null,
     currentImageUrl: null,
     removeImage: false,
+    solicitarCondicion: false,
+    justificacionCondicion: '',
+    porcentajeSolicitado: '',
   };
 }
 
@@ -102,6 +110,16 @@ export default function EventFormModal({ categories, event, initialLocation, dup
   const [saving, setSaving] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
+
+  // Cargo por servicio: al editar es el fijado al evento; al crear (o duplicar), el vigente
+  const [feePct, setFeePct] = useState<number | null>(isEdit ? event!.porcentajeCargo ?? 0 : null);
+  useEffect(() => {
+    if (isEdit) return;
+    fetchPublicConfig().then((c) => setFeePct(c.porcentajeCargoServicio)).catch(() => setFeePct(null));
+  }, [isEdit]);
+  const basePrice = finalPrice(form);
+  const publicPriceValue = feePct === null ? basePrice : priceWithFee(basePrice, feePct);
+  const requestsCondition = !isEdit && !form.isFree && form.solicitarCondicion;
 
   const set = <K extends keyof EventFormState>(key: K, value: EventFormState[K]) =>
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -172,6 +190,11 @@ export default function EventFormModal({ categories, event, initialLocation, dup
       price: finalPrice(form),
       image: form.image,
       ...(isEdit && form.removeImage && !form.image ? { removeImage: true } : {}),
+      ...(requestsCondition ? {
+        solicitarCondicionEspecial: true,
+        justificacionCondicion: form.justificacionCondicion.normalize('NFC').trim(),
+        ...(form.porcentajeSolicitado !== '' ? { porcentajeSolicitado: Number(form.porcentajeSolicitado) } : {}),
+      } : {}),
       // Duplicado sin imagen nueva: el backend reutiliza la portada del evento original
       ...(isDuplicate && !form.image && !form.removeImage && form.currentImageUrl ? { sourceEventId: duplicateFrom!.id } : {}),
     };
@@ -397,8 +420,31 @@ export default function EventFormModal({ categories, event, initialLocation, dup
                           </button>
                         ))}
                       </div>
+                      {basePrice > 0 && feePct !== null && (
+                        <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                          <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
+                            <p className="text-slate-500">Recibirás por entrada</p>
+                            <p className="text-base font-extrabold text-white mt-0.5">{formatPrice(basePrice)}</p>
+                          </div>
+                          <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/25">
+                            <p className="text-emerald-200/80">El público verá</p>
+                            <p className="text-base font-extrabold text-emerald-100 mt-0.5">{formatPrice(publicPriceValue)}</p>
+                          </div>
+                          <p className="col-span-2 flex items-start gap-1.5 text-slate-400">
+                            <Percent className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                            {isEdit
+                              ? `Este evento tiene un cargo por servicio fijo de ${formatPercent(feePct)}: no cambia aunque edites el precio.`
+                              : `Incluye ${formatPercent(feePct)} de cargo por servicio de UBIK. Queda fijo para este evento aunque el porcentaje de la plataforma cambie más adelante.`}
+                          </p>
+                        </div>
+                      )}
                     </Field>
                   )}
+
+                  {!form.isFree && !isEdit && (
+                    <SpecialConditionField form={form} set={set} errors={showErrors ? errors : {}} feePct={feePct} />
+                  )}
+                  {isEdit && event?.estadoCondicion && <ConditionStatus event={event} />}
 
                   <ImageField form={form} set={set} shownImage={shownImage} />
                 </>
@@ -419,8 +465,16 @@ export default function EventFormModal({ categories, event, initialLocation, dup
                     {form.address.trim()}
                   </SummaryRow>
                   <SummaryRow label="Entrada" onEdit={() => goTo(2)}>
-                    {formatPrice(finalPrice(form))}
+                    {basePrice > 0 && feePct !== null
+                      ? <>{formatPrice(basePrice)} para ti · <span className="text-white font-semibold">{formatPrice(publicPriceValue)}</span> para el público</>
+                      : formatPrice(basePrice)}
                   </SummaryRow>
+                  {requestsCondition && (
+                    <SummaryRow label="Condición especial de cargo" onEdit={() => goTo(2)}>
+                      <span className="line-clamp-2">{form.justificacionCondicion.trim()}</span>
+                      {form.porcentajeSolicitado !== '' && <span className="block text-slate-500">Propones {formatPercent(Number(form.porcentajeSolicitado))}</span>}
+                    </SummaryRow>
+                  )}
                   <SummaryRow label="Imagen de portada" onEdit={() => goTo(2)}>
                     {form.image ? form.image.name : shownImage ? 'Imagen actual' : 'Sin imagen (opcional)'}
                   </SummaryRow>
@@ -428,7 +482,9 @@ export default function EventFormModal({ categories, event, initialLocation, dup
                     <Eye className="w-4 h-4 shrink-0 text-slate-500" />
                     {isEdit
                       ? 'Los cambios se verán de inmediato en el catálogo.'
-                      : 'Tu evento se publicará de inmediato en el catálogo y en el mapa.'}
+                      : requestsCondition
+                        ? 'Tu evento se publicará de inmediato, pero la venta de entradas quedará en pausa hasta que el equipo de UBIK responda tu solicitud.'
+                        : 'Tu evento se publicará de inmediato en el catálogo y en el mapa.'}
                   </p>
                 </div>
               )}
@@ -445,7 +501,8 @@ export default function EventFormModal({ categories, event, initialLocation, dup
                   event={{
                     title: form.title.trim(),
                     description: form.description.trim(),
-                    price: finalPrice(form),
+                    price: publicPriceValue,
+                    ventaPausada: requestsCondition || !!event?.ventaPausada,
                     date: when && !Number.isNaN(when.getTime()) ? when.toISOString() : '',
                     address: form.address.trim(),
                     categoryName: category?.name,
@@ -759,5 +816,91 @@ function ImageField({ form, set, shownImage }: {
         </button>
       )}
     </Field>
+  );
+}
+
+// Solicitud de condición especial de cargo por servicio (ej. evento benéfico o convenio)
+function SpecialConditionField({ form, set, errors, feePct }: {
+  form: EventFormState;
+  set: <K extends keyof EventFormState>(key: K, value: EventFormState[K]) => void;
+  errors: FieldErrors;
+  feePct: number | null;
+}) {
+  const length = form.justificacionCondicion.normalize('NFC').trim().length;
+  return (
+    <div className={`rounded-2xl border p-4 transition-colors ${form.solicitarCondicion ? 'border-amber-500/40 bg-amber-500/5' : 'border-slate-800 bg-slate-950/60'}`}>
+      <label className="flex items-start gap-3 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={form.solicitarCondicion}
+          onChange={(e) => set('solicitarCondicion', e.target.checked)}
+          className="mt-1 w-4 h-4 accent-amber-500"
+        />
+        <span>
+          <span className="flex items-center gap-1.5 text-sm font-semibold text-white">
+            <BadgePercent className="w-4 h-4 text-amber-300" /> Solicitar condición especial de cargo
+          </span>
+          <span className="block text-xs text-slate-400 mt-0.5">
+            Para eventos benéficos, comunitarios o convenios. El equipo de UBIK revisará tu solicitud
+            {feePct !== null && ` y podrá ajustar el cargo de ${formatPercent(feePct)}`}.
+          </span>
+        </span>
+      </label>
+
+      {form.solicitarCondicion && (
+        <div className="mt-4 space-y-3">
+          <div>
+            <label className="block text-xs font-semibold text-slate-300 mb-1">¿Por qué la solicitas? <span className="text-rose-400">*</span></label>
+            <textarea
+              rows={3}
+              value={form.justificacionCondicion}
+              onChange={(e) => set('justificacionCondicion', e.target.value)}
+              maxLength={EVENT_LIMITS.justificationMax + 50}
+              placeholder="Ej. Es un evento benéfico: todo lo recaudado irá a la junta de vecinos para arreglar la plaza."
+              className={`w-full px-3 py-2 text-sm bg-slate-950 border rounded-xl text-white focus:outline-none focus:border-amber-400 resize-y ${errors.justificacionCondicion ? 'border-rose-500/70' : 'border-slate-700'}`}
+            />
+            <div className="flex justify-between text-[11px] mt-1">
+              <span className="text-rose-300">{errors.justificacionCondicion}</span>
+              <span className={length > EVENT_LIMITS.justificationMax ? 'text-rose-300' : 'text-slate-500'}>{length}/{EVENT_LIMITS.justificationMax}</span>
+            </div>
+          </div>
+          <div className="max-w-[220px]">
+            <label className="block text-xs font-semibold text-slate-300 mb-1">Porcentaje que propones (opcional)</label>
+            <div className="relative">
+              <input
+                inputMode="numeric"
+                value={form.porcentajeSolicitado}
+                onChange={(e) => set('porcentajeSolicitado', e.target.value.replace(/\D/g, '').slice(0, 2))}
+                placeholder="Ej. 0"
+                className={`w-full px-3 py-2 pr-8 text-sm bg-slate-950 border rounded-xl text-white focus:outline-none focus:border-amber-400 ${errors.porcentajeSolicitado ? 'border-rose-500/70' : 'border-slate-700'}`}
+              />
+              <span className="absolute right-3 top-2 text-sm text-slate-500">%</span>
+            </div>
+            {errors.porcentajeSolicitado && <p className="text-[11px] text-rose-300 mt-1">{errors.porcentajeSolicitado}</p>}
+          </div>
+          <p className="flex items-start gap-2 text-xs text-amber-100 bg-amber-500/10 border border-amber-500/25 rounded-xl p-3">
+            <Hourglass className="w-4 h-4 shrink-0 text-amber-300" />
+            Tu evento se publicará de inmediato, pero la venta de entradas quedará en pausa hasta que respondamos.
+            Los asistentes verán el aviso &quot;Venta de entradas próximamente&quot;.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Estado de la condición especial al editar un evento (el organizador no puede cambiarla)
+function ConditionStatus({ event }: { event: EventItem }) {
+  const pending = event.estadoCondicion === 'PENDIENTE';
+  const approved = event.estadoCondicion === 'APROBADA';
+  return (
+    <div className={`rounded-2xl border p-4 text-xs ${pending ? 'border-amber-500/30 bg-amber-500/5 text-amber-100' : approved ? 'border-emerald-500/30 bg-emerald-500/5 text-emerald-100' : 'border-slate-700 bg-slate-950 text-slate-300'}`}>
+      <p className="flex items-center gap-1.5 font-semibold text-sm">
+        <BadgePercent className="w-4 h-4" />
+        {pending ? 'Condición especial en revisión' : approved ? `Condición especial aprobada: ${formatPercent(event.porcentajeCargo ?? 0)} de cargo` : 'Condición especial rechazada'}
+      </p>
+      {pending && <p className="mt-1">La venta de entradas se habilitará cuando el equipo de UBIK responda tu solicitud.</p>}
+      {event.respuestaCondicion && <p className="mt-1 opacity-80">Respuesta: {event.respuestaCondicion}</p>}
+    </div>
   );
 }

@@ -3,11 +3,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   CalendarPlus, CalendarDays, MapPin, Pencil, Ban, Loader2, Inbox, Lock, ImageIcon, Copy, CalendarClock, Eye,
-  ShieldAlert, Megaphone, PlayCircle, Check, Rocket,
+  ShieldAlert, Megaphone, PlayCircle, Check, Rocket, Hourglass, BadgePercent,
 } from 'lucide-react';
 import {
-  EntradaBitacora, EventItem, cancelEvent, fetchMyEvents, formatEventDate, formatPrice, imageSrc, postponeEvent,
-  relativeTime, resumeEvent,
+  EntradaBitacora, EventItem, cancelEvent, fetchMyEvents, formatEventDate, formatPercent, formatPrice, imageSrc,
+  postponeEvent, publicPrice, relativeTime, resumeEvent,
 } from '../../services/events';
 import { EventStatus } from '../../services/auth';
 import { EVENT_STATUS_LABELS, StatusPill, formatDate } from '../../utils/labels';
@@ -278,7 +278,27 @@ export default function MyEventsPanel({ canManage, refreshKey, onCreate, onEdit,
                     </div>
                     <p className="text-xs text-slate-400 flex items-center gap-1.5"><CalendarDays className="w-3.5 h-3.5" /> {formatEventDate(e.date)}</p>
                     <p className="text-xs text-slate-400 flex items-center gap-1.5 mt-0.5"><MapPin className="w-3.5 h-3.5" /> {e.address}</p>
-                    <p className="text-xs text-slate-300 mt-1">{e.category.name} · <span className="font-semibold">{formatPrice(e.price)}</span></p>
+                    <p className="text-xs text-slate-300 mt-1">
+                      {e.category.name} ·{' '}
+                      {e.price > 0 ? (
+                        <>
+                          <span className="font-semibold">Recibes {formatPrice(e.price)}</span>
+                          <span className="text-slate-500"> · el público paga {formatPrice(publicPrice(e))} ({formatPercent(e.porcentajeCargo ?? 0)} de cargo)</span>
+                        </>
+                      ) : (
+                        <span className="font-semibold">Gratis</span>
+                      )}
+                    </p>
+                    {e.estadoCondicion === 'PENDIENTE' && (
+                      <p className="mt-1.5 inline-flex items-center gap-1.5 text-[11px] font-semibold text-amber-200 bg-amber-500/10 border border-amber-500/25 rounded-lg px-2 py-1">
+                        <Hourglass className="w-3.5 h-3.5" /> Condición especial en revisión · venta de entradas en pausa
+                      </p>
+                    )}
+                    {e.estadoCondicion === 'APROBADA' && (
+                      <p className="mt-1.5 inline-flex items-center gap-1.5 text-[11px] font-semibold text-emerald-200 bg-emerald-500/10 border border-emerald-500/25 rounded-lg px-2 py-1">
+                        <BadgePercent className="w-3.5 h-3.5" /> Condición especial aprobada
+                      </p>
+                    )}
                     {e.statusReason && e.status !== 'PUBLISHED' && !teamNotice && (
                       <p className="text-[11px] text-slate-400 mt-1.5 bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 break-words">
                         Motivo: {e.statusReason}
@@ -415,8 +435,10 @@ function TeamNotice({ entry, status, onSeen }: { entry: EntradaBitacora; status:
   const text =
     entry.tipo === 'CAMBIO_ESTADO' && newStatus
       ? `El equipo de UBIK cambió el estado de este evento a "${EVENT_STATUS_LABELS[newStatus].label}".`
-      : entry.tipo === 'CAMBIO_DATOS'
-        ? 'El equipo de UBIK actualizó datos de este evento. Revisa el detalle en sus novedades.'
+      : entry.tipo === 'CAMBIO_DATOS' && entry.titulo
+        ? `${entry.titulo}.`
+        : entry.tipo === 'CAMBIO_DATOS'
+          ? 'El equipo de UBIK actualizó datos de este evento. Revisa el detalle en sus novedades.'
         : 'El equipo de UBIK publicó un anuncio en este evento.';
   const hint =
     status === 'UNDER_REVIEW'

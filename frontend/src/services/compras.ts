@@ -26,8 +26,11 @@ export interface Compra {
   codigo: string;
   estado: EstadoCompra;
   cantidad: number;
-  precioUnitario: number;
+  precioUnitario: number; // precio final por entrada (incluye el cargo)
   total: number;
+  precioBase: number;
+  porcentajeCargo: number;
+  cargoServicio: number; // cargo total de la compra
   medioPago: string | null;
   fechaCreacion: string;
   expiraEn: string | null;

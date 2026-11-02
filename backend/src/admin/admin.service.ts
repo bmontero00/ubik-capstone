@@ -2,6 +2,7 @@ import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/commo
 import { AccountStatus, EventStatus, OrganizerStatus, Prisma, Role } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { cambioEstado } from '../events/bitacora';
+import { conPrecios } from '../parametros/cargos';
 
 // El admin solo gestiona asistentes y organizadores, nunca a otros administradores
 const MANAGED_ROLES: Role[] = ['ATTENDEE', 'ORGANIZER'];
@@ -50,12 +51,13 @@ export class AdminService {
   // --- Resumen ---
 
   async getOverview() {
-    const [usersByRoleStatus, pendingOrganizers, rejectedOrganizers, eventsByStatus, upcomingEvents] = await Promise.all([
+    const [usersByRoleStatus, pendingOrganizers, rejectedOrganizers, eventsByStatus, upcomingEvents, pendingConditions] = await Promise.all([
       this.prisma.user.groupBy({ by: ['role', 'status'], where: NOT_REJECTED, _count: { _all: true } }),
       this.prisma.organizerProfile.count({ where: { status: 'PENDING' } }),
       this.prisma.user.count({ where: IS_REJECTED }),
       this.prisma.event.groupBy({ by: ['status'], _count: { _all: true } }),
       this.prisma.event.count({ where: { status: 'PUBLISHED', date: { gte: new Date() } } }),
+      this.prisma.event.count({ where: { estadoCondicion: 'PENDIENTE' } }),
     ]);
 
     return {
@@ -64,6 +66,7 @@ export class AdminService {
       rejectedOrganizers,
       events: eventsByStatus.map((g) => ({ status: g.status, count: g._count._all })),
       upcomingEvents,
+      pendingConditions,
     };
   }
 
@@ -244,8 +247,8 @@ export class AdminService {
 
   // --- Eventos ---
 
-  listEvents({ status, search }: EventFilters) {
-    return this.prisma.event.findMany({
+  async listEvents({ status, search }: EventFilters) {
+    const events = await this.prisma.event.findMany({
       where: {
         ...(status && { status }),
         ...(search?.trim() && {
@@ -264,6 +267,7 @@ export class AdminService {
       orderBy: { date: 'desc' },
       take: 200,
     });
+    return events.map((e) => conPrecios(e, true));
   }
 
   async updateEventStatus(id: string, adminId: string, status: EventStatus, reason: string) {

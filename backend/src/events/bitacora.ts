@@ -2,7 +2,7 @@ import { BitacoraEvento, Event, EventStatus, Prisma } from '@prisma/client';
 
 // Un cambio registrado en la bitácora. Para la descripción y la imagen solo se indica que cambiaron.
 export interface CambioBitacora {
-  campo: 'titulo' | 'fecha' | 'direccion' | 'precio' | 'categoria' | 'descripcion' | 'imagen' | 'estado';
+  campo: 'titulo' | 'fecha' | 'direccion' | 'precio' | 'categoria' | 'descripcion' | 'imagen' | 'estado' | 'cargo' | 'venta';
   anterior?: string | number | null;
   nuevo?: string | number | null;
 }
@@ -44,13 +44,16 @@ type EntradaConAutor = BitacoraEvento & {
   autor: { id: string; name: string; role: string; organizerProfile: { organizationName: string | null } | null };
 };
 
-// Las revisiones de moderación (entrar o salir de "En revisión") son internas:
-// solo las ven el organizador del evento y los administradores.
-const esInterna = (entrada: BitacoraEvento) =>
-  entrada.tipo === 'CAMBIO_ESTADO' &&
-  ((entrada.cambios as CambioBitacora[] | null) ?? []).some(
-    (c) => c.campo === 'estado' && (c.anterior === 'UNDER_REVIEW' || c.nuevo === 'UNDER_REVIEW'),
+// Son internas (solo las ven el organizador del evento y los administradores) las revisiones de
+// moderación (entrar o salir de "En revisión") y los cambios del % de cargo por servicio.
+const esInterna = (entrada: BitacoraEvento) => {
+  const cambios = (entrada.cambios as CambioBitacora[] | null) ?? [];
+  if (cambios.some((c) => c.campo === 'cargo')) return true;
+  return (
+    entrada.tipo === 'CAMBIO_ESTADO' &&
+    cambios.some((c) => c.campo === 'estado' && (c.anterior === 'UNDER_REVIEW' || c.nuevo === 'UNDER_REVIEW'))
   );
+};
 
 // Lo que ve cada persona de la bitácora. Los administradores firman como "Equipo UBIK".
 export function serializeBitacora(entradas: EntradaConAutor[], canManage: boolean) {

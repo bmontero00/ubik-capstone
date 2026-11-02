@@ -29,15 +29,37 @@ export interface EventItem {
   statusReason?: string | null;
   statusChangedAt?: string | null;
   statusChangedById?: string | null;
+  // Cargo por servicio: "price" es lo que recibe el organizador; el público paga "precioFinal"
+  porcentajeCargo?: number;
+  precioFinal?: number;
+  cargoPorEntrada?: number;
+  ventaPausada?: boolean; // condición especial en revisión: el evento se ve pero no vende
+  // Condición especial (solo para el organizador del evento y los admins)
+  estadoCondicion?: EstadoCondicion | null;
+  justificacionCondicion?: string | null;
+  porcentajeSolicitado?: number | null;
+  respuestaCondicion?: string | null;
+  condicionRevisadaEn?: string | null;
   // Solo en "Mis eventos"
   ultimoAvisoEquipo?: EntradaBitacora | null;
   totalAnuncios?: number;
 }
 
+export type EstadoCondicion = 'PENDIENTE' | 'APROBADA' | 'RECHAZADA';
+
+// Precio que ve y paga el público (incluye el cargo por servicio)
+export const publicPrice = (event: { price: number; precioFinal?: number }) => event.precioFinal ?? event.price;
+
+// Mismo cálculo que el backend: precio del organizador + cargo, redondeado a la decena
+export const priceWithFee = (base: number, porcentaje: number) =>
+  base <= 0 ? 0 : Math.round((base * (1 + porcentaje / 100)) / 10) * 10;
+
+export const formatPercent = (value: number) => `${value.toLocaleString('es-CL', { maximumFractionDigits: 2 })}%`;
+
 export type TipoBitacora = 'CREACION' | 'ANUNCIO' | 'CAMBIO_DATOS' | 'CAMBIO_ESTADO';
 
 export interface CambioBitacora {
-  campo: 'titulo' | 'fecha' | 'direccion' | 'precio' | 'categoria' | 'descripcion' | 'imagen' | 'estado';
+  campo: 'titulo' | 'fecha' | 'direccion' | 'precio' | 'categoria' | 'descripcion' | 'imagen' | 'estado' | 'cargo' | 'venta';
   anterior?: string | number | null;
   nuevo?: string | number | null;
 }
@@ -76,6 +98,10 @@ export interface EventPayload {
   image?: File | null;
   removeImage?: boolean;
   sourceEventId?: string; // al duplicar: reutiliza la imagen del evento original
+  // Solicitud de condición especial de cargo (solo al crear)
+  solicitarCondicionEspecial?: boolean;
+  justificacionCondicion?: string;
+  porcentajeSolicitado?: number;
 }
 
 export const imageSrc = (imageUrl?: string | null) => (imageUrl ? `${API_URL}${imageUrl}` : null);
@@ -83,6 +109,13 @@ export const imageSrc = (imageUrl?: string | null) => (imageUrl ? `${API_URL}${i
 export async function fetchCategories(): Promise<Category[]> {
   const res = await fetch(`${API_URL}/events/categories`);
   if (!res.ok) throw new Error('No se pudieron cargar las categorías');
+  return res.json();
+}
+
+// % de cargo por servicio vigente (lo que se fijará a un evento nuevo)
+export async function fetchPublicConfig(): Promise<{ porcentajeCargoServicio: number }> {
+  const res = await fetch(`${API_URL}/events/configuracion-publica`);
+  if (!res.ok) throw new Error('No se pudo obtener la configuración');
   return res.json();
 }
 

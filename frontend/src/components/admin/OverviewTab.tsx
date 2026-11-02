@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Loader2, ShieldCheck, Users, UserX, TriangleAlert, CalendarCheck, CalendarX2, ChevronRight } from 'lucide-react';
+import { Loader2, ShieldCheck, Users, UserX, TriangleAlert, CalendarCheck, CalendarX2, ChevronRight, Percent } from 'lucide-react';
 import type { AccountStatus, EventStatus, UserRole } from '../../services/auth';
 import type { AdminTab } from './AdminDashboard';
 
@@ -11,6 +11,7 @@ export interface Overview {
   rejectedOrganizers: number;
   events: { status: EventStatus; count: number }[];
   upcomingEvents: number;
+  pendingConditions: number; // solicitudes de condición especial de cargo sin responder
 }
 
 interface OverviewTabProps {
@@ -49,6 +50,15 @@ export default function OverviewTab({ overview, onNavigate }: OverviewTabProps) 
       tone: 'text-amber-300 bg-amber-500/15',
       tab: 'requests',
       highlight: overview.pendingOrganizers > 0,
+    },
+    {
+      label: 'Condiciones especiales',
+      value: overview.pendingConditions,
+      hint: 'Eventos con la venta en pausa esperando respuesta',
+      icon: Percent,
+      tone: 'text-cyan-300 bg-cyan-500/15',
+      tab: 'cargos',
+      highlight: overview.pendingConditions > 0,
     },
     {
       label: 'Asistentes activos',

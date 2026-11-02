@@ -3,9 +3,11 @@
 import React, { useState } from 'react';
 import {
   Megaphone, Sparkles, Pencil, CalendarClock, Ban, CircleCheck, ShieldAlert, Flag, Trash2, Loader2, Send, EyeOff,
+  Ticket, Percent,
 } from 'lucide-react';
 import {
-  CambioBitacora, EntradaBitacora, createAnnouncement, deleteAnnouncement, formatEventDate, formatPrice, relativeTime,
+  CambioBitacora, EntradaBitacora, createAnnouncement, deleteAnnouncement, formatEventDate, formatPercent, formatPrice,
+  relativeTime,
 } from '../../services/events';
 import { EventStatus } from '../../services/auth';
 import { formatDate } from '../../utils/labels';
@@ -30,17 +32,21 @@ const FIELD_LABELS: Record<CambioBitacora['campo'], string> = {
   descripcion: 'Descripción',
   imagen: 'Imagen',
   estado: 'Estado',
+  cargo: 'Cargo por servicio',
+  venta: 'Venta de entradas',
 };
 
 const formatValue = (c: CambioBitacora, value: CambioBitacora['anterior']) => {
   if (value === null || value === undefined) return '—';
   if (c.campo === 'fecha') return formatEventDate(String(value));
   if (c.campo === 'precio') return formatPrice(Number(value));
+  if (c.campo === 'cargo') return formatPercent(Number(value));
   return String(value);
 };
 
 function ChangeList({ cambios }: { cambios: CambioBitacora[] }) {
-  const visibles = cambios.filter((c) => c.campo !== 'estado');
+  // El estado y la venta ya se explican en el título de la entrada
+  const visibles = cambios.filter((c) => c.campo !== 'estado' && c.campo !== 'venta');
   if (!visibles.length) return null;
   return (
     <ul className="mt-2 space-y-1 text-xs">
@@ -66,6 +72,12 @@ function entryHeader(entry: EntradaBitacora) {
     case 'ANUNCIO':
       return { title: entry.titulo || 'Anuncio', icon: Megaphone, tone: 'text-amber-200 bg-amber-500/20' };
     case 'CAMBIO_DATOS':
+      if (entry.cambios.some((c) => c.campo === 'venta')) {
+        return { title: '¡Ya está disponible la venta de entradas!', icon: Ticket, tone: 'text-emerald-300 bg-emerald-500/15' };
+      }
+      if (entry.cambios.some((c) => c.campo === 'cargo')) {
+        return { title: entry.titulo || 'Cargo por servicio actualizado', icon: Percent, tone: 'text-cyan-300 bg-cyan-500/15' };
+      }
       return { title: 'Se actualizaron los datos del evento', icon: Pencil, tone: 'text-slate-300 bg-slate-700/60' };
     case 'CAMBIO_ESTADO': {
       const nuevo = entry.cambios.find((c) => c.campo === 'estado')?.nuevo as EventStatus | undefined;

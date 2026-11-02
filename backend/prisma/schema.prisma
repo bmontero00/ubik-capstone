@@ -23,15 +23,19 @@ model User {
   updatedAt DateTime @updatedAt
 
   // Estado de la cuenta, lo administra un ADMIN (motivo obligatorio si no es ACTIVE)
-  status             AccountStatus    @default(ACTIVE)
-  statusReason       String?
-  statusChangedAt    DateTime?
-  statusChangedById  String?
-  statusChangedBy    User?            @relation("StatusChangedBy", fields: [statusChangedById], references: [id])
-  statusChangedUsers User[]           @relation("StatusChangedBy")
-  eventStatusChanges Event[]          @relation("EventStatusChangedBy")
-  entradasBitacora   BitacoraEvento[] @relation("AutorBitacora")
-  compras            Compra[]
+  status               AccountStatus          @default(ACTIVE)
+  statusReason         String?
+  statusChangedAt      DateTime?
+  statusChangedById    String?
+  statusChangedBy      User?                  @relation("StatusChangedBy", fields: [statusChangedById], references: [id])
+  statusChangedUsers   User[]                 @relation("StatusChangedBy")
+  eventStatusChanges   Event[]                @relation("EventStatusChangedBy")
+  entradasBitacora     BitacoraEvento[]       @relation("AutorBitacora")
+  compras              Compra[]
+  parametrosEditados   ParametroPlataforma[]  @relation("ParametroEditadoPor")
+  historialParametros  HistorialParametro[]
+  historialCargos      HistorialCargoEvento[]
+  condicionesRevisadas Event[]                @relation("CondicionRevisadaPor")
 
   // Relación con los eventos creados por el usuario
   events Event[]
@@ -158,6 +162,22 @@ model Event {
   compras  Compra[]
   entradas Entrada[]
 
+  // Cargo por servicio de UBIK: se fija al crear el evento con el % vigente y no cambia si después
+  // se modifica el % de la plataforma. "price" es lo que recibe el organizador por entrada; el
+  // público paga price + cargo (redondeado a la decena).
+  porcentajeCargo Float @default(0)
+
+  // Condición especial de cargo que el organizador solicita al crear el evento. Mientras está
+  // PENDIENTE la venta de entradas queda en pausa (el evento se ve con el aviso "próximamente").
+  estadoCondicion        EstadoCondicionEspecial?
+  justificacionCondicion String?
+  porcentajeSolicitado   Float?
+  respuestaCondicion     String?
+  condicionRevisadaEn    DateTime?
+  condicionRevisadaPorId String?
+  condicionRevisadaPor   User?                    @relation("CondicionRevisadaPor", fields: [condicionRevisadaPorId], references: [id])
+  historialCargos        HistorialCargoEvento[]
+
   @@map("events")
 }
 
@@ -197,16 +217,20 @@ enum EstadoCompra {
 
 // Una compra agrupa las entradas de un evento que adquiere un asistente en una sola transacción
 model Compra {
-  id             String       @id @default(uuid())
-  codigo         String       @unique // código legible para el comprador, ej. UBK-7F3K9Q
-  estado         EstadoCompra
-  cantidad       Int
-  precioUnitario Float
-  total          Float
-  medioPago      String? // ej. WEBPAY, MERCADO_PAGO (SIMULADO mientras no exista pasarela)
-  fechaCreacion  DateTime     @default(now())
-  expiraEn       DateTime? // límite para pagar una compra pendiente
-  fechaPago      DateTime?
+  id              String       @id @default(uuid())
+  codigo          String       @unique // código legible para el comprador, ej. UBK-7F3K9Q
+  estado          EstadoCompra
+  cantidad        Int
+  precioUnitario  Float // precio final por entrada que pagó el asistente (incluye el cargo)
+  total           Float
+  // Desglose al momento de la compra (no cambia aunque después se edite el evento)
+  precioBase      Float        @default(0) // lo que recibe el organizador por entrada
+  porcentajeCargo Float        @default(0)
+  cargoServicio   Float        @default(0) // cargo total de la compra (todas las entradas)
+  medioPago       String? // ej. WEBPAY, MERCADO_PAGO (SIMULADO mientras no exista pasarela)
+  fechaCreacion   DateTime     @default(now())
+  expiraEn        DateTime? // límite para pagar una compra pendiente
+  fechaPago       DateTime?
 
   eventoId    String
   evento      Event     @relation(fields: [eventoId], references: [id], onDelete: Cascade)
@@ -237,4 +261,53 @@ model Entrada {
 
   @@index([eventoId, rut])
   @@map("entradas")
+}
+
+enum EstadoCondicionEspecial {
+  PENDIENTE
+  APROBADA
+  RECHAZADA
+}
+
+// Parámetros de la plataforma editables por un administrador (ej. PORCENTAJE_CARGO_SERVICIO)
+model ParametroPlataforma {
+  clave              String   @id
+  valor              String
+  descripcion        String?
+  fechaActualizacion DateTime @updatedAt
+  actualizadoPorId   String?
+  actualizadoPor     User?    @relation("ParametroEditadoPor", fields: [actualizadoPorId], references: [id])
+
+  @@map("parametros_plataforma")
+}
+
+// Quién cambió un parámetro, cuándo, de qué valor a cuál y por qué
+model HistorialParametro {
+  id            String   @id @default(uuid())
+  clave         String
+  valorAnterior String?
+  valorNuevo    String
+  motivo        String
+  fecha         DateTime @default(now())
+  adminId       String
+  admin         User     @relation(fields: [adminId], references: [id])
+
+  @@index([clave, fecha])
+  @@map("historial_parametros")
+}
+
+// Cambios del % de cargo de un evento (condiciones especiales aprobadas o ajustes de un admin)
+model HistorialCargoEvento {
+  id                 String   @id @default(uuid())
+  porcentajeAnterior Float
+  porcentajeNuevo    Float
+  motivo             String
+  fecha              DateTime @default(now())
+  eventoId           String
+  evento             Event    @relation(fields: [eventoId], references: [id], onDelete: Cascade)
+  adminId            String
+  admin              User     @relation(fields: [adminId], references: [id])
+
+  @@index([eventoId, fecha])
+  @@map("historial_cargos_evento")
 }

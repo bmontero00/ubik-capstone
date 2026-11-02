@@ -21,7 +21,9 @@ export interface CheckoutEvent {
   date: string;
   address: string;
   imageUrl?: string | null;
-  price: number;
+  price: number; // lo que recibe el organizador
+  precioFinal?: number; // lo que paga el público por entrada (incluye el cargo)
+  cargoPorEntrada?: number;
   category?: { name: string };
 }
 
@@ -87,7 +89,11 @@ export default function CheckoutModal({ event, quantity, buyer, resume, onClose,
   const [now, setNow] = useState(Date.now());
 
   const count = attendees.length;
-  const total = event.price * count;
+  // Precio por entrada que paga el público. Una vez creada la compra manda su propio desglose
+  // (no cambia aunque después se edite el evento).
+  const unitPrice = compra?.precioUnitario ?? event.precioFinal ?? event.price;
+  const feePerTicket = compra ? compra.cargoServicio / compra.cantidad : event.cargoPorEntrada ?? 0;
+  const total = unitPrice * count;
 
   // Errores de cada entrada, incluidos los RUT repetidos dentro de la misma compra
   const errors: AttendeeErrors[] = useMemo(() => attendees.map((a, i) => {
@@ -366,8 +372,14 @@ export default function CheckoutModal({ event, quantity, buyer, resume, onClose,
               <dl className="mt-4 pt-4 border-t border-slate-800 space-y-1.5 text-sm">
                 <div className="flex justify-between text-slate-300">
                   <dt>{count} × {free ? 'Entrada liberada' : 'Entrada general'}</dt>
-                  <dd className="tabular-nums">{free ? 'Gratis' : formatPrice(event.price)}</dd>
+                  <dd className="tabular-nums">{free ? 'Gratis' : formatPrice(unitPrice)}</dd>
                 </div>
+                {!free && feePerTicket > 0 && (
+                  <div className="flex justify-between text-xs text-slate-500">
+                    <dt>Incluye cargo por servicio</dt>
+                    <dd className="tabular-nums">{formatPrice(feePerTicket * count)}</dd>
+                  </div>
+                )}
                 <div className="flex justify-between text-base font-extrabold text-white pt-2">
                   <dt>Total</dt>
                   <dd className="tabular-nums">{free ? 'Gratis' : formatPrice(total)}</dd>

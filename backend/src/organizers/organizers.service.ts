@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { PUBLIC_EVENT_STATUSES } from '../events/events.service';
+import { conPrecios } from '../parametros/cargos';
 
 const eventSelect = {
   id: true,
@@ -15,6 +16,8 @@ const eventSelect = {
   latitude: true,
   longitude: true,
   description: true,
+  porcentajeCargo: true,
+  estadoCondicion: true,
   category: { select: { id: true, name: true } },
 } satisfies Prisma.EventSelect;
 
@@ -98,8 +101,8 @@ export class OrganizersService {
         cumplimiento: completed + cancelled > 0 ? Math.round((completed / (completed + cancelled)) * 100) : null,
       },
       categoriasFrecuentes: topCategories,
-      proximosEventos: upcoming,
-      eventosRealizados: past,
+      proximosEventos: upcoming.map((e) => conPrecios(e)),
+      eventosRealizados: past.map((e) => conPrecios(e)),
       // Espacio reservado: la calificación y las reseñas se habilitarán más adelante
       calificacion: { promedio: null as number | null, total: 0 },
       resenas: [] as { id: string; autor: string; estrellas: number; comentario: string; fecha: string }[],

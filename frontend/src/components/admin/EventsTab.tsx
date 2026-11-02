@@ -9,6 +9,8 @@ import {
 import StatusChangeForm, { StatusOption } from './StatusChangeForm';
 import { Chip } from './UsersTab';
 import EventFormModal from '../events/EventFormModal';
+import EventFeeForm from './EventFeeForm';
+import type { EventoCargo } from '../../services/cargos';
 import { Category, EventItem, fetchCategories } from '../../services/events';
 
 interface AdminEvent {
@@ -28,6 +30,9 @@ interface AdminEvent {
   category: { id: string; name: string };
   organizer: { id: string; name: string; email: string; status: AccountStatus };
   statusChangedBy: { id: string; name: string } | null;
+  porcentajeCargo: number;
+  precioFinal: number;
+  estadoCondicion: 'PENDIENTE' | 'APROBADA' | 'RECHAZADA' | null;
 }
 
 const EVENT_STATUSES = Object.keys(EVENT_STATUS_LABELS) as EventStatus[];
@@ -196,7 +201,7 @@ export default function EventsTab({ onChanged }: { onChanged: () => void }) {
               <div className="grid sm:grid-cols-2 gap-x-6 gap-y-1.5 text-xs text-slate-300 mb-5">
                 <span className="flex items-center gap-2"><CalendarDays className="w-3.5 h-3.5 text-slate-500" /> {formatDate(selected.date, true)}</span>
                 <span className="flex items-center gap-2"><MapPin className="w-3.5 h-3.5 text-slate-500" /> {selected.address}</span>
-                <span className="flex items-center gap-2"><Tag className="w-3.5 h-3.5 text-slate-500" /> {selected.category.name} · {selected.price === 0 ? 'Gratis' : `$${selected.price.toLocaleString('es-CL')}`}</span>
+                <span className="flex items-center gap-2"><Tag className="w-3.5 h-3.5 text-slate-500" /> {selected.category.name} · {selected.price === 0 ? 'Gratis' : `$${selected.precioFinal.toLocaleString('es-CL')} (público)`}</span>
                 <span className="flex items-center gap-2">
                   <UserIcon className="w-3.5 h-3.5 text-slate-500" /> {selected.organizer.name}
                   {selected.organizer.status !== 'ACTIVE' && <StatusPill {...ACCOUNT_STATUS_LABELS[selected.organizer.status]} />}
@@ -211,6 +216,22 @@ export default function EventsTab({ onChanged }: { onChanged: () => void }) {
                     {formatDate(selected.statusChangedAt, true)}
                     {selected.statusChangedBy && ` · por ${selected.statusChangedBy.name}`}
                   </p>
+                </div>
+              )}
+
+              {selected.price > 0 && (
+                <div className="mb-5 pt-4 border-t border-slate-800">
+                  <p className="text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">Cargo por servicio</p>
+                  <EventFeeForm
+                    event={selected as unknown as EventoCargo}
+                    onSaved={(updated) => {
+                      const merged = { ...selected, porcentajeCargo: updated.porcentajeCargo ?? 0, precioFinal: updated.precioFinal ?? selected.price };
+                      setSelected(merged);
+                      setEvents((prev) => prev.map((e) => (e.id === merged.id ? merged : e)));
+                      setNotice(`Fijaste el cargo de "${merged.title}" en ${merged.porcentajeCargo}%.`);
+                      onChanged();
+                    }}
+                  />
                 </div>
               )}
 

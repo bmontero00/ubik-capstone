@@ -8,6 +8,7 @@ import type { AuthenticatedUser } from '../auth/auth.guards';
 import { accountUnderReviewError } from '../auth/account-status';
 import { normalizeRut } from '../auth/rut.util';
 import { COMPRA_LIMITS, CreateCompraDto } from './dto/compra.dto';
+import { precioFinal } from '../parametros/cargos';
 
 // Compras que reservan o ya son entradas válidas (cuentan para los límites y los RUT repetidos)
 const ESTADOS_VIGENTES: EstadoCompra[] = ['PENDIENTE_PAGO', 'PAGADA', 'CONFIRMADA'];
@@ -52,6 +53,12 @@ export class ComprasService {
     if (!event) throw new NotFoundException('Evento no encontrado');
     if (event.status !== 'PUBLISHED' || event.date.getTime() <= Date.now()) {
       throw new BadRequestException('Este evento no tiene entradas disponibles en este momento');
+    }
+    if (event.estadoCondicion === 'PENDIENTE') {
+      throw new BadRequestException({
+        message: 'La venta de entradas para este evento se habilitará muy pronto',
+        code: 'VENTA_PAUSADA',
+      });
     }
 
     const asistentes = dto.asistentes.map((a) => ({
@@ -104,14 +111,22 @@ export class ComprasService {
       });
     }
 
-    const gratis = event.price === 0;
+    // Precio que paga el público: el del organizador más el cargo por servicio fijado en el evento.
+    // Se guarda el desglose para que la compra no cambie si después se edita el evento.
+    const gratis = event.price <= 0;
+    const porcentajeCargo = gratis ? 0 : event.porcentajeCargo;
+    const precioUnitario = precioFinal(event.price, porcentajeCargo);
+    const cantidad = asistentes.length;
     const compra = await this.prisma.compra.create({
       data: {
         codigo: `UBK-${codigo(6)}`,
         estado: gratis ? 'CONFIRMADA' : 'PENDIENTE_PAGO',
-        cantidad: asistentes.length,
-        precioUnitario: event.price,
-        total: event.price * asistentes.length,
+        cantidad,
+        precioUnitario,
+        total: precioUnitario * cantidad,
+        precioBase: gratis ? 0 : event.price,
+        porcentajeCargo,
+        cargoServicio: gratis ? 0 : (precioUnitario - event.price) * cantidad,
         expiraEn: gratis ? null : new Date(Date.now() + COMPRA_LIMITS.minutosParaPagar * 60_000),
         eventoId: event.id,
         compradorId: user.sub,

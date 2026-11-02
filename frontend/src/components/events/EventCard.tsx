@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { CalendarDays, MapPin, ImageIcon } from 'lucide-react';
+import { CalendarDays, MapPin, ImageIcon, Hourglass } from 'lucide-react';
 import { EventStatus } from '../../services/auth';
 import { formatEventDate, imageSrc } from '../../services/events';
 import { EVENT_STATUS_LABELS, StatusPill } from '../../utils/labels';
@@ -19,6 +19,7 @@ export interface EventCardData {
   distanceFrom?: string; // ej. "Santiago centro" cuando no hay ubicación del usuario
   status?: EventStatus;
   statusReason?: string | null;
+  ventaPausada?: boolean; // condición especial en revisión: la venta se libera pronto
 }
 
 export const categoryBadge = (categoryName?: string) => {
@@ -77,6 +78,11 @@ export default function EventCard({ event, footerAction, placeholderImage = fals
             <StatusPill {...EVENT_STATUS_LABELS[event.status]} />
             {event.statusReason && <p className="text-[11px] text-slate-400 mt-1 break-words">{event.statusReason}</p>}
           </div>
+        )}
+        {event.ventaPausada && (
+          <p className="mb-3 inline-flex items-center gap-1.5 text-[11px] font-semibold text-amber-200 bg-amber-500/10 border border-amber-500/25 rounded-lg px-2 py-1">
+            <Hourglass className="w-3.5 h-3.5" /> Venta de entradas próximamente
+          </p>
         )}
         <p className="text-xs text-slate-400 line-clamp-2 mb-4 break-words">
           {event.description || 'La descripción aparecerá aquí.'}

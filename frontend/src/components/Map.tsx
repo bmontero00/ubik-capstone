@@ -13,6 +13,8 @@ interface MapEvent {
   id: string;
   title: string;
   price: number;
+  precioFinal?: number; // incluye el cargo por servicio
+  ventaPausada?: boolean;
   date: string;
   address: string;
   latitude: number;
@@ -186,9 +188,10 @@ export default function Map({
                 )}
                 <span className="block mt-1 text-xs text-slate-300">{formatEventDate(evt.date)}</span>
                 <span className="block text-xs text-slate-500 truncate">{evt.address}</span>
+                {evt.ventaPausada && <span className="block mt-1 text-[11px] font-semibold text-amber-200">Venta de entradas próximamente</span>}
                 <div className="mt-2.5 flex items-center justify-between gap-2">
                   <span className={`text-sm font-extrabold ${evt.price === 0 ? 'text-emerald-300' : 'text-white'}`}>
-                    {evt.price === 0 ? 'Gratis' : formatPrice(evt.price)}
+                    {evt.price === 0 ? 'Gratis' : formatPrice(evt.precioFinal ?? evt.price)}
                   </span>
                   {onOpenEvent && (
                     <button

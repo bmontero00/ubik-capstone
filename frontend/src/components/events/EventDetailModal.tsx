@@ -6,7 +6,7 @@ import {
   X, CalendarDays, MapPin, Ticket, Navigation, Share2, Check, Loader2, BadgeCheck, CalendarClock, Ban, ShieldAlert, Lock,
 } from 'lucide-react';
 import {
-  EventDetail, EventItem, eventShareUrl, fetchEventDetail, formatEventDate, formatPrice, imageSrc, organizerName, relativeTime,
+  EventDetail, EventItem, eventShareUrl, fetchEventDetail, formatEventDate, formatPrice, imageSrc, organizerName, publicPrice, relativeTime,
 } from '../../services/events';
 import { EVENT_STATUS_LABELS, StatusPill } from '../../utils/labels';
 import { categoryColor } from '../../utils/mapTiles';
@@ -173,14 +173,16 @@ export default function EventDetailModal({
                 {event.distanceKm !== undefined && <span className="block text-xs text-slate-500 mt-0.5">A {event.distanceKm} km</span>}
               </InfoTile>
               <InfoTile icon={Ticket} label="Entrada">
-                <span className={event.price === 0 ? 'text-emerald-300' : ''}>{event.price === 0 ? 'Liberada' : formatPrice(event.price)}</span>
+                <span className={event.price === 0 ? 'text-emerald-300' : ''}>{event.price === 0 ? 'Liberada' : formatPrice(publicPrice(event))}</span>
               </InfoTile>
             </div>
 
             {tickets && (event.status === 'PUBLISHED' || event.status === 'POSTPONED') && (
               <div className="mt-4">
                 <TicketSelector
-                  price={event.price}
+                  price={publicPrice(event)}
+                  includesFee={(event.cargoPorEntrada ?? 0) > 0}
+                  salesPaused={!!event.ventaPausada}
                   available={event.status === 'PUBLISHED' && !!upcoming}
                   blockedReason={tickets.blockedReason ?? (event.status === 'POSTPONED' ? 'La venta de entradas está pausada mientras el evento está postergado.' : undefined)}
                   owned={tickets.owned(event.id)}

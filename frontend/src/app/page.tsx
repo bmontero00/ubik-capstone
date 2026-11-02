@@ -21,7 +21,7 @@ import {
   ApiError, AuthResponse, AuthUser, SuspendedInfo, canPublishEvents, clearSession,
   fetchCurrentUser, isAccountActive, loadStoredUser, markApprovalNoticeSeen, saveSession, updateStoredUser,
 } from '../services/auth';
-import { Category, EventItem, fetchCategories as fetchCategoryList } from '../services/events';
+import { Category, EventItem, fetchCategories as fetchCategoryList, publicPrice } from '../services/events';
 import { useUserLocation } from '../utils/location';
 import LocationNotice, { RequestLocationOnMount } from '../components/LocationNotice';
 import dynamic from 'next/dynamic';
@@ -246,7 +246,13 @@ export default function HomePage() {
 
   const handleEventSaved = (saved: EventItem, created: boolean) => {
     setEventForm(null);
-    setToast(created ? `¡"${saved.title}" ya está publicado!` : `Guardamos los cambios de "${saved.title}".`);
+    setToast(
+      !created
+        ? `Guardamos los cambios de "${saved.title}".`
+        : saved.estadoCondicion === 'PENDIENTE'
+          ? `"${saved.title}" ya está publicado. Habilitaremos la venta de entradas cuando revisemos tu solicitud.`
+          : `¡"${saved.title}" ya está publicado!`,
+    );
     setMyEventsKey((k) => k + 1);
     fetchEvents();
   };
@@ -344,7 +350,7 @@ export default function HomePage() {
               {filteredEvents.map((evt) => (
                 <EventCard
                   key={evt.id}
-                  event={{ ...evt, categoryName: evt.category?.name, distanceFrom: location.coords ? undefined : 'Santiago centro' }}
+                  event={{ ...evt, price: publicPrice(evt), categoryName: evt.category?.name, distanceFrom: location.coords ? undefined : 'Santiago centro' }}
                   placeholderImage
                   onOpen={() => openDetail(evt)}
                   footerAction={

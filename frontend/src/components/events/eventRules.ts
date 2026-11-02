@@ -8,6 +8,10 @@ export const EVENT_LIMITS = {
   addressMax: 200,
   priceMax: 10_000_000,
   imageMaxBytes: 5 * 1024 * 1024,
+  // Solicitud de condición especial (mismos límites que el motivo en el backend)
+  justificationMin: 10,
+  justificationMax: 500,
+  feeMax: 30,
 };
 
 export interface EventFormState {
@@ -24,6 +28,10 @@ export interface EventFormState {
   image: File | null;
   currentImageUrl: string | null; // imagen ya guardada (al editar)
   removeImage: boolean;
+  // Condición especial de cargo por servicio (solo al crear un evento con valor)
+  solicitarCondicion: boolean;
+  justificacionCondicion: string;
+  porcentajeSolicitado: string; // opcional, solo dígitos
 }
 
 export type FieldErrors = Partial<Record<keyof EventFormState, string>>;
@@ -62,6 +70,19 @@ export function validateStep(step: number, f: EventFormState): FieldErrors {
     const price = Number(f.price);
     if (!f.price || price <= 0) e.price = 'Ingresa el valor de la entrada o marca el evento como gratis';
     else if (price > EVENT_LIMITS.priceMax) e.price = 'El precio supera el máximo permitido';
+    if (f.solicitarCondicion) {
+      const j = len(f.justificacionCondicion);
+      if (j < EVENT_LIMITS.justificationMin) {
+        e.justificacionCondicion = `Cuéntanos por qué solicitas una condición especial (mínimo ${EVENT_LIMITS.justificationMin} caracteres)`;
+      } else if (j > EVENT_LIMITS.justificationMax) {
+        e.justificacionCondicion = `La justificación puede tener como máximo ${EVENT_LIMITS.justificationMax} caracteres`;
+      } else if (!/\p{L}/u.test(f.justificacionCondicion)) {
+        e.justificacionCondicion = 'La justificación debe contener texto';
+      }
+      if (f.porcentajeSolicitado !== '' && Number(f.porcentajeSolicitado) > EVENT_LIMITS.feeMax) {
+        e.porcentajeSolicitado = `El porcentaje puede ser como máximo ${EVENT_LIMITS.feeMax}%`;
+      }
+    }
   }
   return e;
 }
