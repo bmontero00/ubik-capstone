@@ -1,7 +1,8 @@
 'use client';
 
 import React from 'react';
-import { MapPin, User, LogOut } from 'lucide-react';
+import { User, LogOut } from 'lucide-react';
+import UbikLogo from './UbikLogo';
 import { ROLE_LABELS } from '../utils/labels';
 import type { UserRole } from '../services/auth';
 
@@ -16,9 +17,7 @@ export default function Navbar({ user, onLogout, onOpenAuth }: NavbarProps) {
     <header className="sticky top-0 z-50 bg-slate-950/80 backdrop-blur-md border-b border-slate-800 text-white">
       <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
         <div className="flex items-center gap-2 cursor-pointer">
-          <div className="bg-emerald-500 p-2 rounded-xl text-slate-950">
-            <MapPin className="w-5 h-5 stroke-[2.5]" />
-          </div>
+          <UbikLogo size={36} className="rounded-xl shadow-lg shadow-emerald-500/10 ring-1 ring-slate-700/60" />
           <span className="font-extrabold text-xl tracking-tight bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">
             UBIK
           </span>
