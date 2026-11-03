@@ -7,8 +7,9 @@ import {
 } from 'lucide-react';
 import { ApiError } from '../../services/auth';
 import {
-  Compra, PAYMENT_TYPES, PaymentConfig, cancelCompra, createCompra, fetchPaymentConfig, payCompra, payWithWebpay,
+  Compra, PaymentConfig, cancelCompra, createCompra, fetchPaymentConfig, payCompra, payWithWebpay,
 } from '../../services/compras';
+import { Rows, webpayRows } from './ReceiptModal';
 import { formatEventDate, formatPrice, imageSrc } from '../../services/events';
 import { formatRut } from '../../utils/rut';
 import { PHONE_PREFIX, formatLocalPhone, formatPhoneDisplay, toFullPhone } from '../../utils/phone';
@@ -618,26 +619,10 @@ function WebpayTestCards() {
 function Receipt({ compra }: { compra: Compra }) {
   const pago = compra.pago;
   if (!pago || pago.estado !== 'AUTORIZADA') return null;
-  const rows: [string, string][] = [
-    ['Orden de compra', pago.ordenCompra],
-    ['Monto', formatPrice(pago.monto)],
-    ['Código de autorización', pago.codigoAutorizacion ?? '—'],
-    ['Fecha', new Date(pago.fecha).toLocaleString('es-CL', { dateStyle: 'medium', timeStyle: 'short' })],
-    ['Tipo de pago', (pago.tipoPago && PAYMENT_TYPES[pago.tipoPago]) || pago.tipoPago || '—'],
-    ['Cuotas', pago.cuotas ? `${pago.cuotas}${pago.montoCuota ? ` de ${formatPrice(pago.montoCuota)}` : ''}` : 'Sin cuotas'],
-    ['Tarjeta', pago.ultimosDigitos ? `**** ${pago.ultimosDigitos}` : '—'],
-  ];
   return (
     <div className="mt-5 w-full text-left p-4 rounded-2xl bg-slate-950 border border-slate-800">
       <p className="text-xs font-bold text-slate-300 flex items-center gap-1.5 mb-2"><CreditCard className="w-3.5 h-3.5" /> Comprobante de pago Webpay</p>
-      <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
-        {rows.map(([label, value]) => (
-          <React.Fragment key={label}>
-            <dt className="text-slate-500">{label}</dt>
-            <dd className="text-slate-200 text-right font-medium tabular-nums break-all">{value}</dd>
-          </React.Fragment>
-        ))}
-      </dl>
+      <Rows rows={webpayRows(pago)} />
     </div>
   );
 }

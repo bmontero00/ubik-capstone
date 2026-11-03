@@ -2,13 +2,14 @@
 
 import React, { useEffect, useState } from 'react';
 import {
-  Ticket, CalendarDays, MapPin, Loader2, Inbox, Timer, ChevronDown, Compass, CalendarClock, Ban, Eye, Copy, Check,
+  Ticket, CalendarDays, MapPin, Loader2, Inbox, Timer, ChevronDown, Compass, CalendarClock, Ban, Eye, Copy, Check, Receipt,
 } from 'lucide-react';
 import { Compra, cancelCompra, compraValida } from '../../services/compras';
 import { formatEventDate, formatPrice, imageSrc, relativeTime } from '../../services/events';
 import { formatRut } from '../../utils/rut';
 import { formatDate } from '../../utils/labels';
 import { categoryColor } from '../../utils/mapTiles';
+import ReceiptModal from './ReceiptModal';
 
 interface MyTicketsPanelProps {
   compras: Compra[];
@@ -118,7 +119,8 @@ function PendingPayment({ compra, now, onResume, onChanged }: { compra: Compra; 
 }
 
 function PurchaseCard({ compra, past, onOpenEvent }: { compra: Compra; past: boolean; onOpenEvent: () => void }) {
-  const [open, setOpen] = useState(!past);
+  const [open, setOpen] = useState(false); // las entradas se muestran con "Ver entradas"
+  const [receipt, setReceipt] = useState(false);
   const e = compra.evento;
   const src = imageSrc(e.imageUrl);
   const color = categoryColor(e.category.name);
@@ -158,13 +160,16 @@ function PurchaseCard({ compra, past, onOpenEvent }: { compra: Compra; past: boo
             <span>{compra.estado === 'CONFIRMADA' ? 'Entrada liberada' : `Pagado ${formatPrice(compra.total)}`}</span>
             <span>Compra <span className="font-mono text-slate-300">{compra.codigo}</span> · {formatDate(compra.fechaPago ?? compra.fechaCreacion)}</span>
           </div>
-          <div className="mt-3 flex gap-2">
+          <div className="mt-3 flex flex-wrap gap-2">
             <button onClick={() => setOpen((v) => !v)} aria-expanded={open} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg bg-indigo-600 hover:bg-indigo-500">
               <Ticket className="w-3.5 h-3.5" /> {open ? 'Ocultar entradas' : 'Ver entradas'}
               <ChevronDown className={`w-3.5 h-3.5 transition-transform ${open ? 'rotate-180' : ''}`} />
             </button>
             <button onClick={onOpenEvent} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-800 hover:bg-slate-700">
               <Eye className="w-3.5 h-3.5" /> Ver evento
+            </button>
+            <button onClick={() => setReceipt(true)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-800 hover:bg-slate-700">
+              <Receipt className="w-3.5 h-3.5" /> Comprobante
             </button>
           </div>
         </div>
@@ -175,6 +180,7 @@ function PurchaseCard({ compra, past, onOpenEvent }: { compra: Compra; past: boo
           {compra.entradas.map((t, i) => <TicketStub key={t.id} index={i + 1} total={compra.cantidad} entrada={t} color={color} />)}
         </div>
       )}
+      {receipt && <ReceiptModal compra={compra} onClose={() => setReceipt(false)} />}
     </li>
   );
 }

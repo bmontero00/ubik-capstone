@@ -80,3 +80,13 @@ html .leaflet-container a.leaflet-popup-close-button {
 html .leaflet-container a.leaflet-popup-close-button:hover {
   color: #f8fafc;
 }
+
+/* Comprobante de compra: al imprimir (o guardar como PDF) solo se muestra el comprobante, en blanco y negro */
+@media print {
+  @page { margin: 14mm; }
+  body:has(.comprobante-imprimible) > *:not(.comprobante-imprimible) { display: none !important; }
+  body:has(.comprobante-imprimible) { background: #fff !important; }
+  .comprobante-imprimible { position: static !important; display: block !important; padding: 0 !important; background: #fff !important; backdrop-filter: none !important; }
+  .comprobante-imprimible > div { max-height: none !important; overflow: visible !important; border: none !important; box-shadow: none !important; max-width: 100% !important; }
+  .comprobante-imprimible *:not(svg):not(svg *) { color: #111 !important; background: transparent !important; border-color: #d4d4d8 !important; box-shadow: none !important; }
+}
