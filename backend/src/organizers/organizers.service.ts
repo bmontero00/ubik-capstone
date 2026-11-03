@@ -18,7 +18,10 @@ const eventSelect = {
   description: true,
   porcentajeCargo: true,
   estadoCondicion: true,
-  precioOferta: true,
+  porcentajeOferta: true,
+  estacionamiento: true,
+  cuposEstacionamiento: true,
+  tiposEntrada: true,
   ofertaHasta: true,
   category: { select: { id: true, name: true } },
 } satisfies Prisma.EventSelect;

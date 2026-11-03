@@ -3,28 +3,30 @@
 import React, { useState } from 'react';
 import { BadgePercent, Loader2, XCircle } from 'lucide-react';
 import {
-  EventItem, OFFER_LIMITS, discountPercent, endOffer, formatEventDate, formatPrice, offerEndsLabel, priceWithFee, setOffer,
+  EventItem, OFFER_LIMITS, endOffer, formatEventDate, formatPrice, offerEndsLabel, priceWithFee, priceWithOffer, setOffer,
 } from '../../services/events';
 import { ANNOUNCEMENT_LIMITS } from './EventBitacora';
 
-const QUICK_DISCOUNTS = [10, 20, 30, 50];
+const QUICK_DISCOUNTS = [10, 15, 20, 30, 50];
 const pad = (n: number) => String(n).padStart(2, '0');
 const toDateInput = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const toTimeInput = (d: Date) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 
-// Oferta del organizador: elige el nuevo precio (o un % rápido), hasta cuándo dura y un mensaje
-// opcional para la comunidad. El descuento se calcula sobre lo que paga el público, igual que el backend.
+// Oferta del organizador: un % de descuento sobre todos los tipos de entrada, hasta cuándo dura y un
+// mensaje opcional para la comunidad. Los precios se calculan igual que en el backend.
 export default function OfferForm({ event, onSaved, onCancel }: {
   event: EventItem;
   onSaved: (updated: EventItem, message: string) => void;
   onCancel: () => void;
 }) {
   const fee = event.porcentajeCargo ?? 0;
-  const normalPublic = priceWithFee(event.price, fee);
   const active = !!event.ofertaActiva;
   const eventDate = new Date(event.date);
+  const tipos = event.tiposEntrada?.length
+    ? event.tiposEntrada
+    : [{ id: 'general', nombre: 'General', precio: event.price }];
 
-  const [price, setPrice] = useState(active && event.precioOferta ? String(event.precioOferta) : '');
+  const [percent, setPercent] = useState(active && event.porcentajeOferta ? String(event.porcentajeOferta) : '');
   const [untilEvent, setUntilEvent] = useState(!event.ofertaHasta);
   // Por defecto, una semana (o hasta el día anterior al evento si es antes)
   const defaultEnd = event.ofertaHasta
@@ -37,19 +39,15 @@ export default function OfferForm({ event, onSaved, onCancel }: {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const base = Number(price) || 0;
-  const offerPublic = priceWithFee(base, fee);
-  const discount = base > 0 ? discountPercent(normalPublic, offerPublic) : 0;
+  const pct = Number(percent) || 0;
   const end = untilEvent ? null : new Date(`${endDate}T${endTime}`);
   const text = message.normalize('NFC').trim();
 
-  const priceError = !base
-    ? 'Indica el precio de oferta'
-    : base >= event.price
-      ? `Debe ser menor a ${formatPrice(event.price)}`
-      : discount < OFFER_LIMITS.discountMin || discount > OFFER_LIMITS.discountMax
-        ? `El descuento debe estar entre ${OFFER_LIMITS.discountMin}% y ${OFFER_LIMITS.discountMax}% (hoy es ${discount}%)`
-        : null;
+  const percentError = !pct
+    ? 'Indica el % de descuento'
+    : pct < OFFER_LIMITS.discountMin || pct > OFFER_LIMITS.discountMax
+      ? `El descuento debe estar entre ${OFFER_LIMITS.discountMin}% y ${OFFER_LIMITS.discountMax}%`
+      : null;
   const endError = !end
     ? null
     : Number.isNaN(end.getTime())
@@ -78,9 +76,9 @@ export default function OfferForm({ event, onSaved, onCancel }: {
 
   const submit = () => {
     setTouched(true);
-    if (priceError || endError || messageError) return;
+    if (percentError || endError || messageError) return;
     run(
-      () => setOffer(event.id, base, end?.toISOString(), text || undefined),
+      () => setOffer(event.id, pct, end?.toISOString(), text || undefined),
       (u) => `"${u.title}" está en oferta con ${u.porcentajeDescuento}% de descuento. Lo anunciamos en las novedades del evento.`,
     );
   };
@@ -100,55 +98,58 @@ export default function OfferForm({ event, onSaved, onCancel }: {
       <div className="grid sm:grid-cols-2 gap-4">
         <div>
           <label className="block text-xs font-semibold text-slate-300 mb-1">
-            Nuevo precio para ti por entrada <span className="text-rose-400">*</span>
+            Descuento en todas las entradas <span className="text-rose-400">*</span>
           </label>
-          <div className="relative max-w-[200px]">
-            <span className="absolute left-3 top-2 text-sm text-slate-400 pointer-events-none">$</span>
+          <div className="relative max-w-[140px]">
             <input
               inputMode="numeric"
               autoFocus
-              value={price ? Number(price).toLocaleString('es-CL') : ''}
-              onChange={(ev) => setPrice(ev.target.value.replace(/\D/g, '').replace(/^0+/, '').slice(0, 8))}
-              placeholder={Math.round((event.price * 0.8) / 10) * 10 + ''}
-              className={`${inputClass(touched && !!priceError)} w-full pl-7`}
+              value={percent}
+              onChange={(ev) => setPercent(ev.target.value.replace(/\D/g, '').replace(/^0+/, '').slice(0, 2))}
+              placeholder="20"
+              className={`${inputClass(touched && !!percentError)} w-full pr-8`}
             />
+            <span className="absolute right-3 top-2 text-sm text-slate-400">%</span>
           </div>
           <div className="flex flex-wrap gap-1.5 mt-2">
-            {QUICK_DISCOUNTS.map((pct) => {
-              const value = String(Math.round((event.price * (1 - pct / 100)) / 10) * 10);
-              return (
-                <button
-                  key={pct}
-                  type="button"
-                  onClick={() => setPrice(value)}
-                  className={`px-2.5 py-1 rounded-full text-[11px] font-semibold border transition-colors ${
-                    price === value ? 'border-rose-400/60 bg-rose-500/15 text-rose-200' : 'border-slate-800 text-slate-400 hover:text-white'
-                  }`}
-                >
-                  -{pct}%
-                </button>
-              );
-            })}
+            {QUICK_DISCOUNTS.map((d) => (
+              <button
+                key={d}
+                type="button"
+                onClick={() => setPercent(String(d))}
+                className={`px-2.5 py-1 rounded-full text-[11px] font-semibold border transition-colors ${
+                  pct === d ? 'border-rose-400/60 bg-rose-500/15 text-rose-200' : 'border-slate-800 text-slate-400 hover:text-white'
+                }`}
+              >
+                -{d}%
+              </button>
+            ))}
           </div>
-          {touched && priceError && <p className="text-[11px] text-rose-300 mt-1">{priceError}</p>}
+          {touched && percentError && <p className="text-[11px] text-rose-300 mt-1">{percentError}</p>}
         </div>
 
         <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs">
-          <p className="text-slate-500">El público verá</p>
-          {base > 0 && !priceError ? (
-            <>
-              <p className="mt-1 flex items-baseline gap-2">
-                <span className="line-through text-slate-500">{formatPrice(normalPublic)}</span>
-                <span className="text-lg font-extrabold text-rose-200">{formatPrice(offerPublic)}</span>
-                <span className="text-[11px] font-extrabold uppercase px-1.5 py-0.5 rounded-md text-white bg-gradient-to-r from-rose-500 to-orange-400">
-                  -{discount}%
-                </span>
-              </p>
-              <p className="text-slate-500 mt-1">Recibirás {formatPrice(base)} por entrada (antes {formatPrice(event.price)}).</p>
-            </>
-          ) : (
-            <p className="mt-1 text-lg font-extrabold text-white">{formatPrice(normalPublic)}</p>
-          )}
+          <p className="text-slate-500 mb-1.5">El público verá</p>
+          <ul className="space-y-1">
+            {tipos.slice(0, 5).map((t) => {
+              const normal = priceWithFee(t.precio, fee);
+              const offer = priceWithFee(priceWithOffer(t.precio, pct), fee);
+              return (
+                <li key={t.id} className="flex items-baseline justify-between gap-2">
+                  <span className="text-slate-300 truncate">{t.nombre}</span>
+                  <span className="shrink-0 tabular-nums">
+                    {pct && !percentError ? (
+                      <><span className="line-through text-slate-500 mr-1.5">{formatPrice(normal)}</span><span className="font-bold text-rose-200">{formatPrice(offer)}</span></>
+                    ) : (
+                      <span className="font-bold text-white">{formatPrice(normal)}</span>
+                    )}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+          {tipos.length > 5 && <p className="text-slate-500 mt-1">y {tipos.length - 5} tipos más</p>}
+          <p className="text-slate-500 mt-2">El descuento se aplica a lo que recibes por cada entrada. El estacionamiento no tiene descuento.</p>
         </div>
       </div>
 

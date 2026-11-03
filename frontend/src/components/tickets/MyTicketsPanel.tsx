@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import {
-  Ticket, CalendarDays, MapPin, Loader2, Inbox, Timer, ChevronDown, Compass, CalendarClock, Ban, Eye, Copy, Check, Receipt,
+  Ticket, CalendarDays, MapPin, Loader2, Inbox, Timer, ChevronDown, Compass, CalendarClock, Ban, Eye, Copy, Check, Receipt, Car,
 } from 'lucide-react';
 import { Compra, cancelCompra, compraValida } from '../../services/compras';
 import { formatEventDate, formatPrice, imageSrc, relativeTime } from '../../services/events';
@@ -179,6 +179,7 @@ function PurchaseCard({ compra, past, onOpenEvent }: { compra: Compra; past: boo
         // Separadas del resumen por una línea, para que no queden pegadas a la imagen del evento
         <div className="border-t border-slate-800 p-4 sm:p-5 grid grid-cols-1 md:grid-cols-2 gap-3">
           {compra.entradas.map((t, i) => <TicketStub key={t.id} index={i + 1} total={compra.cantidad} entrada={t} color={color} />)}
+          {compra.codigoEstacionamiento && <ParkingStub compra={compra} />}
         </div>
       )}
       {receipt && <ReceiptModal compra={compra} onClose={() => setReceipt(false)} />}
@@ -199,7 +200,9 @@ function TicketStub({ index, total, entrada, color }: { index: number; total: nu
     <div className="relative flex rounded-2xl bg-slate-950 border border-slate-800 overflow-hidden">
       <span className="w-1.5 shrink-0" style={{ background: color }} />
       <div className="flex-1 p-4 min-w-0">
-        <p className="text-[10px] uppercase tracking-wider font-bold text-slate-500">Entrada {index} de {total}</p>
+        <p className="text-[10px] uppercase tracking-wider font-bold text-slate-500 truncate">
+          <span style={{ color }}>{entrada.tipo}</span> · Entrada {index} de {total}
+        </p>
         <p className="text-sm font-bold text-white truncate mt-0.5">{entrada.nombre} {entrada.apellido}</p>
         <p className="text-xs text-slate-400">{formatRut(entrada.rut)}</p>
       </div>
@@ -211,6 +214,27 @@ function TicketStub({ index, total, entrada, color }: { index: number; total: nu
         <button onClick={copy} className="mt-1 flex items-center gap-1 text-[10px] text-slate-500 hover:text-slate-300">
           {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />} {copied ? 'Copiado' : 'Copiar'}
         </button>
+      </div>
+    </div>
+  );
+}
+
+// Talón del estacionamiento comprado junto a las entradas
+function ParkingStub({ compra }: { compra: Compra }) {
+  const n = compra.cantidadEstacionamiento;
+  return (
+    <div className="relative flex rounded-2xl bg-slate-950 border border-sky-500/25 overflow-hidden">
+      <span className="w-1.5 shrink-0 bg-sky-400" />
+      <div className="flex-1 p-4 min-w-0">
+        <p className="text-[10px] uppercase tracking-wider font-bold text-sky-300 flex items-center gap-1"><Car className="w-3.5 h-3.5" /> Estacionamiento</p>
+        <p className="text-sm font-bold text-white mt-0.5">{n} {n === 1 ? 'vehículo' : 'vehículos'}</p>
+        {compra.evento.indicacionesEstacionamiento && <p className="text-[11px] text-slate-400 line-clamp-2">{compra.evento.indicacionesEstacionamiento}</p>}
+      </div>
+      <div className="relative flex flex-col items-center justify-center px-4 border-l-2 border-dashed border-slate-700">
+        <span className="absolute -top-2 -left-2 w-4 h-4 rounded-full bg-slate-900" />
+        <span className="absolute -bottom-2 -left-2 w-4 h-4 rounded-full bg-slate-900" />
+        <span className="text-[10px] uppercase tracking-wider text-slate-500">Código</span>
+        <span className="font-mono text-sm font-extrabold text-sky-200 tracking-widest">{compra.codigoEstacionamiento}</span>
       </div>
     </div>
   );

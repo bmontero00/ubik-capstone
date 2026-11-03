@@ -4,6 +4,7 @@ import { Category } from './events';
 export type EstadoCompra = 'PENDIENTE_PAGO' | 'PAGADA' | 'CONFIRMADA' | 'CANCELADA' | 'EXPIRADA';
 
 export interface AsistenteInput {
+  tipoEntradaId: string;
   nombre: string;
   apellido: string;
   rut: string;
@@ -14,6 +15,10 @@ export interface AsistenteInput {
 export interface Entrada {
   id: string;
   codigo: string | null; // solo llega cuando la entrada es válida (pagada o confirmada)
+  tipo: string; // nombre del tipo de entrada
+  tipoEntradaId: string | null;
+  precio: number; // lo que se pagó por esta entrada (incluye el cargo)
+  cargo: number;
   nombre: string;
   apellido: string;
   rut: string;
@@ -31,6 +36,9 @@ export interface Compra {
   precioBase: number;
   porcentajeCargo: number;
   cargoServicio: number; // cargo total de la compra
+  cantidadEstacionamiento: number;
+  precioEstacionamiento: number; // por vehículo
+  codigoEstacionamiento: string | null; // solo cuando la compra es válida
   medioPago: string | null;
   fechaCreacion: string;
   expiraEn: string | null;
@@ -44,6 +52,8 @@ export interface Compra {
     status: EventStatus;
     statusReason: string | null;
     price: number;
+    estacionamiento: 'GRATUITO' | 'PAGADO' | null;
+    indicacionesEstacionamiento: string | null;
     latitude: number;
     longitude: number;
     category: Category;
@@ -82,8 +92,20 @@ export const PAYMENT_TYPES: Record<string, string> = {
 
 export const compraValida = (c: Compra) => c.estado === 'PAGADA' || c.estado === 'CONFIRMADA';
 
-export function createCompra(eventoId: string, asistentes: AsistenteInput[]): Promise<Compra> {
-  return apiJson<Compra>('/compras', { method: 'POST', body: JSON.stringify({ eventoId, asistentes }) });
+// Entradas elegidas en el detalle del evento (cantidad por tipo) y estacionamientos
+export interface TicketSelection {
+  tipos: { id: string; nombre: string; precioFinal: number; cargoPorEntrada: number; cantidad: number }[];
+  estacionamientos: number;
+  precioEstacionamiento: number;
+}
+
+export const selectionCount = (s: TicketSelection) => s.tipos.reduce((n, t) => n + t.cantidad, 0);
+
+export function createCompra(eventoId: string, asistentes: AsistenteInput[], estacionamientos = 0): Promise<Compra> {
+  return apiJson<Compra>('/compras', {
+    method: 'POST',
+    body: JSON.stringify({ eventoId, asistentes, ...(estacionamientos > 0 && { estacionamientos }) }),
+  });
 }
 
 export function fetchCompra(id: string): Promise<Compra> {

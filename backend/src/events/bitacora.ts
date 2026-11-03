@@ -4,7 +4,7 @@ import { BitacoraEvento, Event, EventStatus, Prisma } from '@prisma/client';
 export interface CambioBitacora {
   campo:
     | 'titulo' | 'fecha' | 'direccion' | 'precio' | 'categoria' | 'descripcion' | 'imagen' | 'estado' | 'cargo' | 'venta'
-    | 'oferta';
+    | 'oferta' | 'entradas' | 'estacionamiento';
   anterior?: string | number | null;
   nuevo?: string | number | null;
   // Solo en "oferta": % de descuento y término (ISO; null = hasta el evento)

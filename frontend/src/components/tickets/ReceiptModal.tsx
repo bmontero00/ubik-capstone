@@ -7,7 +7,7 @@ import { Compra, PAYMENT_TYPES, PagoCompra } from '../../services/compras';
 import { formatEventDate, formatPrice } from '../../services/events';
 import { formatRut } from '../../utils/rut';
 import UbikLogo from '../UbikLogo';
-import PriceBreakdown from './PriceBreakdown';
+import PriceBreakdown, { itemsFromCompra } from './PriceBreakdown';
 
 const formatDateTime = (value: string) => new Date(value).toLocaleString('es-CL', { dateStyle: 'medium', timeStyle: 'short' });
 
@@ -101,10 +101,8 @@ export default function ReceiptModal({ compra, onClose }: { compra: Compra; onCl
 
           <Section title="Detalle">
             <PriceBreakdown
-              quantity={compra.cantidad}
-              unitPrice={compra.precioUnitario}
-              feeTotal={compra.cargoServicio}
-              free={free}
+              items={itemsFromCompra(compra)}
+              parking={{ cantidad: compra.cantidadEstacionamiento, precio: compra.precioEstacionamiento }}
             />
           </Section>
 
@@ -128,10 +126,16 @@ export default function ReceiptModal({ compra, onClose }: { compra: Compra; onCl
               {compra.entradas.map((t) => (
                 <li key={t.id} className="flex justify-between gap-2">
                   <span className="text-slate-200 truncate flex items-center gap-1.5"><UserRound className="w-3.5 h-3.5 text-slate-500 shrink-0" /> {t.nombre} {t.apellido}</span>
-                  <span className="text-slate-500 text-xs tabular-nums">{formatRut(t.rut)}</span>
+                  <span className="text-slate-500 text-xs tabular-nums shrink-0">{t.tipo} · {formatRut(t.rut)}</span>
                 </li>
               ))}
             </ul>
+            {compra.cantidadEstacionamiento > 0 && (
+              <p className="mt-2 text-xs text-slate-400">
+                Estacionamiento para {compra.cantidadEstacionamiento} {compra.cantidadEstacionamiento === 1 ? 'vehículo' : 'vehículos'}
+                {compra.codigoEstacionamiento && <> · código <span className="font-mono font-bold text-slate-200">{compra.codigoEstacionamiento}</span></>}
+              </p>
+            )}
           </Section>
 
           <p className="mt-5 text-[11px] text-slate-500">

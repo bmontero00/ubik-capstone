@@ -13,6 +13,7 @@ import { EVENT_STATUS_LABELS, StatusPill } from '../../utils/labels';
 import { categoryColor } from '../../utils/mapTiles';
 import EventBitacora from './EventBitacora';
 import TicketSelector from '../tickets/TicketSelector';
+import type { TicketSelection } from '../../services/compras';
 import { OfferBadge, OfferPrice } from './OfferBadge';
 
 const LocationPicker = dynamic(() => import('./LocationPicker'), {
@@ -29,7 +30,7 @@ interface EventDetailModalProps {
   tickets?: {
     blockedReason?: string; // ej. cuenta en revisión
     owned: (eventId: string) => number; // entradas vigentes que ya tiene para el evento
-    onContinue: (event: EventItem, quantity: number) => void;
+    onContinue: (event: EventItem, selection: TicketSelection) => void;
     onViewTickets: () => void;
   };
   onClose: () => void;
@@ -174,7 +175,7 @@ export default function EventDetailModal({
                 <span className="break-words">{event.address}</span>
                 {event.distanceKm !== undefined && <span className="block text-xs text-slate-500 mt-0.5">A {event.distanceKm} km</span>}
               </InfoTile>
-              <InfoTile icon={Ticket} label="Entrada">
+              <InfoTile icon={Ticket} label={event.variosPrecios ? 'Entradas' : 'Entrada'}>
                 <span className={event.price === 0 ? 'text-emerald-300' : ''}>
                   {event.price === 0 ? 'Liberada' : <OfferPrice event={event} price={publicPrice(event)} />}
                 </span>
@@ -190,13 +191,11 @@ export default function EventDetailModal({
             {tickets && (event.status === 'PUBLISHED' || event.status === 'POSTPONED') && (
               <div className="mt-4">
                 <TicketSelector
-                  price={publicPrice(event)}
-                  includesFee={(event.cargoPorEntrada ?? 0) > 0}
-                  salesPaused={!!event.ventaPausada}
+                  event={event}
                   available={event.status === 'PUBLISHED' && !!upcoming}
                   blockedReason={tickets.blockedReason ?? (event.status === 'POSTPONED' ? 'La venta de entradas está pausada mientras el evento está postergado.' : undefined)}
                   owned={tickets.owned(event.id)}
-                  onContinue={(quantity) => tickets.onContinue(event, quantity)}
+                  onContinue={(selection) => tickets.onContinue(event, selection)}
                   onViewTickets={tickets.onViewTickets}
                 />
               </div>

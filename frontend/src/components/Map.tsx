@@ -16,6 +16,8 @@ interface MapEvent {
   price: number;
   precioFinal?: number; // incluye el cargo por servicio (y la oferta vigente)
   ofertaActiva?: boolean;
+  variosPrecios?: boolean;
+  agotado?: boolean;
   precioSinOferta?: number;
   porcentajeDescuento?: number;
   ofertaHasta?: string | null;
@@ -195,6 +197,7 @@ export default function Map({
                 <span className="block mt-1 text-xs text-slate-300">{formatEventDate(evt.date)}</span>
                 <span className="block text-xs text-slate-500 truncate">{evt.address}</span>
                 {evt.ventaPausada && <span className="block mt-1 text-[11px] font-semibold text-amber-200">Venta de entradas próximamente</span>}
+                {evt.agotado && <span className="block mt-1 text-[11px] font-semibold text-rose-300">Entradas agotadas</span>}
                 <div className="mt-2.5 flex items-center justify-between gap-2">
                   <span className={`text-sm font-extrabold ${evt.price === 0 ? 'text-emerald-300' : 'text-white'}`}>
                     {evt.price === 0 ? 'Gratis' : <OfferPrice event={evt} price={evt.precioFinal ?? evt.price} compact />}

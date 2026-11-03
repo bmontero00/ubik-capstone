@@ -1,14 +1,15 @@
 import {
   BadRequestException, ConflictException, ForbiddenException, GoneException, Injectable, NotFoundException,
 } from '@nestjs/common';
-import { EstadoCompra, Prisma } from '@prisma/client';
+import { EstadoCompra, Event, Prisma, TipoEntrada } from '@prisma/client';
 import { randomInt } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import type { AuthenticatedUser } from '../auth/auth.guards';
 import { accountUnderReviewError } from '../auth/account-status';
 import { normalizeRut } from '../auth/rut.util';
 import { COMPRA_LIMITS, CreateCompraDto } from './dto/compra.dto';
-import { precioBaseVigente, precioFinal } from '../parametros/cargos';
+import { precioEntrada } from '../parametros/cargos';
+import { compraOcupaCupo } from '../events/tipos-entrada';
 import { webpayConfig } from '../pagos/webpay.config';
 
 // Compras que reservan o ya son entradas válidas (cuentan para los límites y los RUT repetidos)
@@ -30,13 +31,15 @@ const compraInclude = {
       status: true,
       statusReason: true,
       price: true,
+      estacionamiento: true,
+      indicacionesEstacionamiento: true,
       latitude: true,
       longitude: true,
       category: { select: { id: true, name: true } },
       organizer: { select: { id: true, name: true, organizerProfile: { select: { organizationName: true } } } },
     },
   },
-  entradas: { orderBy: { fechaCreacion: 'asc' } },
+  entradas: { orderBy: { fechaCreacion: 'asc' }, include: { tipoEntrada: { select: { id: true, nombre: true } } } },
   // Último intento de pago, para el comprobante (o para avisar que se rechazó)
   transacciones: { orderBy: { fechaCreacion: 'desc' }, take: 1 },
 } satisfies Prisma.CompraInclude;
@@ -52,7 +55,7 @@ export class ComprasService {
   async create(dto: CreateCompraDto, user: AuthenticatedUser) {
     if (user.status !== 'ACTIVE') throw accountUnderReviewError();
 
-    const event = await this.prisma.event.findUnique({ where: { id: dto.eventoId } });
+    const event = await this.prisma.event.findUnique({ where: { id: dto.eventoId }, include: { tiposEntrada: true } });
     if (!event) throw new NotFoundException('Evento no encontrado');
     if (event.status !== 'PUBLISHED' || event.date.getTime() <= Date.now()) {
       throw new BadRequestException('Este evento no tiene entradas disponibles en este momento');
@@ -62,6 +65,18 @@ export class ComprasService {
         message: 'La venta de entradas para este evento se habilitará muy pronto',
         code: 'VENTA_PAUSADA',
       });
+    }
+
+    const tipos = new Map(event.tiposEntrada.map((t) => [t.id, t]));
+    if (dto.asistentes.some((a) => !tipos.has(a.tipoEntradaId))) {
+      throw new BadRequestException('Uno de los tipos de entrada no pertenece a este evento');
+    }
+    const estacionamientos = dto.estacionamientos ?? 0;
+    if (estacionamientos > 0 && event.estacionamiento !== 'PAGADO') {
+      throw new BadRequestException('Este evento no vende estacionamientos');
+    }
+    if (estacionamientos > dto.asistentes.length) {
+      throw new BadRequestException('Puedes agregar como máximo un estacionamiento por entrada');
     }
 
     const asistentes = dto.asistentes.map((a) => ({
@@ -114,31 +129,92 @@ export class ComprasService {
       });
     }
 
-    // Precio que paga el público: el del organizador (o su oferta vigente) más el cargo por servicio
-    // fijado en el evento. Se guarda el desglose para que la compra no cambie si después se edita el evento.
-    const gratis = event.price <= 0;
-    const base = precioBaseVigente(event);
-    const porcentajeCargo = gratis ? 0 : event.porcentajeCargo;
-    const precioUnitario = precioFinal(base, porcentajeCargo);
-    const cantidad = asistentes.length;
-    const compra = await this.prisma.compra.create({
-      data: {
-        codigo: `UBK-${codigo(6)}`,
-        estado: gratis ? 'CONFIRMADA' : 'PENDIENTE_PAGO',
-        cantidad,
-        precioUnitario,
-        total: precioUnitario * cantidad,
-        precioBase: gratis ? 0 : base,
-        porcentajeCargo,
-        cargoServicio: gratis ? 0 : (precioUnitario - base) * cantidad,
-        expiraEn: gratis ? null : new Date(Date.now() + COMPRA_LIMITS.minutosParaPagar * 60_000),
-        eventoId: event.id,
-        compradorId: user.sub,
-        entradas: { create: asistentes.map((a) => ({ ...a, codigo: codigo(10), eventoId: event.id })) },
-      },
-      include: compraInclude,
+    // Precio de cada entrada según su tipo: lo del organizador (con la oferta vigente) más el cargo por
+    // servicio fijado en el evento. Se guarda en cada entrada para que no cambie si después se edita el evento.
+    const entradas = asistentes.map((a) => ({ ...a, ...precioEntrada(event, tipos.get(a.tipoEntradaId)!.precio) }));
+    const cantidad = entradas.length;
+    const subtotal = entradas.reduce((n, e) => n + e.final, 0);
+    const cargoServicio = entradas.reduce((n, e) => n + e.cargo, 0);
+    const precioEstacionamiento = estacionamientos > 0 ? event.precioEstacionamiento ?? 0 : 0;
+    const total = subtotal + precioEstacionamiento * estacionamientos;
+    const gratis = total === 0;
+
+    // Los cupos se revisan y se descuentan dentro de una transacción que bloquea el evento: dos compras
+    // simultáneas del mismo evento no pueden vender el mismo último cupo
+    const compra = await this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "events" WHERE id = ${event.id} FOR UPDATE`;
+      await this.assertCupos(tx, event, entradas.map((e) => e.tipoEntradaId), estacionamientos);
+      return tx.compra.create({
+        data: {
+          codigo: `UBK-${codigo(6)}`,
+          estado: gratis ? 'CONFIRMADA' : 'PENDIENTE_PAGO',
+          cantidad,
+          // Promedios por entrada (el detalle por tipo queda en cada entrada)
+          precioUnitario: Math.round(subtotal / cantidad),
+          precioBase: Math.round(entradas.reduce((n, e) => n + e.base, 0) / cantidad),
+          porcentajeCargo: cargoServicio > 0 ? event.porcentajeCargo : 0,
+          cargoServicio,
+          cantidadEstacionamiento: estacionamientos,
+          precioEstacionamiento,
+          codigoEstacionamiento: estacionamientos > 0 ? `EST-${codigo(8)}` : null,
+          total,
+          expiraEn: gratis ? null : new Date(Date.now() + COMPRA_LIMITS.minutosParaPagar * 60_000),
+          eventoId: event.id,
+          compradorId: user.sub,
+          entradas: {
+            create: entradas.map(({ base, final, cargo, ...a }) => ({
+              ...a, precio: final, cargo, codigo: codigo(10), eventoId: event.id,
+            })),
+          },
+        },
+        include: compraInclude,
+      });
     });
     return this.serialize(compra);
+  }
+
+  // Cupos disponibles de cada tipo pedido y de estacionamiento (cuentan las compras pagadas, las
+  // confirmadas y las que esperan el pago dentro de plazo)
+  private async assertCupos(
+    tx: Prisma.TransactionClient,
+    event: Event & { tiposEntrada: TipoEntrada[] },
+    tiposPedidos: string[],
+    estacionamientos: number,
+  ) {
+    const pedidos = new Map<string, number>();
+    tiposPedidos.forEach((id) => pedidos.set(id, (pedidos.get(id) ?? 0) + 1));
+    const ocupadas = await tx.entrada.groupBy({
+      by: ['tipoEntradaId'],
+      where: { tipoEntradaId: { in: [...pedidos.keys()] }, compra: compraOcupaCupo() },
+      _count: { _all: true },
+    });
+    const sinCupo = event.tiposEntrada
+      .filter((t) => pedidos.has(t.id) && t.cupo !== null)
+      .map((t) => ({ id: t.id, nombre: t.nombre, disponibles: Math.max(0, t.cupo! - (ocupadas.find((o) => o.tipoEntradaId === t.id)?._count._all ?? 0)) }))
+      .filter((t) => t.disponibles < pedidos.get(t.id)!);
+    if (sinCupo.length) {
+      throw new ConflictException({
+        message: sinCupo
+          .map((t) => (t.disponibles ? `De "${t.nombre}" quedan solo ${t.disponibles}` : `"${t.nombre}" está agotada`))
+          .join('. '),
+        code: 'SIN_CUPO',
+        tipos: sinCupo,
+      });
+    }
+    if (estacionamientos > 0) {
+      const { _sum } = await tx.compra.aggregate({
+        where: { eventoId: event.id, ...compraOcupaCupo() },
+        _sum: { cantidadEstacionamiento: true },
+      });
+      const disponibles = Math.max(0, (event.cuposEstacionamiento ?? 0) - (_sum.cantidadEstacionamiento ?? 0));
+      if (disponibles < estacionamientos) {
+        throw new ConflictException({
+          message: disponibles ? `Quedan solo ${disponibles} estacionamientos` : 'Los estacionamientos están agotados',
+          code: 'SIN_CUPO_ESTACIONAMIENTO',
+          disponibles,
+        });
+      }
+    }
   }
 
   // Pago simulado, solo fuera de producción (para probar sin pasar por Webpay)
@@ -229,7 +305,12 @@ export class ComprasService {
             fecha: t.fechaTransaccion ?? t.fechaActualizacion,
           }
         : null,
-      entradas: compra.entradas.map(({ eventoId, compraId, ...e }) => ({ ...e, codigo: valida ? e.codigo : null })),
+      codigoEstacionamiento: valida ? compra.codigoEstacionamiento : null,
+      entradas: compra.entradas.map(({ eventoId, compraId, tipoEntrada, ...e }) => ({
+        ...e,
+        tipo: tipoEntrada?.nombre ?? 'General',
+        codigo: valida ? e.codigo : null,
+      })),
     };
   }
 }

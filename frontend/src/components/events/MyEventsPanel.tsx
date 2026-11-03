@@ -287,16 +287,14 @@ export default function MyEventsPanel({ canManage, refreshKey, onCreate, onEdit,
                       {e.category.name} ·{' '}
                       {e.price > 0 ? (
                         <>
-                          <span className="font-semibold">
-                            Recibes {formatPrice(e.ofertaActiva && e.precioOferta ? e.precioOferta : e.price)}
-                            {e.ofertaActiva && <span className="text-slate-500 font-normal"> (precio normal {formatPrice(e.price)})</span>}
-                          </span>
-                          <span className="text-slate-500"> · el público paga {formatPrice(publicPrice(e))} ({formatPercent(e.porcentajeCargo ?? 0)} de cargo)</span>
+                          <span className="font-semibold">Entradas {e.variosPrecios ? 'desde ' : ''}{formatPrice(publicPrice(e))}</span>
+                          <span className="text-slate-500"> para el público ({formatPercent(e.porcentajeCargo ?? 0)} de cargo incluido)</span>
                         </>
                       ) : (
                         <span className="font-semibold">Gratis</span>
                       )}
                     </p>
+                    <SalesSummary event={e} />
                     {e.estadoCondicion === 'PENDIENTE' && (
                       <p className="mt-1.5 inline-flex items-center gap-1.5 text-[11px] font-semibold text-amber-200 bg-amber-500/10 border border-amber-500/25 rounded-lg px-2 py-1">
                         <Hourglass className="w-3.5 h-3.5" /> Condición especial en revisión · venta de entradas en pausa
@@ -487,6 +485,43 @@ function TeamNotice({ entry, status, onSeen }: { entry: EntradaBitacora; status:
       <button onClick={onSeen} className="self-end sm:self-start px-3 py-1.5 text-xs font-semibold rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-100">
         Entendido
       </button>
+    </div>
+  );
+}
+
+// Ventas del evento: entradas vendidas (o reservadas) por tipo sobre su cupo, y estacionamientos
+function SalesSummary({ event }: { event: EventItem }) {
+  const tipos = event.tiposEntrada ?? [];
+  if (!tipos.length) return null;
+  const vendidas = tipos.reduce((n, t) => n + (t.vendidas ?? 0), 0);
+  const aforo = event.aforo ?? null;
+  return (
+    <div className="mt-2 max-w-md">
+      {aforo ? (
+        <>
+          <div className="flex justify-between text-[11px] text-slate-400 mb-1">
+            <span>Vendidas</span>
+            <span className="tabular-nums"><span className="font-bold text-white">{vendidas.toLocaleString('es-CL')}</span> de {aforo.toLocaleString('es-CL')}</span>
+          </div>
+          <div className="h-1.5 rounded-full bg-slate-800 overflow-hidden">
+            <div className="h-full bg-gradient-to-r from-emerald-400 to-cyan-400" style={{ width: `${Math.min(100, (vendidas / aforo) * 100)}%` }} />
+          </div>
+        </>
+      ) : (
+        <p className="text-[11px] text-slate-400"><span className="font-bold text-white">{vendidas}</span> vendidas · sin aforo definido (edita el evento para indicarlo)</p>
+      )}
+      <div className="flex flex-wrap gap-1.5 mt-1.5">
+        {tipos.map((t) => (
+          <span key={t.id} className={`text-[10px] font-semibold rounded px-1.5 py-0.5 border ${t.cupo !== null && (t.vendidas ?? 0) >= t.cupo ? 'border-rose-500/30 bg-rose-500/10 text-rose-200' : 'border-slate-700 bg-slate-950 text-slate-300'}`}>
+            {t.nombre} {t.vendidas ?? 0}{t.cupo !== null ? `/${t.cupo}` : ''}
+          </span>
+        ))}
+        {event.estacionamiento === 'PAGADO' && (
+          <span className="text-[10px] font-semibold rounded px-1.5 py-0.5 border border-sky-500/30 bg-sky-500/10 text-sky-200">
+            Estacionamientos {event.estacionamientosVendidos ?? 0}/{event.cuposEstacionamiento}
+          </span>
+        )}
+      </div>
     </div>
   );
 }

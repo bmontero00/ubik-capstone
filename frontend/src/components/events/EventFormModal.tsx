@@ -8,8 +8,11 @@ import {
 } from 'lucide-react';
 import EventCard from './EventCard';
 import {
-  EVENT_LIMITS, EventFormState, FieldErrors, STEPS, finalPrice, toDateTime, validateStep,
+  EVENT_LIMITS, EventFormState, FieldErrors, STEPS, TICKETS_STEP, TicketTypeForm, lowestPrice, newTicketType, ticketTypeErrors,
+  toDateTime, validateStep,
 } from './eventRules';
+import { ParkingEditor, TicketTypesEditor } from './TicketTypesEditor';
+import { normalizeTypeName } from './ticketTypeRules';
 import {
   Category, EventItem, EventPayload, createEvent, fetchPublicConfig, formatPercent, formatPrice, imageSrc, priceWithFee, updateEvent,
 } from '../../services/events';
@@ -35,6 +38,31 @@ const pad = (n: number) => String(n).padStart(2, '0');
 const toLocalDate = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const toLocalTime = (d: Date) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 
+// Tipos de entrada del evento en el formulario. Al duplicar se copian sin id ni ventas.
+function typesFrom(source: EventItem, keepIds: boolean): TicketTypeForm[] {
+  const tipos = source.tiposEntrada?.length
+    ? source.tiposEntrada
+    : [{ id: '', nombre: 'General', descripcion: null, precio: source.price, cupo: null, vendidas: 0 }];
+  return tipos.map((t) => ({
+    ...newTicketType(t.nombre),
+    ...(keepIds && t.id ? { id: t.id } : {}),
+    descripcion: t.descripcion ?? '',
+    precio: t.precio > 0 ? String(t.precio) : '',
+    cupo: t.cupo ? String(t.cupo) : '', // los eventos antiguos no tienen cupo: se pide al editar
+    vendidas: keepIds ? t.vendidas ?? 0 : 0,
+  }));
+}
+
+function parkingFrom(source: EventItem, keepSales: boolean) {
+  return {
+    estacionamiento: source.estacionamiento ?? 'NINGUNO',
+    precioEstacionamiento: source.precioEstacionamiento ? String(source.precioEstacionamiento) : '',
+    cuposEstacionamiento: source.cuposEstacionamiento ? String(source.cuposEstacionamiento) : '',
+    indicacionesEstacionamiento: source.indicacionesEstacionamiento ?? '',
+    estacionamientosVendidos: keepSales ? source.estacionamientosVendidos ?? 0 : 0,
+  } as const;
+}
+
 function initialState(event?: EventItem, location?: { lat: number; lng: number } | null, duplicate?: EventItem): EventFormState {
   const source = event ?? duplicate;
   if (source) {
@@ -50,7 +78,9 @@ function initialState(event?: EventItem, location?: { lat: number; lng: number }
       latitude: source.latitude,
       longitude: source.longitude,
       isFree: source.price === 0,
-      price: source.price === 0 ? '' : String(source.price),
+      tipos: typesFrom(source, !!event),
+      aforo: source.aforo ? String(source.aforo) : '',
+      ...parkingFrom(source, !!event),
       image: null,
       currentImageUrl: source.imageUrl ?? null,
       removeImage: false,
@@ -70,7 +100,13 @@ function initialState(event?: EventItem, location?: { lat: number; lng: number }
     latitude: location?.lat ?? DEFAULT_LOCATION.lat,
     longitude: location?.lng ?? DEFAULT_LOCATION.lng,
     isFree: true,
-    price: '',
+    tipos: [newTicketType('General')],
+    aforo: '',
+    estacionamiento: 'NINGUNO',
+    precioEstacionamiento: '',
+    cuposEstacionamiento: '',
+    indicacionesEstacionamiento: '',
+    estacionamientosVendidos: 0,
     image: null,
     currentImageUrl: null,
     removeImage: false,
@@ -101,8 +137,6 @@ function quickDates() {
 export default function EventFormModal({ categories, event, initialLocation, duplicateFrom, onClose, onSaved }: EventFormModalProps) {
   const isEdit = !!event;
   const isDuplicate = !isEdit && !!duplicateFrom;
-  // Con una oferta vigente el precio normal no se cambia (el backend también lo impide)
-  const priceLocked = isEdit && !!event?.ofertaActiva;
   const initial = useMemo(() => initialState(event, initialLocation, duplicateFrom), [event, initialLocation, duplicateFrom]);
   const [form, setForm] = useState<EventFormState>(initial);
   // Al duplicar se parte en el paso de la fecha, que es lo que normalmente cambia
@@ -119,14 +153,18 @@ export default function EventFormModal({ categories, event, initialLocation, dup
     if (isEdit) return;
     fetchPublicConfig().then((c) => setFeePct(c.porcentajeCargoServicio)).catch(() => setFeePct(null));
   }, [isEdit]);
-  const basePrice = finalPrice(form);
+  const basePrice = lowestPrice(form);
   const publicPriceValue = feePct === null ? basePrice : priceWithFee(basePrice, feePct);
+  const typeErrors = ticketTypeErrors(form);
+  const variosPrecios = !form.isFree && new Set(form.tipos.map((t) => Number(t.precio) || 0)).size > 1;
   const requestsCondition = !isEdit && !form.isFree && form.solicitarCondicion;
 
   const set = <K extends keyof EventFormState>(key: K, value: EventFormState[K]) =>
     setForm((prev) => ({ ...prev, [key]: value }));
 
-  const dirty = JSON.stringify({ ...form, image: form.image?.name }) !== JSON.stringify({ ...initial, image: undefined });
+  // Las claves locales de los tipos de entrada no cuentan como cambios
+  const comparable = (f: EventFormState) => ({ ...f, tipos: f.tipos.map((t) => ({ ...t, key: '' })) });
+  const dirty = JSON.stringify({ ...comparable(form), image: form.image?.name }) !== JSON.stringify({ ...comparable(initial), image: undefined });
 
   // Al editar, una fecha que no cambió puede quedar en el pasado (la corrige un admin, por ejemplo)
   const dateUnchanged = isEdit && form.date === initial.date && form.time === initial.time;
@@ -189,7 +227,21 @@ export default function EventFormModal({ categories, event, initialLocation, dup
       address: form.address.normalize('NFC').trim(),
       latitude: Number(form.latitude.toFixed(6)),
       longitude: Number(form.longitude.toFixed(6)),
-      price: finalPrice(form),
+      tiposEntrada: form.tipos.map((t) => ({
+        ...(isEdit && t.id ? { id: t.id } : {}),
+        nombre: normalizeTypeName(t.nombre),
+        ...(t.descripcion.trim() ? { descripcion: t.descripcion.normalize('NFC').trim() } : {}),
+        precio: form.isFree ? 0 : Number(t.precio),
+        cupo: Number(t.cupo),
+      })),
+      aforo: Number(form.aforo),
+      estacionamiento: form.estacionamiento,
+      ...(form.estacionamiento === 'PAGADO' ? {
+        precioEstacionamiento: Number(form.precioEstacionamiento),
+        cuposEstacionamiento: Number(form.cuposEstacionamiento),
+      } : {}),
+      ...(form.estacionamiento !== 'NINGUNO' && form.indicacionesEstacionamiento.trim()
+        ? { indicacionesEstacionamiento: form.indicacionesEstacionamiento.normalize('NFC').trim() } : {}),
       image: form.image,
       ...(isEdit && form.removeImage && !form.image ? { removeImage: true } : {}),
       ...(requestsCondition ? {
@@ -234,7 +286,7 @@ export default function EventFormModal({ categories, event, initialLocation, dup
             </button>
           </div>
 
-          <ol className="grid grid-cols-4 gap-2" aria-label="Pasos">
+          <ol className="grid grid-cols-5 gap-2" aria-label="Pasos">
             {STEPS.map((s, i) => {
               const done = i < step;
               const current = i === step;
@@ -374,94 +426,51 @@ export default function EventFormModal({ categories, event, initialLocation, dup
                 </>
               )}
 
-              {step === 2 && (
+              {step === TICKETS_STEP && (
                 <>
-                  {priceLocked && (
-                    <p className="flex items-start gap-2 text-xs text-rose-200 bg-rose-500/10 border border-rose-500/25 rounded-xl px-3 py-2.5">
-                      <BadgePercent className="w-4 h-4 shrink-0 mt-px" />
-                      El evento está en oferta ({event!.porcentajeDescuento}% de descuento). Para cambiar el precio de la entrada,
-                      primero termina la oferta desde "Mis eventos".
-                    </p>
-                  )}
-                  <fieldset disabled={priceLocked} className={`contents ${priceLocked ? '[&_*]:opacity-60' : ''}`}>
-                  <Field label="Entrada">
+                  <Field label="Entradas">
                     <div className="grid grid-cols-2 gap-3">
                       <ChoiceCard
                         selected={form.isFree}
                         onClick={() => set('isFree', true)}
                         icon={<Gift className="w-5 h-5" />}
                         title="Gratis"
-                        text="Entrada liberada, sin reserva de pago"
+                        text="Entrada liberada, sin pago"
                       />
                       <ChoiceCard
                         selected={!form.isFree}
                         onClick={() => set('isFree', false)}
                         icon={<Ticket className="w-5 h-5" />}
                         title="Con valor"
-                        text="Los asistentes reservan su entrada"
+                        text="Los asistentes pagan su entrada"
                       />
                     </div>
+                    {!form.isFree && feePct !== null && (
+                      <p className="mt-2 flex items-start gap-1.5 text-[11px] text-slate-400">
+                        <Percent className="w-3.5 h-3.5 mt-px shrink-0" />
+                        {isEdit
+                          ? `Los valores son lo que recibes por entrada. El público paga además el cargo por servicio fijo de este evento (${formatPercent(feePct)}).`
+                          : `Los valores son lo que recibes por entrada. El público paga además ${formatPercent(feePct)} de cargo por servicio de UBIK, fijo para este evento.`}
+                      </p>
+                    )}
                   </Field>
 
-                  {!form.isFree && (
-                    <Field label="Valor de la entrada (CLP)" error={err('price')}>
-                      <div className="relative">
-                        <span className="absolute left-3 top-2.5 text-sm text-slate-400 pointer-events-none">$</span>
-                        <input
-                          inputMode="numeric"
-                          autoFocus
-                          value={form.price ? Number(form.price).toLocaleString('es-CL') : ''}
-                          onChange={(e) => set('price', e.target.value.replace(/\D/g, '').replace(/^0+/, '').slice(0, 8))}
-                          placeholder="5.000"
-                          className={`${inputClass(!!err('price'))} pl-7`}
-                        />
-                      </div>
-                      <div className="flex flex-wrap gap-1.5 mt-2">
-                        {[2000, 5000, 10000, 15000].map((v) => (
-                          <button
-                            key={v}
-                            type="button"
-                            onClick={() => set('price', String(v))}
-                            className={`px-2.5 py-1 rounded-full text-[11px] font-semibold border transition-colors ${
-                              Number(form.price) === v ? 'border-indigo-500/60 bg-indigo-500/15 text-indigo-200' : 'border-slate-800 text-slate-400 hover:text-white'
-                            }`}
-                          >
-                            ${v.toLocaleString('es-CL')}
-                          </button>
-                        ))}
-                      </div>
-                      {basePrice > 0 && feePct !== null && (
-                        <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
-                          <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
-                            <p className="text-slate-500">Recibirás por entrada</p>
-                            <p className="text-base font-extrabold text-white mt-0.5">{formatPrice(basePrice)}</p>
-                          </div>
-                          <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/25">
-                            <p className="text-emerald-200/80">El público verá</p>
-                            <p className="text-base font-extrabold text-emerald-100 mt-0.5">{formatPrice(publicPriceValue)}</p>
-                          </div>
-                          <p className="col-span-2 flex items-start gap-1.5 text-slate-400">
-                            <Percent className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-                            {isEdit
-                              ? `Este evento tiene un cargo por servicio fijo de ${formatPercent(feePct)}: no cambia aunque edites el precio.`
-                              : `Incluye ${formatPercent(feePct)} de cargo por servicio de UBIK. Queda fijo para este evento aunque el porcentaje de la plataforma cambie más adelante.`}
-                          </p>
-                        </div>
-                      )}
-                    </Field>
-                  )}
-                  </fieldset>
+                  <Field label="Tipos de entrada y aforo" error={showErrors ? errors.tipos : undefined}>
+                    <TicketTypesEditor form={form} set={set} errors={errors} typeErrors={typeErrors} showErrors={showErrors} feePct={feePct} />
+                  </Field>
+
+                  <ParkingEditor form={form} set={set} errors={errors} showErrors={showErrors} />
 
                   {!form.isFree && !isEdit && (
                     <SpecialConditionField form={form} set={set} errors={showErrors ? errors : {}} feePct={feePct} />
                   )}
                   {isEdit && event?.estadoCondicion && <ConditionStatus event={event} />}
-
-                  <ImageField form={form} set={set} shownImage={shownImage} />
                 </>
               )}
 
-              {step === 3 && (
+              {step === 3 && <ImageField form={form} set={set} shownImage={shownImage} />}
+
+              {step === 4 && (
                 <div className="space-y-3">
                   <SummaryRow label="Título y categoría" onEdit={() => goTo(0)}>
                     <span className="font-semibold text-white">{form.title.trim()}</span> · {category?.name}
@@ -475,18 +484,35 @@ export default function EventFormModal({ categories, event, initialLocation, dup
                   <SummaryRow label="Ubicación" onEdit={() => goTo(1)}>
                     {form.address.trim()}
                   </SummaryRow>
-                  <SummaryRow label="Entrada" onEdit={() => goTo(2)}>
-                    {basePrice > 0 && feePct !== null
-                      ? <>{formatPrice(basePrice)} para ti · <span className="text-white font-semibold">{formatPrice(publicPriceValue)}</span> para el público</>
-                      : formatPrice(basePrice)}
+                  <SummaryRow label={`Entradas · aforo ${Number(form.aforo).toLocaleString('es-CL')}`} onEdit={() => goTo(TICKETS_STEP)}>
+                    <ul className="space-y-0.5">
+                      {form.tipos.map((t) => (
+                        <li key={t.key} className="flex justify-between gap-3">
+                          <span className="truncate"><span className="text-white font-semibold">{normalizeTypeName(t.nombre)}</span> · {Number(t.cupo).toLocaleString('es-CL')} cupos</span>
+                          <span className="shrink-0 tabular-nums">
+                            {form.isFree ? 'Gratis' : <>{formatPrice(Number(t.precio))}{feePct !== null && <span className="text-slate-500"> → {formatPrice(priceWithFee(Number(t.precio), feePct))} público</span>}</>}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </SummaryRow>
+                  <SummaryRow label="Estacionamiento" onEdit={() => goTo(TICKETS_STEP)}>
+                    {form.estacionamiento === 'NINGUNO'
+                      ? 'Sin estacionamiento'
+                      : form.estacionamiento === 'GRATUITO'
+                        ? 'Gratuito'
+                        : `${formatPrice(Number(form.precioEstacionamiento))} por vehículo · ${Number(form.cuposEstacionamiento).toLocaleString('es-CL')} disponibles`}
+                    {form.estacionamiento !== 'NINGUNO' && form.indicacionesEstacionamiento.trim() && (
+                      <span className="block text-slate-500">{form.indicacionesEstacionamiento.trim()}</span>
+                    )}
                   </SummaryRow>
                   {requestsCondition && (
-                    <SummaryRow label="Condición especial de cargo" onEdit={() => goTo(2)}>
+                    <SummaryRow label="Condición especial de cargo" onEdit={() => goTo(TICKETS_STEP)}>
                       <span className="line-clamp-2">{form.justificacionCondicion.trim()}</span>
                       {form.porcentajeSolicitado !== '' && <span className="block text-slate-500">Propones {formatPercent(Number(form.porcentajeSolicitado))}</span>}
                     </SummaryRow>
                   )}
-                  <SummaryRow label="Imagen de portada" onEdit={() => goTo(2)}>
+                  <SummaryRow label="Imagen de portada" onEdit={() => goTo(3)}>
                     {form.image ? form.image.name : shownImage ? 'Imagen actual' : 'Sin imagen (opcional)'}
                   </SummaryRow>
                   <p className="flex items-center gap-2 text-xs text-slate-400 bg-slate-950 border border-slate-800 rounded-xl p-3">
@@ -512,11 +538,8 @@ export default function EventFormModal({ categories, event, initialLocation, dup
                   event={{
                     title: form.title.trim(),
                     description: form.description.trim(),
-                    price: priceLocked ? event!.precioFinal ?? publicPriceValue : publicPriceValue,
-                    ofertaActiva: priceLocked,
-                    precioSinOferta: event?.precioSinOferta,
-                    porcentajeDescuento: event?.porcentajeDescuento,
-                    ofertaHasta: event?.ofertaHasta,
+                    price: publicPriceValue,
+                    variosPrecios,
                     ventaPausada: requestsCondition || !!event?.ventaPausada,
                     date: when && !Number.isNaN(when.getTime()) ? when.toISOString() : '',
                     address: form.address.trim(),

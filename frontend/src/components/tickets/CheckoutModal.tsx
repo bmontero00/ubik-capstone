@@ -7,10 +7,10 @@ import {
 } from 'lucide-react';
 import { ApiError } from '../../services/auth';
 import {
-  Compra, PaymentConfig, cancelCompra, createCompra, fetchPaymentConfig, payCompra, payWithWebpay,
+  Compra, PaymentConfig, TicketSelection, cancelCompra, createCompra, fetchPaymentConfig, payCompra, payWithWebpay,
 } from '../../services/compras';
 import { Rows, webpayRows } from './ReceiptModal';
-import PriceBreakdown from './PriceBreakdown';
+import PriceBreakdown, { itemsFromCompra, itemsFromSelection } from './PriceBreakdown';
 import { formatEventDate, formatPrice, imageSrc } from '../../services/events';
 import { formatRut } from '../../utils/rut';
 import { PHONE_PREFIX, formatLocalPhone, formatPhoneDisplay, toFullPhone } from '../../utils/phone';
@@ -33,7 +33,7 @@ export interface CheckoutEvent {
 
 interface CheckoutModalProps {
   event: CheckoutEvent;
-  quantity: number;
+  selection?: TicketSelection; // entradas elegidas en el detalle (compra nueva)
   buyer: { name: string; email: string };
   resume?: Compra; // compra pendiente que se retoma ("Mis entradas" o al volver de Webpay), o ya pagada
   notice?: string; // aviso al volver de Webpay (ej. pago rechazado)
@@ -77,8 +77,13 @@ const mmss = (ms: number) => {
 };
 
 // Compra de entradas: datos de cada asistente → pago → entradas listas
-export default function CheckoutModal({ event, quantity, buyer, resume, notice, onClose, onChanged, onViewTickets }: CheckoutModalProps) {
-  const free = event.price === 0;
+export default function CheckoutModal({ event, selection, buyer, resume, notice, onClose, onChanged, onViewTickets }: CheckoutModalProps) {
+  // Un lugar por entrada con su tipo, en el orden elegido
+  const [slots] = useState(() =>
+    resume
+      ? resume.entradas.map((e) => ({ tipoEntradaId: e.tipoEntradaId ?? '', tipo: e.tipo }))
+      : (selection?.tipos ?? []).flatMap((t) => Array.from({ length: t.cantidad }, () => ({ tipoEntradaId: t.id, tipo: t.nombre }))),
+  );
   const [step, setStep] = useState<Step>(
     !resume ? 'attendees' : resume.estado === 'PAGADA' || resume.estado === 'CONFIRMADA' ? 'done' : 'payment',
   );
@@ -88,10 +93,10 @@ export default function CheckoutModal({ event, quantity, buyer, resume, notice, 
   const [attendees, setAttendees] = useState<AttendeeForm[]>(() =>
     resume
       ? resume.entradas.map((e) => ({ nombre: e.nombre, apellido: e.apellido, rut: formatRut(e.rut), telefono: formatLocalPhone(e.telefono), correo: e.correo }))
-      : Array.from({ length: quantity }, emptyAttendee),
+      : slots.map(() => emptyAttendee()),
   );
   const [open, setOpen] = useState(0);
-  const [touched, setTouched] = useState<boolean[]>(() => Array(quantity).fill(false));
+  const [touched, setTouched] = useState<boolean[]>(() => Array(slots.length).fill(false));
   const [serverRutErrors, setServerRutErrors] = useState<Record<string, string>>({});
   const [compra, setCompra] = useState<Compra | null>(resume ?? null);
   const [busy, setBusy] = useState(false);
@@ -102,9 +107,13 @@ export default function CheckoutModal({ event, quantity, buyer, resume, notice, 
   const count = attendees.length;
   // Precio por entrada que paga el público. Una vez creada la compra manda su propio desglose
   // (no cambia aunque después se edite el evento).
-  const unitPrice = compra?.precioUnitario ?? event.precioFinal ?? event.price;
-  const feePerTicket = compra ? compra.cargoServicio / compra.cantidad : event.cargoPorEntrada ?? 0;
-  const total = unitPrice * count;
+  const items = compra ? itemsFromCompra(compra) : itemsFromSelection(selection);
+  const parking = compra
+    ? { cantidad: compra.cantidadEstacionamiento, precio: compra.precioEstacionamiento }
+    : { cantidad: selection?.estacionamientos ?? 0, precio: selection?.precioEstacionamiento ?? 0 };
+  const total = compra?.total ?? items.reduce((n, i) => n + i.precio * i.cantidad, 0) + parking.cantidad * parking.precio;
+  // Sin nada que pagar (entradas gratis y sin estacionamiento) la asistencia se confirma de inmediato
+  const free = total === 0;
 
   // Errores de cada entrada, incluidos los RUT repetidos dentro de la misma compra
   const errors: AttendeeErrors[] = useMemo(() => attendees.map((a, i) => {
@@ -181,13 +190,14 @@ export default function CheckoutModal({ event, quantity, buyer, resume, notice, 
     setBusy(true);
     setError(null);
     try {
-      const created = await createCompra(event.id, attendees.map((a) => ({
+      const created = await createCompra(event.id, attendees.map((a, i) => ({
+        tipoEntradaId: slots[i].tipoEntradaId,
         nombre: a.nombre.normalize('NFC').trim(),
         apellido: a.apellido.normalize('NFC').trim(),
         rut: a.rut,
         telefono: toFullPhone(a.telefono),
         correo: a.correo.trim(),
-      })));
+      })), selection?.estacionamientos ?? 0);
       setCompra(created);
       setNow(Date.now());
       setStep(created.estado === 'CONFIRMADA' ? 'done' : 'payment');
@@ -311,6 +321,7 @@ export default function CheckoutModal({ event, quantity, buyer, resume, notice, 
                       <AttendeeCard
                         key={i}
                         index={i}
+                        typeName={slots[i]?.tipo}
                         value={a}
                         errors={touched[i] ? errors[i] : filledOnly(errors[i], a)}
                         complete={!Object.keys(errors[i]).length}
@@ -412,12 +423,7 @@ export default function CheckoutModal({ event, quantity, buyer, resume, notice, 
                 </div>
               </div>
               <div className="mt-4 pt-4 border-t border-slate-800">
-                <PriceBreakdown
-                  quantity={count}
-                  unitPrice={unitPrice}
-                  feeTotal={feePerTicket * count}
-                  free={free}
-                />
+                <PriceBreakdown items={items} parking={parking} />
               </div>
               {step === 'payment' && remaining !== null && !expired && (
                 <p className={`sm:hidden mt-3 flex items-center gap-1.5 text-xs font-bold ${remaining < 120_000 ? 'text-rose-200' : 'text-amber-200'}`}>
@@ -475,6 +481,7 @@ export default function CheckoutModal({ event, quantity, buyer, resume, notice, 
 
 interface AttendeeCardProps {
   index: number;
+  typeName?: string; // tipo de entrada (General, VIP...)
   value: AttendeeForm;
   errors: AttendeeErrors;
   complete: boolean;
@@ -488,7 +495,7 @@ interface AttendeeCardProps {
 }
 
 // Una entrada del formulario: se colapsa al completarse para avanzar a la siguiente
-function AttendeeCard({ index, value, errors, complete, open, last, onToggle, onChange, onNext, onFillMine, onCopyContact }: AttendeeCardProps) {
+function AttendeeCard({ index, typeName, value, errors, complete, open, last, onToggle, onChange, onNext, onFillMine, onCopyContact }: AttendeeCardProps) {
   const name = `${value.nombre} ${value.apellido}`.trim();
   const hasErrors = Object.keys(errors).length > 0;
   const id = (f: string) => `att-${index}-${f}`;
@@ -500,7 +507,11 @@ function AttendeeCard({ index, value, errors, complete, open, last, onToggle, on
           {complete ? <Check className="w-4 h-4" /> : index + 1}
         </span>
         <span className="flex-1 min-w-0">
-          <span className="block text-sm font-semibold text-white truncate">Entrada {index + 1}{name && ` · ${name}`}</span>
+          <span className="block text-sm font-semibold text-white truncate">
+            Entrada {index + 1}
+            {typeName && <span className="ml-1.5 text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-indigo-500/15 text-indigo-200 align-middle">{typeName}</span>}
+            {name && ` · ${name}`}
+          </span>
           <span className={`block text-[11px] ${complete ? 'text-emerald-300/80' : hasErrors ? 'text-rose-300' : 'text-slate-500'}`}>
             {complete ? `${formatRut(value.rut)} · ${formatPhoneDisplay(PHONE_PREFIX + value.telefono)}` : hasErrors ? 'Revisa los datos marcados' : 'Completa los datos del asistente'}
           </span>
@@ -636,12 +647,18 @@ function Success({ compra, free, onViewTickets, onClose }: { compra: Compra; fre
           <li key={e.id} className="flex items-center justify-between gap-3 px-4 py-3 rounded-xl bg-slate-950 border border-slate-800">
             <span className="min-w-0">
               <span className="block text-sm font-semibold text-white truncate">{e.nombre} {e.apellido}</span>
-              <span className="block text-[11px] text-slate-500">{formatRut(e.rut)}</span>
+              <span className="block text-[11px] text-slate-500">{e.tipo} · {formatRut(e.rut)}</span>
             </span>
             <span className="font-mono text-sm font-bold text-indigo-200 tracking-wider">{e.codigo}</span>
           </li>
         ))}
       </ul>
+      {compra.codigoEstacionamiento && (
+        <p className="mt-2 w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl bg-sky-500/10 border border-sky-500/25 text-left">
+          <span className="text-sm font-semibold text-sky-100">Estacionamiento · {compra.cantidadEstacionamiento} {compra.cantidadEstacionamiento === 1 ? 'vehículo' : 'vehículos'}</span>
+          <span className="font-mono text-sm font-bold text-sky-200 tracking-wider">{compra.codigoEstacionamiento}</span>
+        </p>
+      )}
       <p className="text-xs text-slate-500 mt-3">Presenta el código de cada entrada y la cédula de identidad en el acceso.</p>
       <div className="mt-5 flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
         <button onClick={onViewTickets} className="px-5 py-2.5 text-sm font-bold rounded-xl bg-indigo-600 hover:bg-indigo-500">Ver mis entradas</button>

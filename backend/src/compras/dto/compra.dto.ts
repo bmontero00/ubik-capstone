@@ -1,7 +1,7 @@
 import { Transform, Type } from 'class-transformer';
 import {
-  ArrayMaxSize, ArrayMinSize, IsArray, IsEmail, IsIn, IsString, IsUUID, Length, Matches, MaxLength, Validate,
-  ValidateNested,
+  ArrayMaxSize, ArrayMinSize, IsArray, IsEmail, IsIn, IsInt, IsOptional, IsString, IsUUID, Length, Matches, Max,
+  MaxLength, Min, Validate, ValidateNested,
 } from 'class-validator';
 import { IsValidRutConstraint } from '../../auth/dto/register.dto';
 
@@ -17,8 +17,11 @@ const trim = () =>
 // Letras (con tildes y ñ), espacios, apóstrofo, punto y guion: "María José", "O'Higgins", "Pérez-Cotapos"
 const NOMBRE = /^\p{L}[\p{L}' .-]*$/u;
 
-// Datos de la persona que usará cada entrada (las entradas son nominativas)
+// Datos de la persona que usará cada entrada (las entradas son nominativas) y su tipo de entrada
 export class AsistenteDto {
+  @IsUUID('4', { message: 'Elige el tipo de cada entrada' })
+  tipoEntradaId: string;
+
   @trim()
   @IsString({ message: 'Ingresa el nombre' })
   @Length(2, 50, { message: 'El nombre debe tener entre 2 y 50 caracteres' })
@@ -57,6 +60,13 @@ export class CreateCompraDto {
   @ValidateNested({ each: true })
   @Type(() => AsistenteDto)
   asistentes: AsistenteDto[];
+
+  // Estacionamientos (uno por vehículo); como máximo uno por entrada
+  @IsOptional()
+  @IsInt({ message: 'La cantidad de estacionamientos no es válida' })
+  @Min(0, { message: 'La cantidad de estacionamientos no es válida' })
+  @Max(COMPRA_LIMITS.maxPorCompra, { message: 'Puedes agregar como máximo un estacionamiento por entrada' })
+  estacionamientos?: number;
 }
 
 // Mientras no exista pasarela de pago solo se acepta el pago simulado

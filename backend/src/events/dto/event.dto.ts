@@ -1,10 +1,12 @@
-import { Transform, Type } from 'class-transformer';
+import { Transform, Type, plainToInstance } from 'class-transformer';
 import {
-  IsBoolean, IsISO8601, IsInt, IsLatitude, IsLongitude, IsNotEmpty, IsNumber, IsOptional, IsString, IsUUID, Length,
-  Matches, Max, Min, ValidateIf,
+  ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsIn, IsISO8601, IsInt, IsLatitude, IsLongitude, IsNotEmpty, IsNumber,
+  IsOptional, IsString, IsUUID, Length, Matches, Max, MaxLength, Min, Validate, ValidateIf, ValidateNested,
+  ValidationArguments, ValidatorConstraint, ValidatorConstraintInterface,
 } from 'class-validator';
-import { PORCENTAJE_CARGO_MAX } from '../../parametros/cargos';
+import { OFERTA_LIMITS, PORCENTAJE_CARGO_MAX } from '../../parametros/cargos';
 import { IsReason } from '../../common/reason.validator';
+import { TIPO_ENTRADA_LIMITS, errorDescripcionTipo, errorNombreTipo, normalizarNombreTipo } from '../tipos-entrada';
 
 // Límites compartidos con el formulario del frontend (frontend/src/components/events/eventRules.ts)
 export const EVENT_LIMITS = {
@@ -26,6 +28,70 @@ const trim = () => Transform(({ value }) => (typeof value === 'string' ? value.n
 const toNumber = () => Type(() => Number);
 const toBoolean = () => Transform(({ value }) => value === true || value === 'true');
 
+@ValidatorConstraint({ name: 'nombreTipoEntrada' })
+class NombreTipoEntrada implements ValidatorConstraintInterface {
+  validate(value: unknown) {
+    return typeof value === 'string' && !errorNombreTipo(value);
+  }
+  defaultMessage(args: ValidationArguments) {
+    return errorNombreTipo(String(args.value ?? '')) ?? 'Indica el nombre del tipo de entrada';
+  }
+}
+
+@ValidatorConstraint({ name: 'textoSinContacto' })
+class TextoSinContacto implements ValidatorConstraintInterface {
+  validate(value: unknown) {
+    return typeof value === 'string' && !errorDescripcionTipo(value);
+  }
+  defaultMessage(args: ValidationArguments) {
+    return errorDescripcionTipo(String(args.value ?? '')) ?? 'El texto no es válido';
+  }
+}
+
+// Un tipo de entrada del evento. Al editar, "id" identifica a los que ya existen.
+export class TipoEntradaDto {
+  @IsOptional()
+  @IsUUID('4', { message: 'El tipo de entrada no es válido' })
+  id?: string;
+
+  @Transform(({ value }) => (typeof value === 'string' ? normalizarNombreTipo(value) : value))
+  @Validate(NombreTipoEntrada)
+  nombre: string;
+
+  @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' ? value.normalize('NFC').replace(/\s+/g, ' ').trim() || undefined : value))
+  @Validate(TextoSinContacto)
+  descripcion?: string;
+
+  @IsInt({ message: 'El precio de cada tipo de entrada debe ser un monto entero en pesos' })
+  @Min(0, { message: 'El precio no puede ser negativo' })
+  @Max(EVENT_LIMITS.priceMax, { message: 'El precio supera el máximo permitido' })
+  precio: number;
+
+  @IsInt({ message: 'Indica el cupo de cada tipo de entrada' })
+  @Min(1, { message: 'Cada tipo de entrada debe tener al menos 1 cupo' })
+  @Max(TIPO_ENTRADA_LIMITS.cupoMax, { message: 'El cupo supera el máximo permitido' })
+  cupo: number;
+}
+
+// Con multipart/form-data los tipos de entrada llegan como texto JSON
+const tiposDesdeJson = () =>
+  Transform(({ value }) => {
+    let v: unknown = value;
+    if (typeof v === 'string') {
+      try {
+        v = JSON.parse(v);
+      } catch {
+        return value;
+      }
+    }
+    return Array.isArray(v) ? v.map((t) => plainToInstance(TipoEntradaDto, t)) : v;
+  });
+
+export const ESTACIONAMIENTO_OPCIONES = ['NINGUNO', 'GRATUITO', 'PAGADO'] as const;
+export type OpcionEstacionamiento = (typeof ESTACIONAMIENTO_OPCIONES)[number];
+const esPagado = (o: { estacionamiento?: OpcionEstacionamiento }) => o.estacionamiento === 'PAGADO';
+
 export class CreateEventDto {
   @trim()
   @IsString()
@@ -41,11 +107,46 @@ export class CreateEventDto {
   })
   description: string;
 
+  @tiposDesdeJson()
+  @IsArray({ message: 'Agrega al menos un tipo de entrada' })
+  @ArrayMinSize(1, { message: 'Agrega al menos un tipo de entrada' })
+  @ArrayMaxSize(TIPO_ENTRADA_LIMITS.maxTipos, { message: `Puedes tener como máximo ${TIPO_ENTRADA_LIMITS.maxTipos} tipos de entrada` })
+  @ValidateNested({ each: true })
+  tiposEntrada: TipoEntradaDto[];
+
+  // Aforo total: debe ser igual a la suma de los cupos de los tipos de entrada
   @toNumber()
-  @IsInt({ message: 'El precio debe ser un monto entero en pesos' })
-  @Min(0, { message: 'El precio no puede ser negativo' })
-  @Max(EVENT_LIMITS.priceMax, { message: 'El precio supera el máximo permitido' })
-  price: number;
+  @IsInt({ message: 'Indica el aforo del evento' })
+  @Min(1, { message: 'El aforo debe ser de al menos 1 persona' })
+  @Max(TIPO_ENTRADA_LIMITS.aforoMax, { message: 'El aforo supera el máximo permitido' })
+  aforo: number;
+
+  @IsOptional()
+  @IsIn(ESTACIONAMIENTO_OPCIONES, { message: 'Indica si el evento tiene estacionamiento' })
+  estacionamiento?: OpcionEstacionamiento;
+
+  @ValidateIf(esPagado)
+  @toNumber()
+  @IsInt({ message: 'Indica el valor del estacionamiento' })
+  @Min(1, { message: 'Indica el valor del estacionamiento' })
+  @Max(EVENT_LIMITS.priceMax, { message: 'El valor del estacionamiento supera el máximo permitido' })
+  precioEstacionamiento?: number;
+
+  @ValidateIf(esPagado)
+  @toNumber()
+  @IsInt({ message: 'Indica cuántos estacionamientos hay disponibles' })
+  @Min(1, { message: 'Debe haber al menos 1 estacionamiento disponible' })
+  @Max(TIPO_ENTRADA_LIMITS.estacionamientoCuposMax, { message: 'Los cupos de estacionamiento superan el máximo permitido' })
+  cuposEstacionamiento?: number;
+
+  @IsOptional()
+  @trim()
+  @IsString()
+  @MaxLength(TIPO_ENTRADA_LIMITS.indicacionesMax, {
+    message: `Las indicaciones del estacionamiento pueden tener como máximo ${TIPO_ENTRADA_LIMITS.indicacionesMax} caracteres`,
+  })
+  @Validate(TextoSinContacto)
+  indicacionesEstacionamiento?: string;
 
   @IsISO8601({}, { message: 'La fecha y hora del evento no son válidas' })
   date: string;
@@ -110,11 +211,47 @@ export class UpdateEventDto {
   description?: string;
 
   @IsOptional()
+  @tiposDesdeJson()
+  @IsArray({ message: 'Agrega al menos un tipo de entrada' })
+  @ArrayMinSize(1, { message: 'Agrega al menos un tipo de entrada' })
+  @ArrayMaxSize(TIPO_ENTRADA_LIMITS.maxTipos, { message: `Puedes tener como máximo ${TIPO_ENTRADA_LIMITS.maxTipos} tipos de entrada` })
+  @ValidateNested({ each: true })
+  tiposEntrada?: TipoEntradaDto[];
+
+  // Aforo total: obligatorio si se envían los tipos de entrada
+  @ValidateIf((o: UpdateEventDto) => o.tiposEntrada !== undefined || o.aforo !== undefined)
   @toNumber()
-  @IsInt({ message: 'El precio debe ser un monto entero en pesos' })
-  @Min(0, { message: 'El precio no puede ser negativo' })
-  @Max(EVENT_LIMITS.priceMax, { message: 'El precio supera el máximo permitido' })
-  price?: number;
+  @IsInt({ message: 'Indica el aforo del evento' })
+  @Min(1, { message: 'El aforo debe ser de al menos 1 persona' })
+  @Max(TIPO_ENTRADA_LIMITS.aforoMax, { message: 'El aforo supera el máximo permitido' })
+  aforo?: number;
+
+  @IsOptional()
+  @IsIn(ESTACIONAMIENTO_OPCIONES, { message: 'Indica si el evento tiene estacionamiento' })
+  estacionamiento?: OpcionEstacionamiento;
+
+  @ValidateIf(esPagado)
+  @toNumber()
+  @IsInt({ message: 'Indica el valor del estacionamiento' })
+  @Min(1, { message: 'Indica el valor del estacionamiento' })
+  @Max(EVENT_LIMITS.priceMax, { message: 'El valor del estacionamiento supera el máximo permitido' })
+  precioEstacionamiento?: number;
+
+  @ValidateIf(esPagado)
+  @toNumber()
+  @IsInt({ message: 'Indica cuántos estacionamientos hay disponibles' })
+  @Min(1, { message: 'Debe haber al menos 1 estacionamiento disponible' })
+  @Max(TIPO_ENTRADA_LIMITS.estacionamientoCuposMax, { message: 'Los cupos de estacionamiento superan el máximo permitido' })
+  cuposEstacionamiento?: number;
+
+  @IsOptional()
+  @trim()
+  @IsString()
+  @MaxLength(TIPO_ENTRADA_LIMITS.indicacionesMax, {
+    message: `Las indicaciones del estacionamiento pueden tener como máximo ${TIPO_ENTRADA_LIMITS.indicacionesMax} caracteres`,
+  })
+  @Validate(TextoSinContacto)
+  indicacionesEstacionamiento?: string;
 
   @IsOptional()
   @IsISO8601({}, { message: 'La fecha y hora del evento no son válidas' })
@@ -148,13 +285,13 @@ export class UpdateEventDto {
   removeImage?: boolean;
 }
 
-// Oferta: nuevo precio por entrada para el organizador (el público ve el % de descuento)
+// Oferta: % de descuento sobre el precio de todos los tipos de entrada
 export class OfertaEventDto {
   @Type(() => Number)
-  @IsInt({ message: 'El precio de oferta debe ser un número entero' })
-  @Min(1, { message: 'El precio de oferta debe ser mayor a $0' })
-  @Max(EVENT_LIMITS.priceMax, { message: 'El precio de oferta no es válido' })
-  precioOferta: number;
+  @IsInt({ message: 'El descuento debe ser un porcentaje entero' })
+  @Min(OFERTA_LIMITS.descuentoMin, { message: `El descuento debe ser de al menos ${OFERTA_LIMITS.descuentoMin}%` })
+  @Max(OFERTA_LIMITS.descuentoMax, { message: `El descuento puede ser como máximo ${OFERTA_LIMITS.descuentoMax}%` })
+  porcentaje: number;
 
   // Término de la oferta; si no viene, dura hasta el evento
   @IsOptional()

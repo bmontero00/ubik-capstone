@@ -15,7 +15,7 @@ import CheckoutModal, { CheckoutEvent } from '../components/tickets/CheckoutModa
 import MyTicketsPanel from '../components/tickets/MyTicketsPanel';
 import Landing from '../components/landing/Landing';
 import Footer from '../components/Footer';
-import { Compra, compraValida, fetchCompra, fetchMisCompras } from '../services/compras';
+import { Compra, TicketSelection, compraValida, fetchCompra, fetchMisCompras, selectionCount } from '../services/compras';
 import { CalendarPlus, Compass, LayoutList, CheckCircle2, X, ArrowRight, Ticket } from 'lucide-react';
 import {
   ApiError, AuthResponse, AuthUser, SuspendedInfo, canPublishEvents, clearSession,
@@ -46,7 +46,7 @@ export default function HomePage() {
   // Cómo se abre el modal de sesión: vista inicial y el motivo por el que se pide
   const [authOptions, setAuthOptions] = useState<{ view: 'login' | 'registerOrganizer'; reason: string | null }>({ view: 'login', reason: null });
   // Compra iniciada sin sesión: se retoma apenas la persona inicia sesión o crea su cuenta
-  const [pendingPurchase, setPendingPurchase] = useState<{ event: EventItem; quantity: number } | null>(null);
+  const [pendingPurchase, setPendingPurchase] = useState<{ event: EventItem; selection: TicketSelection } | null>(null);
   // Si la cuenta se suspende con la sesión abierta, se cierra y se muestra el aviso
   const [suspendedNotice, setSuspendedNotice] = useState<SuspendedInfo | null>(null);
   const [radius, setRadius] = useState<number>(15);
@@ -70,7 +70,7 @@ export default function HomePage() {
   const [compras, setCompras] = useState<Compra[]>([]);
   const [comprasState, setComprasState] = useState<{ loading: boolean; error: string | null }>({ loading: false, error: null });
   // Compra en curso: cantidad elegida en el detalle, o una compra pendiente que se retoma
-  const [checkout, setCheckout] = useState<{ event: CheckoutEvent; quantity: number; resume?: Compra; notice?: string } | null>(null);
+  const [checkout, setCheckout] = useState<{ event: CheckoutEvent; selection?: TicketSelection; resume?: Compra; notice?: string } | null>(null);
   const [myEventsKey, setMyEventsKey] = useState(0);
   const [toast, setToast] = useState<string | null>(null);
 
@@ -110,7 +110,7 @@ export default function HomePage() {
     try {
       const compra = await fetchCompra(compraId);
       if (compra.estado === 'PAGADA') {
-        setCheckout({ event: compra.evento, quantity: compra.cantidad, resume: compra });
+        setCheckout({ event: compra.evento, resume: compra });
         return;
       }
       if (compra.estado !== 'PENDIENTE_PAGO') {
@@ -121,7 +121,7 @@ export default function HomePage() {
         anulado: 'Cancelaste el pago en Webpay. Tus entradas siguen reservadas: puedes volver a intentarlo.',
         error: 'No pudimos confirmar el pago con Webpay. Intenta nuevamente; si ves un cargo en tu tarjeta, escríbenos a soporte@ubik.cl.',
       };
-      setCheckout({ event: compra.evento, quantity: compra.cantidad, resume: compra, notice: notices[result] ?? notices.error });
+      setCheckout({ event: compra.evento, resume: compra, notice: notices[result] ?? notices.error });
     } catch (err) {
       setToast((err as Error).message || 'No pudimos obtener el resultado de tu pago. Revisa "Mis entradas".');
     }
@@ -242,10 +242,11 @@ export default function HomePage() {
   const guestTicketOptions = !user
     ? {
         owned: () => 0,
-        onContinue: (event: EventItem, quantity: number) => {
+        onContinue: (event: EventItem, selection: TicketSelection) => {
           closeDetail();
-          setPendingPurchase({ event, quantity });
-          openAuth('login', `Inicia sesión o crea tu cuenta de asistente para comprar ${quantity === 1 ? 'tu entrada' : `tus ${quantity} entradas`} de "${event.title}".`);
+          setPendingPurchase({ event, selection });
+          const n = selectionCount(selection);
+          openAuth('login', `Inicia sesión o crea tu cuenta de asistente para comprar ${n === 1 ? 'tu entrada' : `tus ${n} entradas`} de "${event.title}".`);
         },
         onViewTickets: () => {},
       }
@@ -255,9 +256,9 @@ export default function HomePage() {
     ? {
         blockedReason: canBuy ? undefined : 'Tu cuenta está en revisión: por ahora no puedes comprar entradas.',
         owned: ownedTickets,
-        onContinue: (event: EventItem, quantity: number) => {
+        onContinue: (event: EventItem, selection: TicketSelection) => {
           closeDetail();
-          setCheckout({ event, quantity });
+          setCheckout({ event, selection });
         },
         onViewTickets: () => {
           closeDetail();
@@ -538,7 +539,7 @@ export default function HomePage() {
                     error={comprasState.error}
                     onExplore={() => setAttendeeView('explore')}
                     onOpenEvent={(id) => setDetail({ id, preview: events.find((e) => e.id === id) })}
-                    onResumePayment={(c) => setCheckout({ event: c.evento, quantity: c.cantidad, resume: c })}
+                    onResumePayment={(c) => setCheckout({ event: c.evento, resume: c })}
                     onChanged={loadCompras}
                   />
                 )}
@@ -582,7 +583,7 @@ export default function HomePage() {
       {checkout && user && (
         <CheckoutModal
           event={checkout.event}
-          quantity={checkout.quantity}
+          selection={checkout.selection}
           resume={checkout.resume}
           notice={checkout.notice}
           buyer={{ name: user.name, email: user.email }}

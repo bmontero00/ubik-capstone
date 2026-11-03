@@ -18,10 +18,13 @@ export function OfferBadge({ event, className = '' }: { event: OfferInfo; classN
 }
 
 // Precio con oferta: el normal tachado y el rebajado destacado. Sin oferta, solo el precio.
+// Con varios tipos de entrada a distinto precio se antepone "Desde".
 export function OfferPrice({ event, price, compact = false }: { event: OfferInfo; price: number; compact?: boolean }) {
-  if (!event.ofertaActiva || !event.precioSinOferta) return <>{formatPrice(price)}</>;
+  const desde = event.variosPrecios ? <span className="text-[0.8em] font-semibold text-slate-400 mr-1">Desde</span> : null;
+  if (!event.ofertaActiva || !event.precioSinOferta) return <>{desde}{formatPrice(price)}</>;
   return (
     <span className="inline-flex items-baseline gap-1.5 flex-wrap">
+      {desde}
       <span className={`line-through decoration-slate-500 text-slate-500 font-semibold ${compact ? 'text-[11px]' : 'text-xs'}`}>
         {formatPrice(event.precioSinOferta)}
       </span>

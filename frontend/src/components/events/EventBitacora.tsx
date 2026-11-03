@@ -34,7 +34,9 @@ const FIELD_LABELS: Record<CambioBitacora['campo'], string> = {
   estado: 'Estado',
   cargo: 'Cargo por servicio',
   venta: 'Venta de entradas',
-  oferta: 'Entrada',
+  oferta: 'Entradas desde',
+  entradas: 'Información de entradas',
+  estacionamiento: 'Información de estacionamiento',
 };
 
 const formatValue = (c: CambioBitacora, value: CambioBitacora['anterior']) => {
@@ -52,7 +54,7 @@ function ChangeList({ cambios }: { cambios: CambioBitacora[] }) {
   return (
     <ul className="mt-2 space-y-1 text-xs">
       {visibles.map((c, i) =>
-        c.campo === 'descripcion' || c.campo === 'imagen' ? (
+        c.campo === 'descripcion' || c.campo === 'imagen' || c.campo === 'entradas' || c.campo === 'estacionamiento' ? (
           <li key={i} className="text-slate-400">Se actualizó la {FIELD_LABELS[c.campo].toLowerCase()}</li>
         ) : (
           <li key={i} className="text-slate-400 break-words">

@@ -5,11 +5,27 @@ export interface Category {
   name: string;
 }
 
+// Tipo de entrada de un evento (General, VIP, Expositor...)
+export interface TipoEntrada {
+  id: string;
+  nombre: string;
+  descripcion: string | null;
+  precio: number; // lo que recibe el organizador
+  cupo: number | null; // null en eventos antiguos (sin aforo)
+  precioFinal: number; // lo que paga el público (con cargo y oferta)
+  precioSinOferta: number;
+  cargoPorEntrada: number;
+  disponibles?: number | null; // null: sin límite
+  vendidas?: number; // solo para el organizador y los admins
+}
+
+export type Estacionamiento = 'GRATUITO' | 'PAGADO';
+
 export interface EventItem {
   id: string;
   title: string;
   description: string;
-  price: number;
+  price: number; // precio más bajo de sus tipos de entrada ("desde")
   date: string;
   address: string;
   latitude: number;
@@ -34,12 +50,24 @@ export interface EventItem {
   precioFinal?: number;
   cargoPorEntrada?: number;
   ventaPausada?: boolean; // condición especial en revisión: el evento se ve pero no vende
-  // Oferta del organizador: "precioFinal" ya trae el precio rebajado
+  // Oferta del organizador (% sobre todas las entradas): "precioFinal" ya trae el precio rebajado
   ofertaActiva?: boolean;
   precioSinOferta?: number; // precio final normal, para mostrarlo tachado
   porcentajeDescuento?: number;
-  precioOferta?: number | null; // lo que recibe el organizador durante la oferta
+  porcentajeOferta?: number | null;
   ofertaHasta?: string | null; // sin término, dura hasta el evento
+  // Tipos de entrada y aforo (suma de los cupos)
+  tiposEntrada?: TipoEntrada[];
+  aforo?: number | null;
+  variosPrecios?: boolean; // los tipos tienen precios distintos: se muestra "Desde"
+  agotado?: boolean;
+  // Estacionamiento
+  estacionamiento?: Estacionamiento | null;
+  precioEstacionamiento?: number | null;
+  cuposEstacionamiento?: number | null;
+  indicacionesEstacionamiento?: string | null;
+  estacionamientosDisponibles?: number;
+  estacionamientosVendidos?: number; // solo para el organizador
   // Condición especial (solo para el organizador del evento y los admins)
   estadoCondicion?: EstadoCondicion | null;
   justificacionCondicion?: string | null;
@@ -54,13 +82,14 @@ export interface EventItem {
 export type EstadoCondicion = 'PENDIENTE' | 'APROBADA' | 'RECHAZADA';
 
 // Lo mínimo para mostrar una oferta (lo comparten las tarjetas, el mapa y el perfil del organizador)
-export type OfferInfo = Pick<EventItem, 'ofertaActiva' | 'precioSinOferta' | 'porcentajeDescuento' | 'ofertaHasta'>;
+export type OfferInfo = Pick<EventItem, 'ofertaActiva' | 'precioSinOferta' | 'porcentajeDescuento' | 'ofertaHasta' | 'variosPrecios'>;
 
 // Mismos límites que el backend (backend/src/parametros/cargos.ts)
 export const OFFER_LIMITS = { discountMin: 5, discountMax: 90 };
 
-// % de descuento que ve el público, sobre los precios finales (mismo cálculo que el backend)
-export const discountPercent = (normal: number, offer: number) => (normal > 0 ? Math.round((1 - offer / normal) * 100) : 0);
+// Precio del organizador con la oferta aplicada (mismo cálculo que el backend)
+export const priceWithOffer = (price: number, percent: number) =>
+  percent && price > 0 ? Math.max(10, Math.round((price * (1 - percent / 100)) / 10) * 10) : price;
 
 // "Hasta el lun 9 nov" o "Hasta el día del evento"
 export function offerEndsLabel(event: OfferInfo) {
@@ -84,7 +113,7 @@ export type TipoBitacora = 'CREACION' | 'ANUNCIO' | 'CAMBIO_DATOS' | 'CAMBIO_EST
 export interface CambioBitacora {
   campo:
     | 'titulo' | 'fecha' | 'direccion' | 'precio' | 'categoria' | 'descripcion' | 'imagen' | 'estado' | 'cargo' | 'venta'
-    | 'oferta';
+    | 'oferta' | 'entradas' | 'estacionamiento';
   anterior?: string | number | null;
   nuevo?: string | number | null;
   descuento?: number; // solo en "oferta"
@@ -112,11 +141,25 @@ export interface EventDetail extends EventItem {
 export const organizerName = (event: Pick<EventItem, 'organizer'>) =>
   event.organizer.organizerProfile?.organizationName || event.organizer.name;
 
+// Tipo de entrada en el formulario ("id" solo en los que ya existen)
+export interface TipoEntradaPayload {
+  id?: string;
+  nombre: string;
+  descripcion?: string;
+  precio: number;
+  cupo: number;
+}
+
 // Datos del formulario de evento; image es el archivo nuevo (si se eligió uno)
 export interface EventPayload {
   title: string;
   description: string;
-  price: number;
+  tiposEntrada: TipoEntradaPayload[];
+  aforo: number;
+  estacionamiento: 'NINGUNO' | Estacionamiento;
+  precioEstacionamiento?: number;
+  cuposEstacionamiento?: number;
+  indicacionesEstacionamiento?: string;
   date: string; // ISO con fecha y hora
   address: string;
   latitude: number;
@@ -155,7 +198,8 @@ function toFormData(payload: Partial<EventPayload>): FormData {
   const form = new FormData();
   Object.entries(payload).forEach(([key, value]) => {
     if (value === undefined || value === null || key === 'image') return;
-    form.append(key, String(value));
+    // Los tipos de entrada viajan como JSON dentro del formulario
+    form.append(key, typeof value === 'object' ? JSON.stringify(value) : String(value));
   });
   if (payload.image) form.append('image', payload.image);
   return form;
@@ -186,11 +230,11 @@ export function resumeEvent(id: string): Promise<EventItem> {
   return apiJson<EventItem>(`/events/${id}/resume`, { method: 'PATCH' });
 }
 
-// Oferta: nuevo precio por entrada para el organizador; "hasta" es opcional (si no, dura hasta el evento)
-export function setOffer(id: string, precioOferta: number, hasta?: string, mensaje?: string): Promise<EventItem> {
+// Oferta: % de descuento sobre todas las entradas; "hasta" es opcional (si no, dura hasta el evento)
+export function setOffer(id: string, porcentaje: number, hasta?: string, mensaje?: string): Promise<EventItem> {
   return apiJson<EventItem>(`/events/${id}/oferta`, {
     method: 'PATCH',
-    body: JSON.stringify({ precioOferta, ...(hasta && { hasta }), ...(mensaje && { mensaje }) }),
+    body: JSON.stringify({ porcentaje, ...(hasta && { hasta }), ...(mensaje && { mensaje }) }),
   });
 }
 

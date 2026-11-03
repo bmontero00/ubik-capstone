@@ -301,6 +301,7 @@ function UpcomingCard({ event, onOpen }: { event: EventItem; onOpen: () => void 
           <p className={`text-sm font-bold mt-2 ${event.price === 0 ? 'text-emerald-300' : 'text-white'}`}>
             {event.price === 0 ? 'Entrada liberada' : <OfferPrice event={event} price={publicPrice(event)} />}
             {event.ventaPausada && <span className="ml-2 text-[11px] font-semibold text-amber-200">· Venta próximamente</span>}
+            {event.agotado && <span className="ml-2 text-[11px] font-semibold text-rose-300">· Agotado</span>}
           </p>
         </div>
       </button>

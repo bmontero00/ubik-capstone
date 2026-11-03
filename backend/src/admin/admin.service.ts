@@ -263,6 +263,7 @@ export class AdminService {
         category: { select: { id: true, name: true } },
         organizer: { select: { id: true, name: true, email: true, status: true } },
         statusChangedBy: { select: { id: true, name: true } },
+        tiposEntrada: { orderBy: { orden: 'asc' } },
       },
       orderBy: { date: 'desc' },
       take: 200,

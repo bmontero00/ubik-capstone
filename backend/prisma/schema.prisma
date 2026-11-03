@@ -178,11 +178,22 @@ model Event {
   condicionRevisadaPor   User?                    @relation("CondicionRevisadaPor", fields: [condicionRevisadaPorId], references: [id])
   historialCargos        HistorialCargoEvento[]
 
-  // Oferta del organizador: mientras está vigente, "precioOferta" reemplaza a "price" como lo que
-  // recibe por entrada (el cargo se calcula sobre la oferta). Sin "ofertaHasta" dura hasta el evento.
-  precioOferta   Float?
-  ofertaHasta    DateTime?
-  ofertaCreadaEn DateTime?
+  // Oferta del organizador: % de descuento sobre el precio de todos los tipos de entrada (el cargo
+  // se calcula sobre el precio rebajado). Sin "ofertaHasta" dura hasta el evento.
+  porcentajeOferta Int?
+  ofertaHasta      DateTime?
+  ofertaCreadaEn   DateTime?
+
+  // Tipos de entrada (General, VIP, Expositor...). "price" guarda el precio más bajo ("desde").
+  // La suma de los cupos de los tipos es igual al aforo; los eventos antiguos no tienen aforo.
+  aforo        Int?
+  tiposEntrada TipoEntrada[]
+
+  // Estacionamiento: gratuito (solo informativo) o pagado (se vende con cupos junto a las entradas)
+  estacionamiento             TipoEstacionamiento?
+  precioEstacionamiento       Float?
+  cuposEstacionamiento        Int?
+  indicacionesEstacionamiento String?
 
   @@map("events")
 }
@@ -221,22 +232,49 @@ enum EstadoCompra {
   EXPIRADA // venció el plazo para pagar
 }
 
+enum TipoEstacionamiento {
+  GRATUITO
+  PAGADO
+}
+
+// Tipo de entrada de un evento: nombre, precio para el organizador y cupo
+model TipoEntrada {
+  id            String   @id @default(uuid())
+  nombre        String
+  descripcion   String?
+  precio        Float // lo que recibe el organizador por entrada (sin cargo ni oferta)
+  cupo          Int? // null en eventos antiguos (sin aforo)
+  orden         Int      @default(0)
+  fechaCreacion DateTime @default(now())
+
+  eventoId String
+  evento   Event     @relation(fields: [eventoId], references: [id], onDelete: Cascade)
+  entradas Entrada[]
+
+  @@index([eventoId, orden])
+  @@map("tipos_entrada")
+}
+
 // Una compra agrupa las entradas de un evento que adquiere un asistente en una sola transacción
 model Compra {
-  id              String       @id @default(uuid())
-  codigo          String       @unique // código legible para el comprador, ej. UBK-7F3K9Q
-  estado          EstadoCompra
-  cantidad        Int
-  precioUnitario  Float // precio final por entrada que pagó el asistente (incluye el cargo)
-  total           Float
+  id                      String       @id @default(uuid())
+  codigo                  String       @unique // código legible para el comprador, ej. UBK-7F3K9Q
+  estado                  EstadoCompra
+  cantidad                Int
+  precioUnitario          Float // precio final por entrada que pagó el asistente (incluye el cargo)
+  total                   Float
   // Desglose al momento de la compra (no cambia aunque después se edite el evento)
-  precioBase      Float        @default(0) // lo que recibe el organizador por entrada
-  porcentajeCargo Float        @default(0)
-  cargoServicio   Float        @default(0) // cargo total de la compra (todas las entradas)
-  medioPago       String? // ej. WEBPAY, MERCADO_PAGO (SIMULADO mientras no exista pasarela)
-  fechaCreacion   DateTime     @default(now())
-  expiraEn        DateTime? // límite para pagar una compra pendiente
-  fechaPago       DateTime?
+  precioBase              Float        @default(0) // lo que recibe el organizador por entrada
+  porcentajeCargo         Float        @default(0)
+  cargoServicio           Float        @default(0) // cargo total de la compra (todas las entradas)
+  // Estacionamiento comprado junto a las entradas (sin cargo por servicio)
+  cantidadEstacionamiento Int          @default(0)
+  precioEstacionamiento   Float        @default(0) // por vehículo
+  codigoEstacionamiento   String?      @unique
+  medioPago               String? // ej. WEBPAY, MERCADO_PAGO (SIMULADO mientras no exista pasarela)
+  fechaCreacion           DateTime     @default(now())
+  expiraEn                DateTime? // límite para pagar una compra pendiente
+  fechaPago               DateTime?
 
   eventoId      String
   evento        Event             @relation(fields: [eventoId], references: [id], onDelete: Cascade)
@@ -297,13 +335,19 @@ model Entrada {
   telefono      String // "+56912345678"
   correo        String
   fechaCreacion DateTime @default(now())
+  // Lo que pagó el público por esta entrada (incluye cargo y oferta) y el cargo por servicio incluido
+  precio        Float    @default(0)
+  cargo         Float    @default(0)
 
-  compraId String
-  compra   Compra @relation(fields: [compraId], references: [id], onDelete: Cascade)
-  eventoId String
-  evento   Event  @relation(fields: [eventoId], references: [id], onDelete: Cascade)
+  compraId      String
+  compra        Compra       @relation(fields: [compraId], references: [id], onDelete: Cascade)
+  eventoId      String
+  evento        Event        @relation(fields: [eventoId], references: [id], onDelete: Cascade)
+  tipoEntradaId String?
+  tipoEntrada   TipoEntrada? @relation(fields: [tipoEntradaId], references: [id])
 
   @@index([eventoId, rut])
+  @@index([tipoEntradaId])
   @@map("entradas")
 }
 

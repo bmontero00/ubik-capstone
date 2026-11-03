@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { CalendarDays, MapPin, ImageIcon, Hourglass } from 'lucide-react';
+import { CalendarDays, MapPin, ImageIcon, Hourglass, Ban } from 'lucide-react';
 import { EventStatus } from '../../services/auth';
 import { OfferInfo, formatEventDate, imageSrc } from '../../services/events';
 import { OfferBadge, OfferPrice } from './OfferBadge';
@@ -21,6 +21,7 @@ export interface EventCardData extends OfferInfo {
   status?: EventStatus;
   statusReason?: string | null;
   ventaPausada?: boolean; // condición especial en revisión: la venta se libera pronto
+  agotado?: boolean; // todos los tipos de entrada sin cupo
 }
 
 export const categoryBadge = (categoryName?: string) => {
@@ -87,6 +88,11 @@ export default function EventCard({ event, footerAction, placeholderImage = fals
         {event.ventaPausada && (
           <p className="mb-3 inline-flex items-center gap-1.5 text-[11px] font-semibold text-amber-200 bg-amber-500/10 border border-amber-500/25 rounded-lg px-2 py-1">
             <Hourglass className="w-3.5 h-3.5" /> Venta de entradas próximamente
+          </p>
+        )}
+        {event.agotado && (
+          <p className="mb-3 inline-flex items-center gap-1.5 text-[11px] font-semibold text-rose-200 bg-rose-500/10 border border-rose-500/25 rounded-lg px-2 py-1">
+            <Ban className="w-3.5 h-3.5" /> Entradas agotadas
           </p>
         )}
         <p className="text-xs text-slate-400 line-clamp-2 mb-4 break-words">

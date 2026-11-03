@@ -1,12 +1,15 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { Event, EventStatus, Prisma } from '@prisma/client';
+import { Event, EventStatus, Prisma, TipoEntrada } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import type { AuthenticatedUser } from '../auth/auth.guards';
 import { accountUnderReviewError } from '../auth/account-status';
-import { CreateAnnouncementDto, CreateEventDto, OfertaEventDto, UpdateEventDto } from './dto/event.dto';
+import {
+  CreateAnnouncementDto, CreateEventDto, OfertaEventDto, OpcionEstacionamiento, TipoEntradaDto, UpdateEventDto,
+} from './dto/event.dto';
 import { bitacoraInclude, cambioEstado, diffEvent, serializeBitacora } from './bitacora';
 import { ParametrosService } from '../parametros/parametros.service';
-import { OFERTA_LIMITS, conPrecios, ofertaVigente, porcentajeDescuento, precioFinal } from '../parametros/cargos';
+import { conPrecios, ofertaVigente, precioFinal } from '../parametros/cargos';
+import { claveNombre, disponibilidadEventos } from './tipos-entrada';
 
 // Estados visibles en el catálogo público. Los cancelados y postergados se muestran
 // con su aviso para que los asistentes se enteren; los en revisión y finalizados no.
@@ -19,12 +22,16 @@ const ORGANIZER_EDITABLE_STATUSES: EventStatus[] = ['PUBLISHED', 'POSTPONED'];
 const ORGANIZER_ANNOUNCE_STATUSES: EventStatus[] = ['PUBLISHED', 'POSTPONED', 'CANCELLED'];
 
 // En el catálogo público no se expone el correo del organizador
+const tiposInclude = { tiposEntrada: { orderBy: { orden: 'asc' } } } satisfies Prisma.EventInclude;
+
 const publicInclude = {
+  ...tiposInclude,
   category: { select: { id: true, name: true } },
   organizer: { select: { id: true, name: true, organizerProfile: { select: { organizationName: true } } } },
 } satisfies Prisma.EventInclude;
 
 const eventInclude = {
+  ...tiposInclude,
   category: { select: { id: true, name: true } },
   organizer: { select: { id: true, name: true, email: true } },
 } satisfies Prisma.EventInclude;
@@ -36,6 +43,12 @@ export class EventsService {
     private readonly parametros: ParametrosService,
   ) {}
 
+  // Precios y disponibilidad (entradas y estacionamientos ocupados) de una lista de eventos
+  private async conDisponibilidad<T extends Event & { tiposEntrada: TipoEntrada[] }>(events: T[], privado: (e: T) => boolean) {
+    const disponibilidad = await disponibilidadEventos(this.prisma, events.map((e) => e.id));
+    return events.map((e) => conPrecios(e, privado(e), disponibilidad));
+  }
+
   // Lo que el formulario de eventos necesita saber antes de crear (ej. el % de cargo vigente)
   async configuracionPublica() {
     return { porcentajeCargoServicio: await this.parametros.porcentajeCargoVigente() };
@@ -44,8 +57,9 @@ export class EventsService {
   async create(dto: CreateEventDto, user: AuthenticatedUser, imageUrl: string | null) {
     await this.assertCategoryExists(dto.categoryId);
     const date = this.parseFutureDate(dto.date);
-    const { sourceEventId, solicitarCondicionEspecial, justificacionCondicion, porcentajeSolicitado, ...fields } = dto;
-    if (solicitarCondicionEspecial && dto.price <= 0) {
+    const { sourceEventId, solicitarCondicionEspecial, justificacionCondicion, porcentajeSolicitado } = dto;
+    const { price } = this.validarEntradas(dto.tiposEntrada, dto.aforo);
+    if (solicitarCondicionEspecial && price <= 0) {
       throw new BadRequestException('Los eventos gratuitos no tienen cargo por servicio: no necesitas solicitar una condición especial');
     }
     // El % de cargo queda fijo para este evento aunque después cambie el de la plataforma
@@ -62,7 +76,16 @@ export class EventsService {
 
     const created = await this.prisma.event.create({
       data: {
-        ...fields,
+        title: dto.title,
+        description: dto.description,
+        address: dto.address,
+        latitude: dto.latitude,
+        longitude: dto.longitude,
+        categoryId: dto.categoryId,
+        price,
+        aforo: dto.aforo,
+        tiposEntrada: { create: dto.tiposEntrada.map((t, orden) => this.datosTipo(t, orden)) },
+        ...this.datosEstacionamiento(dto.estacionamiento ?? 'NINGUNO', dto),
         date,
         organizerId: user.sub,
         imageUrl,
@@ -77,7 +100,7 @@ export class EventsService {
       },
       include: eventInclude,
     });
-    return conPrecios(created, true);
+    return (await this.conDisponibilidad([created], () => true))[0];
   }
 
   async findAll(lat?: number, lng?: number, radiusKm?: number) {
@@ -87,16 +110,16 @@ export class EventsService {
       orderBy: { date: 'asc' },
     });
 
+    const conPrecio = await this.conDisponibilidad(events, () => false);
     if (lat !== undefined && lng !== undefined && radiusKm !== undefined) {
-      return events
+      return conPrecio
         .map((evt) => {
           const distance = this.calculateHaversine(lat, lng, evt.latitude, evt.longitude);
-          return { ...conPrecios(evt), distanceKm: Math.round(distance * 10) / 10 };
+          return { ...evt, distanceKm: Math.round(distance * 10) / 10 };
         })
         .filter((evt) => evt.distanceKm <= radiusKm);
     }
-
-    return events.map((evt) => conPrecios(evt));
+    return conPrecio;
   }
 
   // Detalle con la bitácora. Los eventos no públicos solo los ven su organizador y los admins.
@@ -124,13 +147,14 @@ export class EventsService {
       throw new NotFoundException('Este evento no existe o ya no está disponible');
     }
 
-    const { bitacora, organizer, ...rest } = event;
+    const { bitacora, organizer } = event;
+    const [conPrecio] = await this.conDisponibilidad([event], () => canManage);
     // Solo los organizadores verificados y activos tienen perfil público. Los eventos creados por un
     // admin se muestran como del "Equipo UBIK"; los de cuentas antiguas, sin enlace al perfil.
     const perfilPublico =
       organizer.role === 'ORGANIZER' && organizer.status === 'ACTIVE' && organizer.organizerProfile?.status === 'APPROVED';
     return {
-      ...conPrecios(rest, canManage),
+      ...conPrecio,
       organizer: {
         id: organizer.id,
         name: organizer.role === 'ADMIN' ? 'Equipo UBIK' : organizer.name,
@@ -160,8 +184,11 @@ export class EventsService {
       },
       orderBy: { date: 'desc' },
     });
-    return events.map(({ bitacora, _count, ...evt }) => ({
-      ...conPrecios(evt, true),
+    const conPrecio = await this.conDisponibilidad(events, () => true);
+    return events.map(({ bitacora, _count }, i) => ({
+      ...conPrecio[i],
+      bitacora: undefined,
+      _count: undefined,
       ultimoAvisoEquipo: serializeBitacora(bitacora, true)[0] ?? null,
       totalAnuncios: _count.bitacora,
     }));
@@ -173,33 +200,129 @@ export class EventsService {
 
     // La fecha solo se exige futura si cambia (un admin puede corregir otros datos de un evento pasado)
     const dateChanged = dto.date && new Date(dto.date).getTime() !== event.date.getTime();
-    const { removeImage, date, ...fields } = dto;
-    if (dto.price !== undefined && dto.price !== event.price && ofertaVigente(event)) {
-      throw new BadRequestException('El evento está en oferta: termina la oferta antes de cambiar el precio de la entrada');
+    const {
+      removeImage, date, tiposEntrada, aforo, estacionamiento, precioEstacionamiento, cuposEstacionamiento,
+      indicacionesEstacionamiento, ...fields
+    } = dto;
+
+    // Tipos de entrada: se actualizan los existentes, se crean los nuevos y se quitan los que no vienen
+    // (solo si no tienen entradas vendidas). Ningún cupo puede quedar bajo lo ya vendido.
+    const actuales = await this.prisma.tipoEntrada.findMany({ where: { eventoId: id }, orderBy: { orden: 'asc' } });
+    const disponibilidad = await disponibilidadEventos(this.prisma, [id]);
+    const vendidas = (tipoId: string) => disponibilidad.tipos.get(tipoId) ?? 0;
+    const operaciones: Prisma.PrismaPromise<unknown>[] = [];
+    let price: number | undefined;
+    if (tiposEntrada) {
+      ({ price } = this.validarEntradas(tiposEntrada, aforo!));
+      const idsActuales = new Set(actuales.map((t) => t.id));
+      if (tiposEntrada.some((t) => t.id && !idsActuales.has(t.id))) {
+        throw new BadRequestException('Uno de los tipos de entrada no pertenece a este evento');
+      }
+      const quitados = actuales.filter((t) => !tiposEntrada.some((n) => n.id === t.id));
+      const conVentas = quitados.find((t) => vendidas(t.id) > 0);
+      if (conVentas) {
+        throw new BadRequestException(`No puedes quitar "${conVentas.nombre}": ya tiene entradas vendidas o reservadas`);
+      }
+      const bajoVentas = tiposEntrada.find((t) => t.id && t.cupo < vendidas(t.id));
+      if (bajoVentas) {
+        throw new BadRequestException(
+          `"${bajoVentas.nombre}" ya tiene ${vendidas(bajoVentas.id!)} entradas vendidas o reservadas: su cupo no puede ser menor`,
+        );
+      }
+      if (quitados.length) operaciones.push(this.prisma.tipoEntrada.deleteMany({ where: { id: { in: quitados.map((t) => t.id) } } }));
+      tiposEntrada.forEach((t, orden) => {
+        operaciones.push(
+          t.id
+            ? this.prisma.tipoEntrada.update({ where: { id: t.id }, data: this.datosTipo(t, orden) })
+            : this.prisma.tipoEntrada.create({ data: { ...this.datosTipo(t, orden), eventoId: id } }),
+        );
+      });
     }
 
-    const updated = await this.prisma.event.update({
-      where: { id },
-      data: {
-        ...fields,
-        ...(dateChanged && { date: this.parseFutureDate(date!) }),
-        ...(imageUrl ? { imageUrl } : removeImage ? { imageUrl: null } : {}),
-      },
-      include: eventInclude,
-    });
+    // Estacionamiento: con estacionamientos ya vendidos no se puede quitar ni bajar de lo vendido
+    let estacionamientoData = {};
+    if (estacionamiento !== undefined) {
+      const vendidos = disponibilidad.estacionamientos.get(id) ?? 0;
+      if (vendidos > 0 && (estacionamiento !== 'PAGADO' || (cuposEstacionamiento ?? 0) < vendidos)) {
+        throw new BadRequestException(
+          `Ya vendiste ${vendidos} ${vendidos === 1 ? 'estacionamiento' : 'estacionamientos'}: mantén el estacionamiento pagado con al menos esos cupos`,
+        );
+      }
+      estacionamientoData = this.datosEstacionamiento(estacionamiento, { precioEstacionamiento, cuposEstacionamiento, indicacionesEstacionamiento });
+    }
+
+    const [updated] = await this.prisma.$transaction([
+      this.prisma.event.update({
+        where: { id },
+        data: {
+          ...fields,
+          ...(price !== undefined && { price, aforo }),
+          ...estacionamientoData,
+          ...(dateChanged && { date: this.parseFutureDate(date!) }),
+          ...(imageUrl ? { imageUrl } : removeImage ? { imageUrl: null } : {}),
+        },
+      }),
+      ...operaciones,
+    ]);
+    const conTipos = await this.prisma.event.findUniqueOrThrow({ where: { id: updated.id }, include: eventInclude });
 
     const categories = await this.prisma.category.findMany({ select: { id: true, name: true } });
-    const cambios = diffEvent(event, updated, (cid) => categories.find((c) => c.id === cid)?.name)
+    const cambios = diffEvent(event, conTipos, (cid) => categories.find((c) => c.id === cid)?.name)
       // En la bitácora el precio se muestra como lo ve el público (con el cargo del evento)
       .map((c) => (c.campo === 'precio'
         ? { ...c, anterior: precioFinal(Number(c.anterior), event.porcentajeCargo), nuevo: precioFinal(Number(c.nuevo), event.porcentajeCargo) }
         : c));
+    if (tiposEntrada && this.resumenTipos(actuales, event.aforo) !== this.resumenTipos(conTipos.tiposEntrada, conTipos.aforo)) {
+      cambios.push({ campo: 'entradas' });
+    }
+    if (this.resumenEstacionamiento(event) !== this.resumenEstacionamiento(conTipos)) cambios.push({ campo: 'estacionamiento' });
     if (cambios.length) {
       await this.prisma.bitacoraEvento.create({
         data: { tipo: 'CAMBIO_DATOS', eventoId: id, autorId: user.sub, cambios: cambios as unknown as Prisma.InputJsonValue },
       });
     }
-    return conPrecios(updated, true);
+    return (await this.conDisponibilidad([conTipos], () => true))[0];
+  }
+
+  // Los tipos de entrada deben tener nombres distintos, sumar el aforo y ser todos gratis o todos con valor
+  private validarEntradas(tipos: TipoEntradaDto[], aforo: number) {
+    const claves = tipos.map((t) => claveNombre(t.nombre));
+    const repetido = tipos.find((_, i) => claves.indexOf(claves[i]) !== i);
+    if (repetido) throw new BadRequestException(`Hay dos tipos de entrada llamados "${repetido.nombre}": usa nombres distintos`);
+    const suma = tipos.reduce((n, t) => n + t.cupo, 0);
+    if (suma !== aforo) {
+      throw new BadRequestException(`La suma de los cupos de las entradas (${suma}) debe ser igual al aforo del evento (${aforo})`);
+    }
+    const gratis = tipos.filter((t) => t.precio === 0).length;
+    if (gratis && gratis !== tipos.length) {
+      throw new BadRequestException('Las entradas deben ser todas gratuitas o todas con valor');
+    }
+    return { price: Math.min(...tipos.map((t) => t.precio)) };
+  }
+
+  private datosTipo(t: TipoEntradaDto, orden: number) {
+    return { nombre: t.nombre, descripcion: t.descripcion ?? null, precio: t.precio, cupo: t.cupo, orden };
+  }
+
+  private datosEstacionamiento(
+    opcion: OpcionEstacionamiento,
+    d: { precioEstacionamiento?: number; cuposEstacionamiento?: number; indicacionesEstacionamiento?: string },
+  ) {
+    return {
+      estacionamiento: opcion === 'NINGUNO' ? null : opcion,
+      precioEstacionamiento: opcion === 'PAGADO' ? d.precioEstacionamiento! : null,
+      cuposEstacionamiento: opcion === 'PAGADO' ? d.cuposEstacionamiento! : null,
+      indicacionesEstacionamiento: opcion === 'NINGUNO' ? null : d.indicacionesEstacionamiento || null,
+    };
+  }
+
+  // Resúmenes para saber si cambiaron las entradas o el estacionamiento (y registrarlo en la bitácora)
+  private resumenTipos(tipos: TipoEntrada[], aforo: number | null) {
+    return JSON.stringify([aforo, ...tipos.map((t) => [t.nombre, t.descripcion, t.precio, t.cupo, t.orden])]);
+  }
+
+  private resumenEstacionamiento(e: Pick<Event, 'estacionamiento' | 'precioEstacionamiento' | 'cuposEstacionamiento' | 'indicacionesEstacionamiento'>) {
+    return JSON.stringify([e.estacionamiento, e.precioEstacionamiento, e.cuposEstacionamiento, e.indicacionesEstacionamiento]);
   }
 
   // El organizador cancela su propio evento; queda visible con el aviso y el motivo
@@ -243,9 +366,6 @@ export class EventsService {
     if (event.status !== 'PUBLISHED' || event.date.getTime() <= Date.now()) {
       throw new BadRequestException('Solo puedes poner en oferta un evento publicado que aún no se realiza');
     }
-    if (dto.precioOferta >= event.price) {
-      throw new BadRequestException('El precio de oferta debe ser menor al precio actual de la entrada');
-    }
 
     const hasta = dto.hasta ? new Date(dto.hasta) : null;
     if (hasta && hasta.getTime() <= Date.now() + 60 * 60_000) {
@@ -255,21 +375,15 @@ export class EventsService {
       throw new BadRequestException('La oferta no puede terminar después del inicio del evento');
     }
 
-    // El descuento se mide sobre lo que paga el público, que incluye el cargo por servicio
-    const normal = precioFinal(event.price, event.porcentajeCargo);
-    const oferta = precioFinal(dto.precioOferta, event.porcentajeCargo);
-    const descuento = porcentajeDescuento(normal, oferta);
-    if (descuento < OFERTA_LIMITS.descuentoMin || descuento > OFERTA_LIMITS.descuentoMax) {
-      throw new BadRequestException(
-        `El descuento para el público debe estar entre ${OFERTA_LIMITS.descuentoMin}% y ${OFERTA_LIMITS.descuentoMax}% (hoy sería ${descuento}%)`,
-      );
-    }
-
-    const anterior = ofertaVigente(event) ? precioFinal(event.precioOferta!, event.porcentajeCargo) : normal;
+    // En la bitácora se muestra el precio "desde" que ve el público antes y después de la oferta
+    const tiposEntrada = await this.prisma.tipoEntrada.findMany({ where: { eventoId: id } });
+    const descuento = dto.porcentaje;
+    const anterior = conPrecios({ ...event, tiposEntrada }).precioFinal;
+    const oferta = conPrecios({ ...event, tiposEntrada, porcentajeOferta: descuento, ofertaHasta: hasta }).precioFinal;
     const [updated] = await this.prisma.$transaction([
       this.prisma.event.update({
         where: { id },
-        data: { precioOferta: dto.precioOferta, ofertaHasta: hasta, ofertaCreadaEn: new Date() },
+        data: { porcentajeOferta: descuento, ofertaHasta: hasta, ofertaCreadaEn: new Date() },
         include: eventInclude,
       }),
       this.prisma.bitacoraEvento.create({
@@ -285,17 +399,18 @@ export class EventsService {
         },
       }),
     ]);
-    return conPrecios(updated, true);
+    return (await this.conDisponibilidad([updated], () => true))[0];
   }
 
   // Termina la oferta: el precio vuelve a ser el normal
   async endOffer(id: string, user: AuthenticatedUser) {
     const event = await this.assertCanManage(id, user);
     if (!ofertaVigente(event)) throw new BadRequestException('Este evento no tiene una oferta vigente');
+    const tiposEntrada = await this.prisma.tipoEntrada.findMany({ where: { eventoId: id } });
     const [updated] = await this.prisma.$transaction([
       this.prisma.event.update({
         where: { id },
-        data: { precioOferta: null, ofertaHasta: null, ofertaCreadaEn: null },
+        data: { porcentajeOferta: null, ofertaHasta: null, ofertaCreadaEn: null },
         include: eventInclude,
       }),
       this.prisma.bitacoraEvento.create({
@@ -306,13 +421,13 @@ export class EventsService {
           titulo: 'Terminó la oferta',
           cambios: [{
             campo: 'oferta',
-            anterior: precioFinal(event.precioOferta!, event.porcentajeCargo),
-            nuevo: precioFinal(event.price, event.porcentajeCargo),
+            anterior: conPrecios({ ...event, tiposEntrada }).precioFinal,
+            nuevo: conPrecios({ ...event, tiposEntrada, porcentajeOferta: null }).precioFinal,
           }] as Prisma.InputJsonValue,
         },
       }),
     ]);
-    return conPrecios(updated, true);
+    return (await this.conDisponibilidad([updated], () => true))[0];
   }
 
   // Cambia el estado y lo deja en la bitácora (el admin usa este mismo registro desde su panel)
@@ -345,7 +460,7 @@ export class EventsService {
         },
       }),
     ]);
-    return conPrecios(updated, true);
+    return (await this.conDisponibilidad([updated], () => true))[0];
   }
 
   async addAnnouncement(id: string, user: AuthenticatedUser, dto: CreateAnnouncementDto) {
