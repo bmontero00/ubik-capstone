@@ -21,6 +21,11 @@ export class ComprasController {
     return this.comprasService.findMine(user);
   }
 
+  @Get(':id')
+  findOne(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.comprasService.findOne(id, user);
+  }
+
   @Post(':id/pagar')
   pay(@Param('id') id: string, @Body() dto: PagarCompraDto, @CurrentUser() user: AuthenticatedUser) {
     return this.comprasService.pay(id, user, dto.medioPago);

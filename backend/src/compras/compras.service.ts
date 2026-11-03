@@ -9,6 +9,7 @@ import { accountUnderReviewError } from '../auth/account-status';
 import { normalizeRut } from '../auth/rut.util';
 import { COMPRA_LIMITS, CreateCompraDto } from './dto/compra.dto';
 import { precioBaseVigente, precioFinal } from '../parametros/cargos';
+import { webpayConfig } from '../pagos/webpay.config';
 
 // Compras que reservan o ya son entradas válidas (cuentan para los límites y los RUT repetidos)
 const ESTADOS_VIGENTES: EstadoCompra[] = ['PENDIENTE_PAGO', 'PAGADA', 'CONFIRMADA'];
@@ -36,6 +37,8 @@ const compraInclude = {
     },
   },
   entradas: { orderBy: { fechaCreacion: 'asc' } },
+  // Último intento de pago, para el comprobante (o para avisar que se rechazó)
+  transacciones: { orderBy: { fechaCreacion: 'desc' }, take: 1 },
 } satisfies Prisma.CompraInclude;
 
 type CompraConDetalle = Prisma.CompraGetPayload<{ include: typeof compraInclude }>;
@@ -138,8 +141,20 @@ export class ComprasService {
     return this.serialize(compra);
   }
 
-  // Pago simulado: reemplazar por la confirmación de la pasarela (Webpay, Mercado Pago) cuando se integre
+  // Pago simulado, solo fuera de producción (para probar sin pasar por Webpay)
   async pay(id: string, user: AuthenticatedUser, medioPago: string) {
+    if (!webpayConfig().pagoSimulado) throw new BadRequestException('Medio de pago no disponible');
+    await this.findPayable(id, user);
+    const pagada = await this.prisma.compra.update({
+      where: { id },
+      data: { estado: 'PAGADA', fechaPago: new Date(), medioPago, expiraEn: null },
+      include: compraInclude,
+    });
+    return this.serialize(pagada);
+  }
+
+  // Compra propia que todavía se puede pagar (pendiente, dentro de plazo y con el evento vigente)
+  async findPayable(id: string, user: AuthenticatedUser) {
     const compra = await this.findOwn(id, user);
     if (compra.estado !== 'PENDIENTE_PAGO') throw new BadRequestException('Esta compra no está pendiente de pago');
     if (compra.expiraEn && compra.expiraEn.getTime() < Date.now()) {
@@ -149,12 +164,13 @@ export class ComprasService {
     if (compra.evento.status !== 'PUBLISHED' || compra.evento.date.getTime() <= Date.now()) {
       throw new BadRequestException('Este evento ya no tiene entradas disponibles');
     }
-    const pagada = await this.prisma.compra.update({
-      where: { id },
-      data: { estado: 'PAGADA', fechaPago: new Date(), medioPago, expiraEn: null },
-      include: compraInclude,
-    });
-    return this.serialize(pagada);
+    return compra;
+  }
+
+  // Una compra propia (ej. al volver de Webpay, para mostrar el comprobante)
+  async findOne(id: string, user: AuthenticatedUser) {
+    await this.expirePending();
+    return this.serialize(await this.findOwn(id, user));
   }
 
   // El comprador abandona el pago: libera las entradas reservadas
@@ -193,10 +209,26 @@ export class ComprasService {
   }
 
   // Los códigos de acceso solo se entregan cuando la entrada es válida (pagada o confirmada)
-  private serialize(compra: CompraConDetalle) {
+  private serialize({ transacciones, ...compra }: CompraConDetalle) {
     const valida = ESTADOS_VALIDOS.includes(compra.estado);
+    const t = transacciones[0];
     return {
       ...compra,
+      // Datos del comprobante del último intento de pago (sin el token ni la respuesta completa)
+      pago: t
+        ? {
+            medio: t.medio,
+            estado: t.estado,
+            ordenCompra: t.ordenCompra,
+            monto: t.monto,
+            codigoAutorizacion: t.codigoAutorizacion,
+            tipoPago: t.tipoPago,
+            cuotas: t.cuotas,
+            montoCuota: t.montoCuota,
+            ultimosDigitos: t.ultimosDigitos,
+            fecha: t.fechaTransaccion ?? t.fechaActualizacion,
+          }
+        : null,
       entradas: compra.entradas.map(({ eventoId, compraId, ...e }) => ({ ...e, codigo: valida ? e.codigo : null })),
     };
   }

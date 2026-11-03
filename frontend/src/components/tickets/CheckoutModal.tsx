@@ -3,10 +3,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   X, Check, ChevronDown, Loader2, CalendarDays, MapPin, Timer, CreditCard, ShieldCheck, PartyPopper, UserRound,
-  Copy, AlertTriangle, Ticket, ArrowLeft, Lock,
+  Copy, AlertTriangle, Ticket, ArrowLeft, Lock, FlaskConical, Info,
 } from 'lucide-react';
 import { ApiError } from '../../services/auth';
-import { Compra, cancelCompra, createCompra, payCompra } from '../../services/compras';
+import {
+  Compra, PAYMENT_TYPES, PaymentConfig, cancelCompra, createCompra, fetchPaymentConfig, payCompra, payWithWebpay,
+} from '../../services/compras';
 import { formatEventDate, formatPrice, imageSrc } from '../../services/events';
 import { formatRut } from '../../utils/rut';
 import { PHONE_PREFIX, formatLocalPhone, formatPhoneDisplay, toFullPhone } from '../../utils/phone';
@@ -31,13 +33,15 @@ interface CheckoutModalProps {
   event: CheckoutEvent;
   quantity: number;
   buyer: { name: string; email: string };
-  resume?: Compra; // compra pendiente de pago que se retoma desde "Mis entradas"
+  resume?: Compra; // compra pendiente que se retoma ("Mis entradas" o al volver de Webpay), o ya pagada
+  notice?: string; // aviso al volver de Webpay (ej. pago rechazado)
   onClose: () => void;
   onChanged: () => void; // se creó, pagó o anuló una compra
   onViewTickets: () => void;
 }
 
 type Step = 'attendees' | 'payment' | 'done';
+type PaymentMethod = 'webpay' | 'simulado';
 
 const STEPS: { id: Step; label: string }[] = [
   { id: 'attendees', label: 'Asistentes' },
@@ -71,9 +75,14 @@ const mmss = (ms: number) => {
 };
 
 // Compra de entradas: datos de cada asistente → pago → entradas listas
-export default function CheckoutModal({ event, quantity, buyer, resume, onClose, onChanged, onViewTickets }: CheckoutModalProps) {
+export default function CheckoutModal({ event, quantity, buyer, resume, notice, onClose, onChanged, onViewTickets }: CheckoutModalProps) {
   const free = event.price === 0;
-  const [step, setStep] = useState<Step>(resume ? 'payment' : 'attendees');
+  const [step, setStep] = useState<Step>(
+    !resume ? 'attendees' : resume.estado === 'PAGADA' || resume.estado === 'CONFIRMADA' ? 'done' : 'payment',
+  );
+  const [method, setMethod] = useState<PaymentMethod>('webpay');
+  const [paymentConfig, setPaymentConfig] = useState<PaymentConfig | null>(null);
+  const [redirecting, setRedirecting] = useState(false);
   const [attendees, setAttendees] = useState<AttendeeForm[]>(() =>
     resume
       ? resume.entradas.map((e) => ({ nombre: e.nombre, apellido: e.apellido, rut: formatRut(e.rut), telefono: formatLocalPhone(e.telefono), correo: e.correo }))
@@ -84,7 +93,7 @@ export default function CheckoutModal({ event, quantity, buyer, resume, onClose,
   const [serverRutErrors, setServerRutErrors] = useState<Record<string, string>>({});
   const [compra, setCompra] = useState<Compra | null>(resume ?? null);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(notice ?? null);
   const [confirmLeave, setConfirmLeave] = useState(false);
   const [now, setNow] = useState(Date.now());
 
@@ -115,6 +124,10 @@ export default function CheckoutModal({ event, quantity, buyer, resume, onClose,
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
   }, [step]);
+
+  useEffect(() => {
+    fetchPaymentConfig().then(setPaymentConfig).catch(() => setPaymentConfig(null));
+  }, []);
 
   const requestClose = () => {
     if (busy) return;
@@ -199,13 +212,19 @@ export default function CheckoutModal({ event, quantity, buyer, resume, onClose,
     setBusy(true);
     setError(null);
     try {
+      if (method === 'webpay') {
+        setRedirecting(true);
+        await payWithWebpay(compra.id); // el navegador sale del sitio hacia Webpay
+        return;
+      }
       setCompra(await payCompra(compra.id));
       setStep('done');
       onChanged();
-    } catch (e) {
-      setError((e as Error).message || 'No se pudo procesar el pago');
-    } finally {
       setBusy(false);
+    } catch (e) {
+      setRedirecting(false);
+      setBusy(false);
+      setError((e as Error).message || 'No se pudo procesar el pago');
     }
   };
 
@@ -324,11 +343,32 @@ export default function CheckoutModal({ event, quantity, buyer, resume, onClose,
                     <p className="text-xs text-slate-400 mt-0.5 mb-4">
                       Reservamos tus {compra.cantidad} {compra.cantidad === 1 ? 'entrada' : 'entradas'} por {mmss(remaining ?? 0)} minutos.
                     </p>
-                    <div className="space-y-2">
-                      <PaymentOption selected title="Pago de prueba" subtitle="Modo de desarrollo: el pago se aprueba sin cobro real" icon={ShieldCheck} />
-                      <PaymentOption title="Webpay" subtitle="Tarjetas de crédito, débito y prepago · Próximamente" icon={CreditCard} disabled />
+                    <div className="space-y-2" role="radiogroup" aria-label="Medio de pago">
+                      <PaymentOption
+                        selected={method === 'webpay'}
+                        onSelect={() => setMethod('webpay')}
+                        title="Webpay"
+                        subtitle="Tarjetas de crédito, débito y prepago · Transbank"
+                        icon={CreditCard}
+                      />
+                      {paymentConfig?.pagoSimulado && (
+                        <PaymentOption
+                          selected={method === 'simulado'}
+                          onSelect={() => setMethod('simulado')}
+                          title="Pago de prueba"
+                          subtitle="Solo en desarrollo: se aprueba sin pasar por Webpay"
+                          icon={FlaskConical}
+                        />
+                      )}
                       <PaymentOption title="Mercado Pago" subtitle="Saldo, tarjetas y cuotas · Próximamente" icon={CreditCard} disabled />
                     </div>
+                    {method === 'webpay' && (
+                      <p className="mt-3 flex items-start gap-2 text-[11px] text-slate-400">
+                        <Lock className="w-3.5 h-3.5 shrink-0 mt-px" />
+                        Te llevaremos al sitio seguro de Webpay para pagar. UBIK no ve ni guarda los datos de tu tarjeta.
+                      </p>
+                    )}
+                    {method === 'webpay' && paymentConfig?.webpay.ambiente === 'integracion' && <WebpayTestCards />}
 
                     <div className="mt-5 p-4 rounded-2xl bg-slate-950 border border-slate-800">
                       <p className="text-xs font-semibold text-slate-400 mb-2">Entradas a nombre de</p>
@@ -413,7 +453,8 @@ export default function CheckoutModal({ event, quantity, buyer, resume, onClose,
                 disabled={busy}
                 className="ml-auto flex items-center gap-2 px-5 py-3 text-sm font-bold rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 disabled:opacity-60"
               >
-                {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />} Pagar {formatPrice(compra?.total ?? total)}
+                {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />}
+                {redirecting ? 'Redirigiendo a Webpay…' : `Pagar ${formatPrice(compra?.total ?? total)}${method === 'webpay' ? ' con Webpay' : ''}`}
               </button>
             )}
           </div>
@@ -535,13 +576,17 @@ function Field({ id, label, error, hint, children }: { id: string; label: string
   );
 }
 
-function PaymentOption({ title, subtitle, icon: Icon, selected, disabled }: {
-  title: string; subtitle: string; icon: React.ElementType; selected?: boolean; disabled?: boolean;
+function PaymentOption({ title, subtitle, icon: Icon, selected, disabled, onSelect }: {
+  title: string; subtitle: string; icon: React.ElementType; selected?: boolean; disabled?: boolean; onSelect?: () => void;
 }) {
   return (
-    <div
-      aria-disabled={disabled}
-      className={`flex items-center gap-3 p-3.5 rounded-2xl border ${selected ? 'border-emerald-500/60 bg-emerald-500/10' : 'border-slate-800 bg-slate-950/60'} ${disabled ? 'opacity-50' : ''}`}
+    <button
+      type="button"
+      role="radio"
+      aria-checked={!!selected}
+      disabled={disabled}
+      onClick={onSelect}
+      className={`w-full text-left flex items-center gap-3 p-3.5 rounded-2xl border transition-colors ${selected ? 'border-emerald-500/60 bg-emerald-500/10' : 'border-slate-800 bg-slate-950/60 hover:border-slate-600'} ${disabled ? 'opacity-50 cursor-not-allowed hover:border-slate-800' : ''}`}
     >
       <span className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${selected ? 'border-emerald-400' : 'border-slate-600'}`}>
         {selected && <span className="w-2.5 h-2.5 rounded-full bg-emerald-400" />}
@@ -551,6 +596,48 @@ function PaymentOption({ title, subtitle, icon: Icon, selected, disabled }: {
         <span className="block text-sm font-semibold text-white">{title}</span>
         <span className="block text-[11px] text-slate-400">{subtitle}</span>
       </span>
+    </button>
+  );
+}
+
+// Datos públicos de prueba de Transbank (ambiente de integración, sin dinero real)
+function WebpayTestCards() {
+  return (
+    <div className="mt-3 p-3 rounded-xl bg-sky-500/10 border border-sky-500/25 text-[11px] text-sky-100/90">
+      <p className="flex items-center gap-1.5 font-bold text-sky-200"><Info className="w-3.5 h-3.5" /> Ambiente de pruebas de Transbank</p>
+      <ul className="mt-1.5 space-y-0.5">
+        <li>Aprobada: VISA <span className="font-mono">4051 8856 0044 6623</span> · CVV <span className="font-mono">123</span> · cualquier fecha futura</li>
+        <li>Rechazada: Mastercard <span className="font-mono">5186 0595 5959 0568</span></li>
+        <li>Al pedir autenticación: RUT <span className="font-mono">11.111.111-1</span> y clave <span className="font-mono">123</span></li>
+      </ul>
+    </div>
+  );
+}
+
+// Comprobante del pago con Webpay
+function Receipt({ compra }: { compra: Compra }) {
+  const pago = compra.pago;
+  if (!pago || pago.estado !== 'AUTORIZADA') return null;
+  const rows: [string, string][] = [
+    ['Orden de compra', pago.ordenCompra],
+    ['Monto', formatPrice(pago.monto)],
+    ['Código de autorización', pago.codigoAutorizacion ?? '—'],
+    ['Fecha', new Date(pago.fecha).toLocaleString('es-CL', { dateStyle: 'medium', timeStyle: 'short' })],
+    ['Tipo de pago', (pago.tipoPago && PAYMENT_TYPES[pago.tipoPago]) || pago.tipoPago || '—'],
+    ['Cuotas', pago.cuotas ? `${pago.cuotas}${pago.montoCuota ? ` de ${formatPrice(pago.montoCuota)}` : ''}` : 'Sin cuotas'],
+    ['Tarjeta', pago.ultimosDigitos ? `**** ${pago.ultimosDigitos}` : '—'],
+  ];
+  return (
+    <div className="mt-5 w-full text-left p-4 rounded-2xl bg-slate-950 border border-slate-800">
+      <p className="text-xs font-bold text-slate-300 flex items-center gap-1.5 mb-2"><CreditCard className="w-3.5 h-3.5" /> Comprobante de pago Webpay</p>
+      <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+        {rows.map(([label, value]) => (
+          <React.Fragment key={label}>
+            <dt className="text-slate-500">{label}</dt>
+            <dd className="text-slate-200 text-right font-medium tabular-nums break-all">{value}</dd>
+          </React.Fragment>
+        ))}
+      </dl>
     </div>
   );
 }
@@ -565,6 +652,7 @@ function Success({ compra, free, onViewTickets, onClose }: { compra: Compra; fre
       <p className="text-sm text-slate-400 mt-1">
         Código de {free ? 'confirmación' : 'compra'} <span className="font-mono font-bold text-slate-200">{compra.codigo}</span>
       </p>
+      <Receipt compra={compra} />
       <ul className="mt-5 w-full space-y-2 text-left">
         {compra.entradas.map((e) => (
           <li key={e.id} className="flex items-center justify-between gap-3 px-4 py-3 rounded-xl bg-slate-950 border border-slate-800">

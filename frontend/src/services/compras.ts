@@ -50,7 +50,35 @@ export interface Compra {
     organizer: { id: string; name: string; organizerProfile: { organizationName: string | null } | null };
   };
   entradas: Entrada[];
+  pago: PagoCompra | null;
 }
+
+export type EstadoTransaccion = 'INICIADA' | 'AUTORIZADA' | 'RECHAZADA' | 'ANULADA' | 'REVERSADA' | 'ERROR';
+
+// Último intento de pago de la compra (datos del comprobante de Webpay)
+export interface PagoCompra {
+  medio: string;
+  estado: EstadoTransaccion;
+  ordenCompra: string;
+  monto: number;
+  codigoAutorizacion: string | null;
+  tipoPago: string | null;
+  cuotas: number | null;
+  montoCuota: number | null;
+  ultimosDigitos: string | null;
+  fecha: string;
+}
+
+// Tipos de pago que informa Transbank
+export const PAYMENT_TYPES: Record<string, string> = {
+  VD: 'Débito',
+  VN: 'Crédito',
+  VC: 'Crédito en cuotas',
+  SI: '3 cuotas sin interés',
+  S2: '2 cuotas sin interés',
+  NC: 'Cuotas sin interés',
+  VP: 'Prepago',
+};
 
 export const compraValida = (c: Compra) => c.estado === 'PAGADA' || c.estado === 'CONFIRMADA';
 
@@ -58,7 +86,40 @@ export function createCompra(eventoId: string, asistentes: AsistenteInput[]): Pr
   return apiJson<Compra>('/compras', { method: 'POST', body: JSON.stringify({ eventoId, asistentes }) });
 }
 
-// Pago simulado mientras no exista pasarela (Webpay / Mercado Pago)
+export function fetchCompra(id: string): Promise<Compra> {
+  return apiJson<Compra>(`/compras/${id}`);
+}
+
+// Medios de pago disponibles: el pago simulado solo existe fuera de producción
+export interface PaymentConfig {
+  webpay: { ambiente: 'integracion' | 'produccion' };
+  pagoSimulado: boolean;
+}
+
+export function fetchPaymentConfig(): Promise<PaymentConfig> {
+  return apiJson<PaymentConfig>('/pagos/configuracion');
+}
+
+// Crea la transacción en Webpay y lleva al comprador a su formulario de pago (Transbank exige
+// enviar el token por POST). Al terminar, Transbank lo devuelve al sitio con ?pago=...&compra=...
+export async function payWithWebpay(compraId: string): Promise<void> {
+  const { url, token } = await apiJson<{ url: string; token: string }>('/pagos/webpay/iniciar', {
+    method: 'POST',
+    body: JSON.stringify({ compraId }),
+  });
+  const form = document.createElement('form');
+  form.method = 'POST';
+  form.action = url;
+  const input = document.createElement('input');
+  input.type = 'hidden';
+  input.name = 'token_ws';
+  input.value = token;
+  form.appendChild(input);
+  document.body.appendChild(form);
+  form.submit();
+}
+
+// Pago simulado (solo en desarrollo): se aprueba sin pasar por la pasarela
 export function payCompra(id: string): Promise<Compra> {
   return apiJson<Compra>(`/compras/${id}/pagar`, { method: 'POST', body: JSON.stringify({ medioPago: 'SIMULADO' }) });
 }

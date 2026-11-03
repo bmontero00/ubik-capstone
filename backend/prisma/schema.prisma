@@ -238,15 +238,53 @@ model Compra {
   expiraEn        DateTime? // límite para pagar una compra pendiente
   fechaPago       DateTime?
 
-  eventoId    String
-  evento      Event     @relation(fields: [eventoId], references: [id], onDelete: Cascade)
-  compradorId String
-  comprador   User      @relation(fields: [compradorId], references: [id], onDelete: Cascade)
-  entradas    Entrada[]
+  eventoId      String
+  evento        Event             @relation(fields: [eventoId], references: [id], onDelete: Cascade)
+  compradorId   String
+  comprador     User              @relation(fields: [compradorId], references: [id], onDelete: Cascade)
+  entradas      Entrada[]
+  // Intentos de pago en la pasarela (un pago rechazado o anulado se puede reintentar)
+  transacciones TransaccionPago[]
 
   @@index([compradorId, fechaCreacion])
   @@index([eventoId, estado])
   @@map("compras")
+}
+
+enum EstadoTransaccion {
+  INICIADA // el comprador fue enviado a la pasarela y aún no vuelve
+  AUTORIZADA // pago aprobado por el banco
+  RECHAZADA // el banco rechazó el pago
+  ANULADA // el comprador abandonó el formulario de pago o se agotó su tiempo
+  REVERSADA // se aprobó cuando la compra ya no estaba vigente y se devolvió el dinero
+  ERROR // la pasarela no pudo confirmar el pago
+}
+
+// Un intento de pago de una compra en la pasarela (por ahora Webpay Plus de Transbank).
+// Guarda los datos del comprobante que se muestran al comprador.
+model TransaccionPago {
+  id                 String            @id @default(uuid())
+  medio              String // WEBPAY
+  token              String            @unique // token de la transacción en la pasarela
+  ordenCompra        String            @unique // buy_order enviado a Transbank (máx. 26 caracteres)
+  monto              Float
+  estado             EstadoTransaccion @default(INICIADA)
+  codigoRespuesta    Int? // response_code de Transbank (0 = aprobado)
+  codigoAutorizacion String?
+  tipoPago           String? // VD débito, VN crédito, VC cuotas, SI/S2/NC sin interés, VP prepago
+  cuotas             Int?
+  montoCuota         Float?
+  ultimosDigitos     String? // últimos 4 dígitos de la tarjeta
+  fechaTransaccion   DateTime? // fecha informada por Transbank
+  respuesta          Json? // respuesta completa de la pasarela, para soporte
+  fechaCreacion      DateTime          @default(now())
+  fechaActualizacion DateTime          @updatedAt
+
+  compraId String
+  compra   Compra @relation(fields: [compraId], references: [id], onDelete: Cascade)
+
+  @@index([compraId, fechaCreacion])
+  @@map("transacciones_pago")
 }
 
 // Entrada nominativa: cada una queda a nombre de un asistente

@@ -15,7 +15,7 @@ import CheckoutModal, { CheckoutEvent } from '../components/tickets/CheckoutModa
 import MyTicketsPanel from '../components/tickets/MyTicketsPanel';
 import Landing from '../components/landing/Landing';
 import Footer from '../components/Footer';
-import { Compra, compraValida, fetchMisCompras } from '../services/compras';
+import { Compra, compraValida, fetchCompra, fetchMisCompras } from '../services/compras';
 import { CalendarPlus, Compass, LayoutList, CheckCircle2, X, ArrowRight, Ticket } from 'lucide-react';
 import {
   ApiError, AuthResponse, AuthUser, SuspendedInfo, canPublishEvents, clearSession,
@@ -70,7 +70,7 @@ export default function HomePage() {
   const [compras, setCompras] = useState<Compra[]>([]);
   const [comprasState, setComprasState] = useState<{ loading: boolean; error: string | null }>({ loading: false, error: null });
   // Compra en curso: cantidad elegida en el detalle, o una compra pendiente que se retoma
-  const [checkout, setCheckout] = useState<{ event: CheckoutEvent; quantity: number; resume?: Compra } | null>(null);
+  const [checkout, setCheckout] = useState<{ event: CheckoutEvent; quantity: number; resume?: Compra; notice?: string } | null>(null);
   const [myEventsKey, setMyEventsKey] = useState(0);
   const [toast, setToast] = useState<string | null>(null);
 
@@ -86,9 +86,46 @@ export default function HomePage() {
       refreshUser(); // Trae el estado actualizado (ej. si un admin aprobó la solicitud)
     }
     fetchCategories();
-    const shared = new URLSearchParams(window.location.search).get('evento');
+    const params = new URLSearchParams(window.location.search);
+    const shared = params.get('evento');
     if (shared) setDetail({ id: shared });
+    // Vuelta desde Webpay: ?pago=<resultado>&compra=<id>
+    const pago = params.get('pago');
+    // Los parámetros se quitan de la URL recién después de mostrar el resultado: si la página se
+    // recarga antes (ej. el modo de desarrollo de Next tras un error), el resultado no se pierde
+    if (pago) showPaymentResult(pago, params.get('compra'), savedUser).finally(() => {
+      window.history.replaceState(null, '', window.location.pathname);
+    });
   }, []);
+
+  // Muestra el resultado del pago en Webpay: el comprobante si se aprobó, o la compra pendiente
+  // con el motivo para que pueda reintentar mientras dure la reserva
+  const showPaymentResult = async (result: string, compraId: string | null, savedUser: AuthUser | null) => {
+    if (result === 'reversado') {
+      return setToast('Tu reserva venció antes de confirmar el pago, así que anulamos el cargo en tu tarjeta. Vuelve a elegir tus entradas.');
+    }
+    if (!compraId || savedUser?.role !== 'ATTENDEE') {
+      return setToast('Inicia sesión con tu cuenta de asistente para ver el resultado de tu pago.');
+    }
+    try {
+      const compra = await fetchCompra(compraId);
+      if (compra.estado === 'PAGADA') {
+        setCheckout({ event: compra.evento, quantity: compra.cantidad, resume: compra });
+        return;
+      }
+      if (compra.estado !== 'PENDIENTE_PAGO') {
+        return setToast('Tu reserva de entradas venció o fue anulada. Vuelve a elegir tus entradas para intentarlo de nuevo.');
+      }
+      const notices: Record<string, string> = {
+        rechazado: 'El banco rechazó el pago. Puedes intentarlo de nuevo, por ejemplo con otra tarjeta.',
+        anulado: 'Cancelaste el pago en Webpay. Tus entradas siguen reservadas: puedes volver a intentarlo.',
+        error: 'No pudimos confirmar el pago con Webpay. Intenta nuevamente; si ves un cargo en tu tarjeta, escríbenos a soporte@ubik.cl.',
+      };
+      setCheckout({ event: compra.evento, quantity: compra.cantidad, resume: compra, notice: notices[result] ?? notices.error });
+    } catch (err) {
+      setToast((err as Error).message || 'No pudimos obtener el resultado de tu pago. Revisa "Mis entradas".');
+    }
+  };
 
   const refreshUser = async () => {
     setRefreshingUser(true);
@@ -547,6 +584,7 @@ export default function HomePage() {
           event={checkout.event}
           quantity={checkout.quantity}
           resume={checkout.resume}
+          notice={checkout.notice}
           buyer={{ name: user.name, email: user.email }}
           onClose={() => setCheckout(null)}
           onChanged={loadCompras}
