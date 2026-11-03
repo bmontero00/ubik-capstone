@@ -176,7 +176,8 @@ function PurchaseCard({ compra, past, onOpenEvent }: { compra: Compra; past: boo
       </div>
 
       {open && (
-        <div className="px-4 sm:px-5 pb-5 grid grid-cols-1 md:grid-cols-2 gap-3">
+        // Separadas del resumen por una línea, para que no queden pegadas a la imagen del evento
+        <div className="border-t border-slate-800 p-4 sm:p-5 grid grid-cols-1 md:grid-cols-2 gap-3">
           {compra.entradas.map((t, i) => <TicketStub key={t.id} index={i + 1} total={compra.cantidad} entrada={t} color={color} />)}
         </div>
       )}
