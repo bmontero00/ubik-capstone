@@ -9,6 +9,7 @@ import UbikLogo from '../UbikLogo';
 import { API_URL } from '../../services/auth';
 import { Category, EventItem, formatEventDate, formatPrice, imageSrc, publicPrice, relativeTime } from '../../services/events';
 import { categoryColor } from '../../utils/mapTiles';
+import { OfferBadge, OfferPrice } from '../events/OfferBadge';
 
 interface LandingProps {
   categories: Category[];
@@ -288,6 +289,7 @@ function UpcomingCard({ event, onOpen }: { event: EventItem; onOpen: () => void 
           <span className="absolute top-2 left-2 text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-md text-slate-950" style={{ background: color }}>
             {event.category?.name}
           </span>
+          <OfferBadge event={event} className="absolute top-2 right-2" />
           <span className="absolute bottom-2 right-2 text-[11px] font-bold px-2 py-0.5 rounded-md bg-slate-950/80 text-white backdrop-blur first-letter:uppercase">
             {relativeTime(event.date)}
           </span>
@@ -297,7 +299,7 @@ function UpcomingCard({ event, onOpen }: { event: EventItem; onOpen: () => void 
           <p className="text-xs text-slate-400 mt-1 flex items-center gap-1.5"><CalendarDays className="w-3.5 h-3.5 shrink-0" /> {formatEventDate(event.date)}</p>
           <p className="text-xs text-slate-500 mt-0.5 flex items-center gap-1.5 truncate"><MapPin className="w-3.5 h-3.5 shrink-0" /> <span className="truncate">{event.address}</span></p>
           <p className={`text-sm font-bold mt-2 ${event.price === 0 ? 'text-emerald-300' : 'text-white'}`}>
-            {event.price === 0 ? 'Entrada liberada' : formatPrice(publicPrice(event))}
+            {event.price === 0 ? 'Entrada liberada' : <OfferPrice event={event} price={publicPrice(event)} />}
             {event.ventaPausada && <span className="ml-2 text-[11px] font-semibold text-amber-200">· Venta próximamente</span>}
           </p>
         </div>

@@ -8,12 +8,17 @@ import { LocateFixed, Loader2 } from 'lucide-react';
 import { DARK_TILES, categoryColor } from '../utils/mapTiles';
 import { formatEventDate, formatPrice, imageSrc } from '../services/events';
 import { EVENT_STATUS_LABELS } from '../utils/labels';
+import { OfferBadge, OfferPrice } from './events/OfferBadge';
 
 interface MapEvent {
   id: string;
   title: string;
   price: number;
-  precioFinal?: number; // incluye el cargo por servicio
+  precioFinal?: number; // incluye el cargo por servicio (y la oferta vigente)
+  ofertaActiva?: boolean;
+  precioSinOferta?: number;
+  porcentajeDescuento?: number;
+  ofertaHasta?: string | null;
   ventaPausada?: boolean;
   date: string;
   address: string;
@@ -176,6 +181,7 @@ export default function Map({
                 {imageSrc(evt.imageUrl) && (
                   <img src={imageSrc(evt.imageUrl)!} alt="" className="w-full h-24 object-cover rounded-xl mb-2.5" onError={(e) => (e.currentTarget.style.display = 'none')} />
                 )}
+                {evt.ofertaActiva && <OfferBadge event={evt} className="mb-1.5 mr-1.5" />}
                 <span
                   className="inline-block text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md text-slate-950"
                   style={{ background: categoryColor(evt.category?.name) }}
@@ -191,7 +197,7 @@ export default function Map({
                 {evt.ventaPausada && <span className="block mt-1 text-[11px] font-semibold text-amber-200">Venta de entradas próximamente</span>}
                 <div className="mt-2.5 flex items-center justify-between gap-2">
                   <span className={`text-sm font-extrabold ${evt.price === 0 ? 'text-emerald-300' : 'text-white'}`}>
-                    {evt.price === 0 ? 'Gratis' : formatPrice(evt.precioFinal ?? evt.price)}
+                    {evt.price === 0 ? 'Gratis' : <OfferPrice event={evt} price={evt.precioFinal ?? evt.price} compact />}
                   </span>
                   {onOpenEvent && (
                     <button

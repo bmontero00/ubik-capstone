@@ -148,6 +148,29 @@ export class UpdateEventDto {
   removeImage?: boolean;
 }
 
+// Oferta: nuevo precio por entrada para el organizador (el público ve el % de descuento)
+export class OfertaEventDto {
+  @Type(() => Number)
+  @IsInt({ message: 'El precio de oferta debe ser un número entero' })
+  @Min(1, { message: 'El precio de oferta debe ser mayor a $0' })
+  @Max(EVENT_LIMITS.priceMax, { message: 'El precio de oferta no es válido' })
+  precioOferta: number;
+
+  // Término de la oferta; si no viene, dura hasta el evento
+  @IsOptional()
+  @IsISO8601({}, { message: 'La fecha de término de la oferta no es válida' })
+  hasta?: string;
+
+  // Mensaje opcional para la comunidad en las novedades del evento
+  @IsOptional()
+  @trim()
+  @IsString()
+  @Length(EVENT_LIMITS.announcementMin, EVENT_LIMITS.announcementMax, {
+    message: `El mensaje debe tener entre ${EVENT_LIMITS.announcementMin} y ${EVENT_LIMITS.announcementMax} caracteres`,
+  })
+  mensaje?: string;
+}
+
 export class CancelEventDto {
   @IsReason()
   reason: string;

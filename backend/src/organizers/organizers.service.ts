@@ -18,6 +18,8 @@ const eventSelect = {
   description: true,
   porcentajeCargo: true,
   estadoCondicion: true,
+  precioOferta: true,
+  ofertaHasta: true,
   category: { select: { id: true, name: true } },
 } satisfies Prisma.EventSelect;
 

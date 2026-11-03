@@ -2,9 +2,14 @@ import { BitacoraEvento, Event, EventStatus, Prisma } from '@prisma/client';
 
 // Un cambio registrado en la bitácora. Para la descripción y la imagen solo se indica que cambiaron.
 export interface CambioBitacora {
-  campo: 'titulo' | 'fecha' | 'direccion' | 'precio' | 'categoria' | 'descripcion' | 'imagen' | 'estado' | 'cargo' | 'venta';
+  campo:
+    | 'titulo' | 'fecha' | 'direccion' | 'precio' | 'categoria' | 'descripcion' | 'imagen' | 'estado' | 'cargo' | 'venta'
+    | 'oferta';
   anterior?: string | number | null;
   nuevo?: string | number | null;
+  // Solo en "oferta": % de descuento y término (ISO; null = hasta el evento)
+  descuento?: number;
+  hasta?: string | null;
 }
 
 type EventSnapshot = Pick<Event, 'title' | 'date' | 'address' | 'price' | 'categoryId' | 'description' | 'imageUrl'>;

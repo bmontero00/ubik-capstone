@@ -8,7 +8,7 @@ import type { AuthenticatedUser } from '../auth/auth.guards';
 import { accountUnderReviewError } from '../auth/account-status';
 import { normalizeRut } from '../auth/rut.util';
 import { COMPRA_LIMITS, CreateCompraDto } from './dto/compra.dto';
-import { precioFinal } from '../parametros/cargos';
+import { precioBaseVigente, precioFinal } from '../parametros/cargos';
 
 // Compras que reservan o ya son entradas válidas (cuentan para los límites y los RUT repetidos)
 const ESTADOS_VIGENTES: EstadoCompra[] = ['PENDIENTE_PAGO', 'PAGADA', 'CONFIRMADA'];
@@ -111,11 +111,12 @@ export class ComprasService {
       });
     }
 
-    // Precio que paga el público: el del organizador más el cargo por servicio fijado en el evento.
-    // Se guarda el desglose para que la compra no cambie si después se edita el evento.
+    // Precio que paga el público: el del organizador (o su oferta vigente) más el cargo por servicio
+    // fijado en el evento. Se guarda el desglose para que la compra no cambie si después se edita el evento.
     const gratis = event.price <= 0;
+    const base = precioBaseVigente(event);
     const porcentajeCargo = gratis ? 0 : event.porcentajeCargo;
-    const precioUnitario = precioFinal(event.price, porcentajeCargo);
+    const precioUnitario = precioFinal(base, porcentajeCargo);
     const cantidad = asistentes.length;
     const compra = await this.prisma.compra.create({
       data: {
@@ -124,9 +125,9 @@ export class ComprasService {
         cantidad,
         precioUnitario,
         total: precioUnitario * cantidad,
-        precioBase: gratis ? 0 : event.price,
+        precioBase: gratis ? 0 : base,
         porcentajeCargo,
-        cargoServicio: gratis ? 0 : (precioUnitario - event.price) * cantidad,
+        cargoServicio: gratis ? 0 : (precioUnitario - base) * cantidad,
         expiraEn: gratis ? null : new Date(Date.now() + COMPRA_LIMITS.minutosParaPagar * 60_000),
         eventoId: event.id,
         compradorId: user.sub,

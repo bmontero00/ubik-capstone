@@ -178,6 +178,12 @@ model Event {
   condicionRevisadaPor   User?                    @relation("CondicionRevisadaPor", fields: [condicionRevisadaPorId], references: [id])
   historialCargos        HistorialCargoEvento[]
 
+  // Oferta del organizador: mientras está vigente, "precioOferta" reemplaza a "price" como lo que
+  // recibe por entrada (el cargo se calcula sobre la oferta). Sin "ofertaHasta" dura hasta el evento.
+  precioOferta   Float?
+  ofertaHasta    DateTime?
+  ofertaCreadaEn DateTime?
+
   @@map("events")
 }
 

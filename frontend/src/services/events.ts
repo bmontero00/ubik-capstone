@@ -34,6 +34,12 @@ export interface EventItem {
   precioFinal?: number;
   cargoPorEntrada?: number;
   ventaPausada?: boolean; // condición especial en revisión: el evento se ve pero no vende
+  // Oferta del organizador: "precioFinal" ya trae el precio rebajado
+  ofertaActiva?: boolean;
+  precioSinOferta?: number; // precio final normal, para mostrarlo tachado
+  porcentajeDescuento?: number;
+  precioOferta?: number | null; // lo que recibe el organizador durante la oferta
+  ofertaHasta?: string | null; // sin término, dura hasta el evento
   // Condición especial (solo para el organizador del evento y los admins)
   estadoCondicion?: EstadoCondicion | null;
   justificacionCondicion?: string | null;
@@ -47,6 +53,23 @@ export interface EventItem {
 
 export type EstadoCondicion = 'PENDIENTE' | 'APROBADA' | 'RECHAZADA';
 
+// Lo mínimo para mostrar una oferta (lo comparten las tarjetas, el mapa y el perfil del organizador)
+export type OfferInfo = Pick<EventItem, 'ofertaActiva' | 'precioSinOferta' | 'porcentajeDescuento' | 'ofertaHasta'>;
+
+// Mismos límites que el backend (backend/src/parametros/cargos.ts)
+export const OFFER_LIMITS = { discountMin: 5, discountMax: 90 };
+
+// % de descuento que ve el público, sobre los precios finales (mismo cálculo que el backend)
+export const discountPercent = (normal: number, offer: number) => (normal > 0 ? Math.round((1 - offer / normal) * 100) : 0);
+
+// "Hasta el lun 9 nov" o "Hasta el día del evento"
+export function offerEndsLabel(event: OfferInfo) {
+  if (!event.ofertaActiva) return null;
+  if (!event.ofertaHasta) return 'Oferta válida hasta el día del evento';
+  const d = new Date(event.ofertaHasta);
+  return `Oferta válida hasta el ${d.toLocaleDateString('es-CL', { weekday: 'short', day: 'numeric', month: 'short' })} a las ${d.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })}`;
+}
+
 // Precio que ve y paga el público (incluye el cargo por servicio)
 export const publicPrice = (event: { price: number; precioFinal?: number }) => event.precioFinal ?? event.price;
 
@@ -59,9 +82,13 @@ export const formatPercent = (value: number) => `${value.toLocaleString('es-CL',
 export type TipoBitacora = 'CREACION' | 'ANUNCIO' | 'CAMBIO_DATOS' | 'CAMBIO_ESTADO';
 
 export interface CambioBitacora {
-  campo: 'titulo' | 'fecha' | 'direccion' | 'precio' | 'categoria' | 'descripcion' | 'imagen' | 'estado' | 'cargo' | 'venta';
+  campo:
+    | 'titulo' | 'fecha' | 'direccion' | 'precio' | 'categoria' | 'descripcion' | 'imagen' | 'estado' | 'cargo' | 'venta'
+    | 'oferta';
   anterior?: string | number | null;
   nuevo?: string | number | null;
+  descuento?: number; // solo en "oferta"
+  hasta?: string | null;
 }
 
 export interface EntradaBitacora {
@@ -157,6 +184,18 @@ export function postponeEvent(id: string, date: string, reason: string): Promise
 
 export function resumeEvent(id: string): Promise<EventItem> {
   return apiJson<EventItem>(`/events/${id}/resume`, { method: 'PATCH' });
+}
+
+// Oferta: nuevo precio por entrada para el organizador; "hasta" es opcional (si no, dura hasta el evento)
+export function setOffer(id: string, precioOferta: number, hasta?: string, mensaje?: string): Promise<EventItem> {
+  return apiJson<EventItem>(`/events/${id}/oferta`, {
+    method: 'PATCH',
+    body: JSON.stringify({ precioOferta, ...(hasta && { hasta }), ...(mensaje && { mensaje }) }),
+  });
+}
+
+export function endOffer(id: string): Promise<EventItem> {
+  return apiJson<EventItem>(`/events/${id}/oferta`, { method: 'DELETE' });
 }
 
 // Detalle con bitácora; con sesión, el organizador del evento y los admins ven más

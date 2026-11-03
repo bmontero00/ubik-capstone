@@ -10,6 +10,7 @@ import { formatEventDate, formatPrice, imageSrc } from '../../services/events';
 import { EVENT_STATUS_LABELS, StatusPill } from '../../utils/labels';
 import { categoryColor } from '../../utils/mapTiles';
 import StarRating from './StarRating';
+import { OfferBadge, OfferPrice } from '../events/OfferBadge';
 
 interface OrganizerProfileModalProps {
   organizerId: string;
@@ -283,7 +284,10 @@ function EventRow({ event, past, onOpen }: { event: OrganizerEvent; past: boolea
           <p className="text-[11px] text-slate-400 flex items-center gap-1 mt-0.5"><CalendarDays className="w-3 h-3" /> {formatEventDate(event.date)}</p>
           <p className="text-[11px] text-slate-500 flex items-center gap-1 truncate"><MapPin className="w-3 h-3 shrink-0" /> <span className="truncate">{event.address}</span></p>
           <div className="mt-1 flex items-center gap-2">
-            <span className="text-[11px] font-semibold text-slate-200">{formatPrice(event.precioFinal ?? event.price)}</span>
+            <span className="text-[11px] font-semibold text-slate-200">
+              {event.price === 0 ? formatPrice(0) : <OfferPrice event={event} price={event.precioFinal ?? event.price} compact />}
+            </span>
+            {!past && <OfferBadge event={event} className="!text-[10px] !px-1.5" />}
             {event.status === 'POSTPONED' && <StatusPill {...EVENT_STATUS_LABELS.POSTPONED} />}
           </div>
         </div>

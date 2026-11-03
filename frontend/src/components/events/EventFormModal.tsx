@@ -101,6 +101,8 @@ function quickDates() {
 export default function EventFormModal({ categories, event, initialLocation, duplicateFrom, onClose, onSaved }: EventFormModalProps) {
   const isEdit = !!event;
   const isDuplicate = !isEdit && !!duplicateFrom;
+  // Con una oferta vigente el precio normal no se cambia (el backend también lo impide)
+  const priceLocked = isEdit && !!event?.ofertaActiva;
   const initial = useMemo(() => initialState(event, initialLocation, duplicateFrom), [event, initialLocation, duplicateFrom]);
   const [form, setForm] = useState<EventFormState>(initial);
   // Al duplicar se parte en el paso de la fecha, que es lo que normalmente cambia
@@ -374,6 +376,14 @@ export default function EventFormModal({ categories, event, initialLocation, dup
 
               {step === 2 && (
                 <>
+                  {priceLocked && (
+                    <p className="flex items-start gap-2 text-xs text-rose-200 bg-rose-500/10 border border-rose-500/25 rounded-xl px-3 py-2.5">
+                      <BadgePercent className="w-4 h-4 shrink-0 mt-px" />
+                      El evento está en oferta ({event!.porcentajeDescuento}% de descuento). Para cambiar el precio de la entrada,
+                      primero termina la oferta desde "Mis eventos".
+                    </p>
+                  )}
+                  <fieldset disabled={priceLocked} className={`contents ${priceLocked ? '[&_*]:opacity-60' : ''}`}>
                   <Field label="Entrada">
                     <div className="grid grid-cols-2 gap-3">
                       <ChoiceCard
@@ -440,6 +450,7 @@ export default function EventFormModal({ categories, event, initialLocation, dup
                       )}
                     </Field>
                   )}
+                  </fieldset>
 
                   {!form.isFree && !isEdit && (
                     <SpecialConditionField form={form} set={set} errors={showErrors ? errors : {}} feePct={feePct} />
@@ -501,7 +512,11 @@ export default function EventFormModal({ categories, event, initialLocation, dup
                   event={{
                     title: form.title.trim(),
                     description: form.description.trim(),
-                    price: publicPriceValue,
+                    price: priceLocked ? event!.precioFinal ?? publicPriceValue : publicPriceValue,
+                    ofertaActiva: priceLocked,
+                    precioSinOferta: event?.precioSinOferta,
+                    porcentajeDescuento: event?.porcentajeDescuento,
+                    ofertaHasta: event?.ofertaHasta,
                     ventaPausada: requestsCondition || !!event?.ventaPausada,
                     date: when && !Number.isNaN(when.getTime()) ? when.toISOString() : '',
                     address: form.address.trim(),

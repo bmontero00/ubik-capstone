@@ -14,6 +14,8 @@ import { EVENT_STATUS_LABELS, StatusPill, formatDate } from '../../utils/labels'
 import ReasonField, { validateReason } from '../admin/ReasonField';
 import { ReasonToggle } from '../AuthModal';
 import { Chip } from '../admin/UsersTab';
+import OfferForm from './OfferForm';
+import { OfferBadge } from './OfferBadge';
 
 type Filter = 'upcoming' | 'past' | 'cancelled' | 'all';
 
@@ -37,7 +39,7 @@ const loadSeen = (): string[] => {
   }
 };
 
-type Action = { type: 'cancel' | 'postpone'; id: string } | null;
+type Action = { type: 'cancel' | 'postpone' | 'offer'; id: string } | null;
 
 interface MyEventsPanelProps {
   canManage: boolean; // false si la cuenta está en revisión
@@ -119,7 +121,7 @@ export default function MyEventsPanel({ canManage, refreshKey, onCreate, onEdit,
     }
   };
 
-  const openAction = (type: 'cancel' | 'postpone', e: EventItem) => {
+  const openAction = (type: 'cancel' | 'postpone' | 'offer', e: EventItem) => {
     setAction({ type, id: e.id });
     setReason('');
     setTouched(false);
@@ -254,6 +256,8 @@ export default function MyEventsPanel({ canManage, refreshKey, onCreate, onEdit,
               ? 'Tu cuenta está en revisión: no puedes modificar eventos'
               : 'Por su estado actual este evento ya no se puede modificar';
             const current = action?.id === e.id ? action.type : null;
+            // Solo se ponen en oferta los eventos de pago publicados que aún no se realizan
+            const canOffer = editable && e.status === 'PUBLISHED' && e.price > 0 && isUpcoming(e);
             return (
               <li key={e.id} className={`bg-slate-900/80 border rounded-2xl p-4 ${teamNotice ? 'border-amber-500/40' : 'border-slate-800'}`}>
                 {teamNotice && <TeamNotice entry={teamNotice} status={e.status} onSeen={() => markSeen(teamNotice.id)} />}
@@ -270,6 +274,7 @@ export default function MyEventsPanel({ canManage, refreshKey, onCreate, onEdit,
                     <div className="flex flex-wrap items-center gap-2 mb-1">
                       <button onClick={() => onOpen(e)} className="font-bold text-white break-words text-left hover:text-indigo-300">{e.title}</button>
                       <StatusPill {...EVENT_STATUS_LABELS[e.status]} />
+                      <OfferBadge event={e} />
                       {!!e.totalAnuncios && (
                         <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-200 bg-amber-500/10 border border-amber-500/25 rounded px-1.5 py-0.5">
                           <Megaphone className="w-3 h-3" /> {e.totalAnuncios} {e.totalAnuncios === 1 ? 'anuncio' : 'anuncios'}
@@ -282,7 +287,10 @@ export default function MyEventsPanel({ canManage, refreshKey, onCreate, onEdit,
                       {e.category.name} ·{' '}
                       {e.price > 0 ? (
                         <>
-                          <span className="font-semibold">Recibes {formatPrice(e.price)}</span>
+                          <span className="font-semibold">
+                            Recibes {formatPrice(e.ofertaActiva && e.precioOferta ? e.precioOferta : e.price)}
+                            {e.ofertaActiva && <span className="text-slate-500 font-normal"> (precio normal {formatPrice(e.price)})</span>}
+                          </span>
                           <span className="text-slate-500"> · el público paga {formatPrice(publicPrice(e))} ({formatPercent(e.porcentajeCargo ?? 0)} de cargo)</span>
                         </>
                       ) : (
@@ -319,6 +327,11 @@ export default function MyEventsPanel({ canManage, refreshKey, onCreate, onEdit,
                         )}
                       </>
                     )}
+                    {canOffer && (
+                      <ActionButton icon={BadgePercent} active={current === 'offer'} onClick={() => openAction('offer', e)}>
+                        {e.ofertaActiva ? 'Editar oferta' : 'Poner en oferta'}
+                      </ActionButton>
+                    )}
                     {canManage && <ActionButton icon={Copy} onClick={() => onDuplicate(e)}>Duplicar</ActionButton>}
                     {editable && (
                       <ActionButton icon={Ban} danger active={current === 'cancel'} onClick={() => openAction('cancel', e)}>Cancelar evento</ActionButton>
@@ -331,7 +344,20 @@ export default function MyEventsPanel({ canManage, refreshKey, onCreate, onEdit,
                   </div>
                 </div>
 
-                {current && (
+                {current === 'offer' && (
+                  <OfferForm
+                    event={e}
+                    onCancel={() => setAction(null)}
+                    onSaved={(updated, text) => {
+                      replace(updated);
+                      setNotice({ text, tone: 'ok' });
+                      setAction(null);
+                      onChanged();
+                    }}
+                  />
+                )}
+
+                {current && current !== 'offer' && (
                   <div className="mt-4 pt-4 border-t border-slate-800 space-y-3">
                     {current === 'postpone' && (
                       <div>

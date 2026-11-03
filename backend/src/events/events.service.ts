@@ -3,10 +3,10 @@ import { Event, EventStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import type { AuthenticatedUser } from '../auth/auth.guards';
 import { accountUnderReviewError } from '../auth/account-status';
-import { CreateAnnouncementDto, CreateEventDto, UpdateEventDto } from './dto/event.dto';
+import { CreateAnnouncementDto, CreateEventDto, OfertaEventDto, UpdateEventDto } from './dto/event.dto';
 import { bitacoraInclude, cambioEstado, diffEvent, serializeBitacora } from './bitacora';
 import { ParametrosService } from '../parametros/parametros.service';
-import { conPrecios, precioFinal } from '../parametros/cargos';
+import { OFERTA_LIMITS, conPrecios, ofertaVigente, porcentajeDescuento, precioFinal } from '../parametros/cargos';
 
 // Estados visibles en el catálogo público. Los cancelados y postergados se muestran
 // con su aviso para que los asistentes se enteren; los en revisión y finalizados no.
@@ -174,6 +174,9 @@ export class EventsService {
     // La fecha solo se exige futura si cambia (un admin puede corregir otros datos de un evento pasado)
     const dateChanged = dto.date && new Date(dto.date).getTime() !== event.date.getTime();
     const { removeImage, date, ...fields } = dto;
+    if (dto.price !== undefined && dto.price !== event.price && ofertaVigente(event)) {
+      throw new BadRequestException('El evento está en oferta: termina la oferta antes de cambiar el precio de la entrada');
+    }
 
     const updated = await this.prisma.event.update({
       where: { id },
@@ -230,6 +233,86 @@ export class EventsService {
       throw new BadRequestException('La fecha del evento ya pasó: posterga el evento con una nueva fecha');
     }
     return this.changeStatus(event, user, 'PUBLISHED', null);
+  }
+
+  // Oferta del organizador: un precio rebajado que se anuncia en las novedades del evento.
+  // Se puede cambiar mientras está vigente (queda registrado cada cambio).
+  async setOffer(id: string, user: AuthenticatedUser, dto: OfertaEventDto) {
+    const event = await this.assertCanManage(id, user);
+    if (event.price <= 0) throw new BadRequestException('Los eventos gratuitos no pueden tener ofertas');
+    if (event.status !== 'PUBLISHED' || event.date.getTime() <= Date.now()) {
+      throw new BadRequestException('Solo puedes poner en oferta un evento publicado que aún no se realiza');
+    }
+    if (dto.precioOferta >= event.price) {
+      throw new BadRequestException('El precio de oferta debe ser menor al precio actual de la entrada');
+    }
+
+    const hasta = dto.hasta ? new Date(dto.hasta) : null;
+    if (hasta && hasta.getTime() <= Date.now() + 60 * 60_000) {
+      throw new BadRequestException('La oferta debe durar al menos una hora desde ahora');
+    }
+    if (hasta && hasta.getTime() > event.date.getTime()) {
+      throw new BadRequestException('La oferta no puede terminar después del inicio del evento');
+    }
+
+    // El descuento se mide sobre lo que paga el público, que incluye el cargo por servicio
+    const normal = precioFinal(event.price, event.porcentajeCargo);
+    const oferta = precioFinal(dto.precioOferta, event.porcentajeCargo);
+    const descuento = porcentajeDescuento(normal, oferta);
+    if (descuento < OFERTA_LIMITS.descuentoMin || descuento > OFERTA_LIMITS.descuentoMax) {
+      throw new BadRequestException(
+        `El descuento para el público debe estar entre ${OFERTA_LIMITS.descuentoMin}% y ${OFERTA_LIMITS.descuentoMax}% (hoy sería ${descuento}%)`,
+      );
+    }
+
+    const anterior = ofertaVigente(event) ? precioFinal(event.precioOferta!, event.porcentajeCargo) : normal;
+    const [updated] = await this.prisma.$transaction([
+      this.prisma.event.update({
+        where: { id },
+        data: { precioOferta: dto.precioOferta, ofertaHasta: hasta, ofertaCreadaEn: new Date() },
+        include: eventInclude,
+      }),
+      this.prisma.bitacoraEvento.create({
+        data: {
+          tipo: 'CAMBIO_DATOS',
+          eventoId: id,
+          autorId: user.sub,
+          titulo: `¡Entradas en oferta con ${descuento}% de descuento!`,
+          mensaje: dto.mensaje || null,
+          cambios: [
+            { campo: 'oferta', anterior, nuevo: oferta, descuento, hasta: hasta?.toISOString() ?? null },
+          ] as Prisma.InputJsonValue,
+        },
+      }),
+    ]);
+    return conPrecios(updated, true);
+  }
+
+  // Termina la oferta: el precio vuelve a ser el normal
+  async endOffer(id: string, user: AuthenticatedUser) {
+    const event = await this.assertCanManage(id, user);
+    if (!ofertaVigente(event)) throw new BadRequestException('Este evento no tiene una oferta vigente');
+    const [updated] = await this.prisma.$transaction([
+      this.prisma.event.update({
+        where: { id },
+        data: { precioOferta: null, ofertaHasta: null, ofertaCreadaEn: null },
+        include: eventInclude,
+      }),
+      this.prisma.bitacoraEvento.create({
+        data: {
+          tipo: 'CAMBIO_DATOS',
+          eventoId: id,
+          autorId: user.sub,
+          titulo: 'Terminó la oferta',
+          cambios: [{
+            campo: 'oferta',
+            anterior: precioFinal(event.precioOferta!, event.porcentajeCargo),
+            nuevo: precioFinal(event.price, event.porcentajeCargo),
+          }] as Prisma.InputJsonValue,
+        },
+      }),
+    ]);
+    return conPrecios(updated, true);
   }
 
   // Cambia el estado y lo deja en la bitácora (el admin usa este mismo registro desde su panel)

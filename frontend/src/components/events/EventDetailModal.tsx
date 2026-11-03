@@ -6,12 +6,14 @@ import {
   X, CalendarDays, MapPin, Ticket, Navigation, Share2, Check, Loader2, BadgeCheck, CalendarClock, Ban, ShieldAlert, Lock,
 } from 'lucide-react';
 import {
-  EventDetail, EventItem, eventShareUrl, fetchEventDetail, formatEventDate, formatPrice, imageSrc, organizerName, publicPrice, relativeTime,
+  EventDetail, EventItem, eventShareUrl, fetchEventDetail, formatEventDate, formatPrice, imageSrc, offerEndsLabel, organizerName,
+  publicPrice, relativeTime,
 } from '../../services/events';
 import { EVENT_STATUS_LABELS, StatusPill } from '../../utils/labels';
 import { categoryColor } from '../../utils/mapTiles';
 import EventBitacora from './EventBitacora';
 import TicketSelector from '../tickets/TicketSelector';
+import { OfferBadge, OfferPrice } from './OfferBadge';
 
 const LocationPicker = dynamic(() => import('./LocationPicker'), {
   ssr: false,
@@ -173,7 +175,15 @@ export default function EventDetailModal({
                 {event.distanceKm !== undefined && <span className="block text-xs text-slate-500 mt-0.5">A {event.distanceKm} km</span>}
               </InfoTile>
               <InfoTile icon={Ticket} label="Entrada">
-                <span className={event.price === 0 ? 'text-emerald-300' : ''}>{event.price === 0 ? 'Liberada' : formatPrice(publicPrice(event))}</span>
+                <span className={event.price === 0 ? 'text-emerald-300' : ''}>
+                  {event.price === 0 ? 'Liberada' : <OfferPrice event={event} price={publicPrice(event)} />}
+                </span>
+                {event.ofertaActiva && (
+                  <span className="block mt-1">
+                    <OfferBadge event={event} />
+                    <span className="block text-[11px] text-slate-400 mt-1">{offerEndsLabel(event)}</span>
+                  </span>
+                )}
               </InfoTile>
             </div>
 

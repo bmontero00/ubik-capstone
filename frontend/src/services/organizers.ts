@@ -1,7 +1,7 @@
 import { API_URL, EventStatus } from './auth';
-import { Category } from './events';
+import { Category, OfferInfo } from './events';
 
-export interface OrganizerEvent {
+export interface OrganizerEvent extends OfferInfo {
   id: string;
   title: string;
   date: string;

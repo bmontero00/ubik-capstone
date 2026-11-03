@@ -3,10 +3,11 @@
 import React, { useState } from 'react';
 import { CalendarDays, MapPin, ImageIcon, Hourglass } from 'lucide-react';
 import { EventStatus } from '../../services/auth';
-import { formatEventDate, imageSrc } from '../../services/events';
+import { OfferInfo, formatEventDate, imageSrc } from '../../services/events';
+import { OfferBadge, OfferPrice } from './OfferBadge';
 import { EVENT_STATUS_LABELS, StatusPill } from '../../utils/labels';
 
-export interface EventCardData {
+export interface EventCardData extends OfferInfo {
   title: string;
   description: string;
   price: number;
@@ -47,13 +48,17 @@ export default function EventCard({ event, footerAction, placeholderImage = fals
   return (
     <article className="flex flex-col bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden hover:border-slate-700 transition-all h-full">
       {src ? (
-        <div className={`w-full h-40 bg-slate-950 overflow-hidden ${onOpen ? 'cursor-pointer' : ''}`} onClick={onOpen}>
+        <div className={`relative w-full h-40 bg-slate-950 overflow-hidden ${onOpen ? 'cursor-pointer' : ''}`} onClick={onOpen}>
           <img src={src} alt={event.title} onError={() => setBroken(true)} className={`w-full h-full object-cover ${onOpen ? 'hover:scale-105 transition-transform duration-300' : ''}`} />
+          <OfferBadge event={event} className="absolute top-3 left-3" />
         </div>
       ) : placeholderImage ? (
-        <div className="w-full h-40 bg-slate-950 flex flex-col items-center justify-center text-slate-600 text-xs gap-1">
+        <div className="relative w-full h-40 bg-slate-950 flex flex-col items-center justify-center text-slate-600 text-xs gap-1">
           <ImageIcon className="w-6 h-6" /> Sin imagen de portada
+          <OfferBadge event={event} className="absolute top-3 left-3" />
         </div>
+      ) : event.ofertaActiva ? (
+        <div className="px-6 pt-5"><OfferBadge event={event} /></div>
       ) : null}
       <div className="p-6 flex-1">
         <div className="flex justify-between items-center mb-3 gap-2">
@@ -96,7 +101,7 @@ export default function EventCard({ event, footerAction, placeholderImage = fals
       </div>
       <div className="bg-slate-950 px-6 py-4 flex justify-between items-center border-t border-slate-800 gap-3">
         <span className="font-extrabold text-white">
-          {isFree ? <span className="text-emerald-400">Entrada Liberada</span> : `$${event.price.toLocaleString('es-CL')}`}
+          {isFree ? <span className="text-emerald-400">Entrada Liberada</span> : <OfferPrice event={event} price={event.price} />}
         </span>
         {footerAction}
       </div>

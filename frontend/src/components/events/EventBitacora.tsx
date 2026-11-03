@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import {
   Megaphone, Sparkles, Pencil, CalendarClock, Ban, CircleCheck, ShieldAlert, Flag, Trash2, Loader2, Send, EyeOff,
-  Ticket, Percent,
+  Ticket, Percent, BadgePercent,
 } from 'lucide-react';
 import {
   CambioBitacora, EntradaBitacora, createAnnouncement, deleteAnnouncement, formatEventDate, formatPercent, formatPrice,
@@ -34,12 +34,13 @@ const FIELD_LABELS: Record<CambioBitacora['campo'], string> = {
   estado: 'Estado',
   cargo: 'Cargo por servicio',
   venta: 'Venta de entradas',
+  oferta: 'Entrada',
 };
 
 const formatValue = (c: CambioBitacora, value: CambioBitacora['anterior']) => {
   if (value === null || value === undefined) return '—';
   if (c.campo === 'fecha') return formatEventDate(String(value));
-  if (c.campo === 'precio') return formatPrice(Number(value));
+  if (c.campo === 'precio' || c.campo === 'oferta') return formatPrice(Number(value));
   if (c.campo === 'cargo') return formatPercent(Number(value));
   return String(value);
 };
@@ -58,6 +59,13 @@ function ChangeList({ cambios }: { cambios: CambioBitacora[] }) {
             <span className="text-slate-500">{c.campo === 'fecha' ? 'Nueva fecha' : FIELD_LABELS[c.campo]}:</span>{' '}
             <span className="line-through decoration-slate-600">{formatValue(c, c.anterior)}</span>{' '}
             <span className="text-slate-500">→</span> <span className="text-slate-100 font-semibold">{formatValue(c, c.nuevo)}</span>
+            {c.campo === 'oferta' && c.descuento !== undefined && (
+              <span className="block text-slate-500 mt-0.5">
+                {c.hasta
+                  ? `Válida hasta el ${formatEventDate(c.hasta)}`
+                  : 'Válida hasta el día del evento'}
+              </span>
+            )}
           </li>
         ),
       )}
@@ -74,6 +82,14 @@ function entryHeader(entry: EntradaBitacora) {
     case 'CAMBIO_DATOS':
       if (entry.cambios.some((c) => c.campo === 'venta')) {
         return { title: '¡Ya está disponible la venta de entradas!', icon: Ticket, tone: 'text-emerald-300 bg-emerald-500/15' };
+      }
+      if (entry.cambios.some((c) => c.campo === 'oferta')) {
+        const ended = entry.cambios.some((c) => c.campo === 'oferta' && c.descuento === undefined);
+        return {
+          title: entry.titulo || (ended ? 'Terminó la oferta' : 'Entradas en oferta'),
+          icon: BadgePercent,
+          tone: ended ? 'text-slate-300 bg-slate-700/60' : 'text-rose-300 bg-rose-500/15',
+        };
       }
       if (entry.cambios.some((c) => c.campo === 'cargo')) {
         return { title: entry.titulo || 'Cargo por servicio actualizado', icon: Percent, tone: 'text-cyan-300 bg-cyan-500/15' };

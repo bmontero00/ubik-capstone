@@ -19,7 +19,9 @@ import { diskStorage } from 'multer';
 import { extname } from 'path';
 import { CurrentUser, JwtAuthGuard, OptionalJwtAuthGuard, Roles, RolesGuard } from '../auth/auth.guards';
 import type { AuthenticatedUser } from '../auth/auth.guards';
-import { CancelEventDto, CreateAnnouncementDto, CreateEventDto, PostponeEventDto, UpdateEventDto } from './dto/event.dto';
+import {
+  CancelEventDto, CreateAnnouncementDto, CreateEventDto, OfertaEventDto, PostponeEventDto, UpdateEventDto,
+} from './dto/event.dto';
 
 // Imagen del evento: se guarda en ./uploads (expuesta en main.ts), máximo 5 MB, jpg o png
 const eventImageInterceptor = FileInterceptor('image', {
@@ -110,6 +112,22 @@ export class EventsController {
   @Roles('ORGANIZER', 'ADMIN')
   async resume(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.eventsService.resume(id, user);
+  }
+
+  // Pone el evento en oferta (o cambia la oferta vigente)
+  @Patch(':id/oferta')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ORGANIZER', 'ADMIN')
+  async setOffer(@Param('id') id: string, @Body() dto: OfertaEventDto, @CurrentUser() user: AuthenticatedUser) {
+    return this.eventsService.setOffer(id, user, dto);
+  }
+
+  // Termina la oferta antes de tiempo: vuelve el precio normal
+  @Delete(':id/oferta')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ORGANIZER', 'ADMIN')
+  async endOffer(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.eventsService.endOffer(id, user);
   }
 
   // Anuncios del organizador en la bitácora del evento
