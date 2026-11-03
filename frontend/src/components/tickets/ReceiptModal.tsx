@@ -7,6 +7,7 @@ import { Compra, PAYMENT_TYPES, PagoCompra } from '../../services/compras';
 import { formatEventDate, formatPrice } from '../../services/events';
 import { formatRut } from '../../utils/rut';
 import UbikLogo from '../UbikLogo';
+import PriceBreakdown from './PriceBreakdown';
 
 const formatDateTime = (value: string) => new Date(value).toLocaleString('es-CL', { dateStyle: 'medium', timeStyle: 'short' });
 
@@ -99,22 +100,12 @@ export default function ReceiptModal({ compra, onClose }: { compra: Compra; onCl
           </Section>
 
           <Section title="Detalle">
-            <dl className="space-y-1.5 text-sm">
-              <div className="flex justify-between text-slate-300">
-                <dt>{compra.cantidad} × {free ? 'Entrada liberada' : 'Entrada general'}</dt>
-                <dd className="tabular-nums">{free ? 'Gratis' : formatPrice(compra.precioUnitario)}</dd>
-              </div>
-              {!free && compra.cargoServicio > 0 && (
-                <div className="flex justify-between text-xs text-slate-500">
-                  <dt>Incluye cargo por servicio</dt>
-                  <dd className="tabular-nums">{formatPrice(compra.cargoServicio)}</dd>
-                </div>
-              )}
-              <div className="flex justify-between text-base font-extrabold text-white pt-1.5 border-t border-slate-800">
-                <dt>Total</dt>
-                <dd className="tabular-nums">{free ? 'Gratis' : formatPrice(compra.total)}</dd>
-              </div>
-            </dl>
+            <PriceBreakdown
+              quantity={compra.cantidad}
+              unitPrice={compra.precioUnitario}
+              feeTotal={compra.cargoServicio}
+              free={free}
+            />
           </Section>
 
           {!free && (

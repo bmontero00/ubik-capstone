@@ -10,6 +10,7 @@ import {
   Compra, PaymentConfig, cancelCompra, createCompra, fetchPaymentConfig, payCompra, payWithWebpay,
 } from '../../services/compras';
 import { Rows, webpayRows } from './ReceiptModal';
+import PriceBreakdown from './PriceBreakdown';
 import { formatEventDate, formatPrice, imageSrc } from '../../services/events';
 import { formatRut } from '../../utils/rut';
 import { PHONE_PREFIX, formatLocalPhone, formatPhoneDisplay, toFullPhone } from '../../utils/phone';
@@ -410,22 +411,14 @@ export default function CheckoutModal({ event, quantity, buyer, resume, notice, 
                   <p className="text-xs text-slate-400 mt-0.5 flex items-start gap-1.5"><MapPin className="w-3.5 h-3.5 shrink-0 mt-0.5" /> {event.address}</p>
                 </div>
               </div>
-              <dl className="mt-4 pt-4 border-t border-slate-800 space-y-1.5 text-sm">
-                <div className="flex justify-between text-slate-300">
-                  <dt>{count} × {free ? 'Entrada liberada' : 'Entrada general'}</dt>
-                  <dd className="tabular-nums">{free ? 'Gratis' : formatPrice(unitPrice)}</dd>
-                </div>
-                {!free && feePerTicket > 0 && (
-                  <div className="flex justify-between text-xs text-slate-500">
-                    <dt>Incluye cargo por servicio</dt>
-                    <dd className="tabular-nums">{formatPrice(feePerTicket * count)}</dd>
-                  </div>
-                )}
-                <div className="flex justify-between text-base font-extrabold text-white pt-2">
-                  <dt>Total</dt>
-                  <dd className="tabular-nums">{free ? 'Gratis' : formatPrice(total)}</dd>
-                </div>
-              </dl>
+              <div className="mt-4 pt-4 border-t border-slate-800">
+                <PriceBreakdown
+                  quantity={count}
+                  unitPrice={unitPrice}
+                  feeTotal={feePerTicket * count}
+                  free={free}
+                />
+              </div>
               {step === 'payment' && remaining !== null && !expired && (
                 <p className={`sm:hidden mt-3 flex items-center gap-1.5 text-xs font-bold ${remaining < 120_000 ? 'text-rose-200' : 'text-amber-200'}`}>
                   <Timer className="w-4 h-4" /> Tiempo para pagar: {mmss(remaining)}
