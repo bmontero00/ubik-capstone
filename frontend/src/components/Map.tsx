@@ -4,7 +4,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Circle, useMap, useMapEvents } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
-import { LocateFixed, Loader2 } from 'lucide-react';
+import { LocateFixed, Loader2, Plus, Minus, Crosshair } from 'lucide-react';
 import { DARK_TILES, categoryColor } from '../utils/mapTiles';
 import { formatEventDate, formatPrice, imageSrc } from '../services/events';
 import { EVENT_STATUS_LABELS } from '../utils/labels';
@@ -68,39 +68,92 @@ const userIcon = L.divIcon({
     </span>`,
 });
 
-// Centra y ajusta el zoom al radio de búsqueda cuando cambia la ubicación o el radio
-function FitToRadius({ lat, lng, radiusKm }: { lat: number; lng: number; radiusKm: number }) {
+// Zoom con el que se abre el mapa (unos pocos kilómetros a la redonda) y al volver a la ubicación
+const START_ZOOM = 13;
+const LOCATED_ZOOM = 14; // con la ubicación real del usuario se acerca un poco más
+
+// Mantiene la vista del mapa al día: se abre cerca del punto de referencia, se acerca a la
+// ubicación cuando el usuario la entrega y muestra el radio completo cuando el usuario lo cambia
+function SyncView({ lat, lng, radiusKm, located }: { lat: number; lng: number; radiusKm: number; located: boolean }) {
   const map = useMap();
-  const first = useRef(true);
-  const bounds = () => L.latLng(lat, lng).toBounds(radiusKm * 2000);
+  const previous = useRef<{ lat: number; lng: number; radiusKm: number } | null>(null);
 
   useEffect(() => {
-    if (first.current) {
-      first.current = false;
-      map.fitBounds(bounds(), { padding: [24, 24], animate: false });
-    } else {
-      map.flyToBounds(bounds(), { padding: [24, 24], duration: 0.8 });
+    const prev = previous.current;
+    previous.current = { lat, lng, radiusKm };
+    if (!prev) {
+      map.setView([lat, lng], located ? LOCATED_ZOOM : START_ZOOM, { animate: false });
+    } else if (prev.radiusKm !== radiusKm) {
+      map.flyToBounds(L.latLng(lat, lng).toBounds(radiusKm * 2000), { padding: [24, 24], duration: 0.8 });
+    } else if (prev.lat !== lat || prev.lng !== lng) {
+      map.flyTo([lat, lng], located ? LOCATED_ZOOM : START_ZOOM, { duration: 0.8 });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lat, lng, radiusKm, map]);
 
   // El contenedor puede cambiar de tamaño después de montarse (animaciones, carga de la página).
-  // Leaflet no se entera solo: sin esto el mapa queda cortado y con un zoom incorrecto.
+  // Leaflet no se entera solo: sin esto el mapa queda cortado.
   useEffect(() => {
     const container = map.getContainer();
-    let last = `${container.clientWidth}x${container.clientHeight}`;
-    const observer = new ResizeObserver(() => {
-      const size = `${container.clientWidth}x${container.clientHeight}`;
-      if (size === last) return;
-      last = size;
-      map.invalidateSize();
-      map.fitBounds(bounds(), { padding: [24, 24], animate: false });
-    });
+    const observer = new ResizeObserver(() => map.invalidateSize());
     observer.observe(container);
     return () => observer.disconnect();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [map, lat, lng, radiusKm]);
+  }, [map]);
   return null;
+}
+
+// Acercar, alejar y volver a la ubicación, con los colores del sitio. El botón de volver se
+// destaca cuando el usuario se alejó del punto de referencia recorriendo el mapa.
+function MapControls({ lat, lng, located }: { lat: number; lng: number; located: boolean }) {
+  const map = useMap();
+  const ref = useRef<HTMLDivElement>(null);
+  const [away, setAway] = useState(false);
+
+  // Los clics en los botones no deben mover ni hacer zoom en el mapa
+  useEffect(() => {
+    if (ref.current) {
+      L.DomEvent.disableClickPropagation(ref.current);
+      L.DomEvent.disableScrollPropagation(ref.current);
+    }
+  }, []);
+
+  useMapEvents({
+    moveend() {
+      // Lejos: el punto de referencia quedó fuera del centro de la vista (más de un cuarto del alto)
+      const center = map.latLngToContainerPoint([lat, lng]);
+      const size = map.getSize();
+      setAway(center.distanceTo(size.divideBy(2)) > size.y / 4);
+    },
+  });
+
+  const recenter = () => map.flyTo([lat, lng], located ? LOCATED_ZOOM : START_ZOOM, { duration: 0.8 });
+  const button = 'w-9 h-9 flex items-center justify-center text-slate-200 hover:text-white hover:bg-slate-800 transition-colors';
+
+  return (
+    <div ref={ref} className="absolute top-3 left-3 z-[400] flex flex-col gap-2">
+      <div className="flex flex-col rounded-xl overflow-hidden bg-slate-900/90 border border-slate-700 shadow-lg backdrop-blur divide-y divide-slate-700">
+        <button type="button" onClick={() => map.zoomIn()} aria-label="Acercar" title="Acercar" className={button}>
+          <Plus className="w-4 h-4" />
+        </button>
+        <button type="button" onClick={() => map.zoomOut()} aria-label="Alejar" title="Alejar" className={button}>
+          <Minus className="w-4 h-4" />
+        </button>
+      </div>
+      <button
+        type="button"
+        onClick={recenter}
+        aria-label={located ? 'Volver a mi ubicación' : 'Volver al punto de referencia'}
+        title={located ? 'Volver a mi ubicación' : 'Volver a Santiago centro'}
+        className={`w-9 h-9 flex items-center justify-center rounded-xl border shadow-lg backdrop-blur transition-colors ${
+          away
+            ? 'bg-gradient-to-br from-emerald-400 to-cyan-400 border-transparent text-slate-950 hover:from-emerald-300 hover:to-cyan-300'
+            : 'bg-slate-900/90 border-slate-700 text-emerald-400 hover:bg-slate-800'
+        }`}
+      >
+        <Crosshair className="w-4 h-4" />
+      </button>
+    </div>
+  );
 }
 
 function MapContextMenu({ onRightClick }: { onRightClick: (lat: number, lng: number, containerPoint: L.Point) => void }) {
@@ -146,10 +199,11 @@ export default function Map({
 
   return (
     <div className="relative w-full h-full">
-      <MapContainer center={[centerLat, centerLng]} zoom={13} zoomSnap={0.5} scrollWheelZoom className="w-full h-full z-0 bg-slate-950">
+      <MapContainer center={[centerLat, centerLng]} zoom={START_ZOOM} zoomSnap={0.5} zoomControl={false} scrollWheelZoom className="w-full h-full z-0 bg-slate-950">
         <TileLayer url={DARK_TILES.url} attribution={DARK_TILES.attribution} className={DARK_TILES.className} maxZoom={DARK_TILES.maxZoom} />
 
-        <FitToRadius lat={centerLat} lng={centerLng} radiusKm={radiusKm} />
+        <SyncView lat={centerLat} lng={centerLng} radiusKm={radiusKm} located={!!userLocation} />
+        <MapControls lat={centerLat} lng={centerLng} located={!!userLocation} />
 
         <Circle
           center={[centerLat, centerLng]}
