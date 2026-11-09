@@ -283,6 +283,8 @@ function UserDetailPanel({
 }) {
   const profile = detail.organizerProfile;
   const isRejected = profile?.status === 'REJECTED';
+  // Con la solicitud pendiente, la cuenta se resuelve en la pestaña Solicitudes
+  const isPending = profile?.status === 'PENDING';
   const rejections = profile?.reviews ?? [];
 
   return (
@@ -358,7 +360,15 @@ function UserDetailPanel({
         </div>
       )}
 
-      {isRejected ? (
+      {isPending ? (
+        <div className="mb-5 flex gap-3 p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-300">
+          <Lock className="w-4 h-4 shrink-0 text-slate-500 mt-0.5" />
+          <span>
+            <strong className="text-slate-200">Solicitud pendiente.</strong> Este organizador espera la revisión de su solicitud:
+            apruébala o recházala en la pestaña Solicitudes.
+          </span>
+        </div>
+      ) : isRejected ? (
         <div className="mb-5 flex gap-3 p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-300">
           <Lock className="w-4 h-4 shrink-0 text-slate-500 mt-0.5" />
           <span>

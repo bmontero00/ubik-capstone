@@ -40,8 +40,9 @@ const userListSelect = {
   _count: { select: { events: true } },
 } satisfies Prisma.UserSelect;
 
-// Los organizadores rechazados tienen su propia pestaña y no se mezclan con el resto
-const NOT_REJECTED: Prisma.UserWhereInput = { NOT: { organizerProfile: { is: { status: 'REJECTED' } } } };
+// Los organizadores rechazados tienen su propia pestaña, y los que esperan revisión están en
+// Solicitudes: ninguno de los dos se mezcla con el resto de los usuarios
+const IN_USER_LISTS: Prisma.UserWhereInput = { NOT: { organizerProfile: { is: { status: { in: ['REJECTED', 'PENDING'] } } } } };
 const IS_REJECTED: Prisma.UserWhereInput = { role: 'ORGANIZER', organizerProfile: { is: { status: 'REJECTED' } } };
 
 @Injectable()
@@ -52,7 +53,7 @@ export class AdminService {
 
   async getOverview() {
     const [usersByRoleStatus, pendingOrganizers, rejectedOrganizers, eventsByStatus, upcomingEvents, pendingConditions] = await Promise.all([
-      this.prisma.user.groupBy({ by: ['role', 'status'], where: NOT_REJECTED, _count: { _all: true } }),
+      this.prisma.user.groupBy({ by: ['role', 'status'], where: IN_USER_LISTS, _count: { _all: true } }),
       this.prisma.organizerProfile.count({ where: { status: 'PENDING' } }),
       this.prisma.user.count({ where: IS_REJECTED }),
       this.prisma.event.groupBy({ by: ['status'], _count: { _all: true } }),
@@ -160,7 +161,7 @@ export class AdminService {
       where: {
         role: role && MANAGED_ROLES.includes(role) ? role : { in: MANAGED_ROLES },
         status: statusFilter,
-        AND: [NOT_REJECTED, searchFilter],
+        AND: [IN_USER_LISTS, searchFilter],
       },
       select: userListSelect,
       orderBy: group === 'flagged' ? { statusChangedAt: 'desc' } : { createdAt: 'desc' },
@@ -231,6 +232,11 @@ export class AdminService {
     if (user.organizerProfile?.status === 'REJECTED') {
       throw new ForbiddenException(
         'No se puede cambiar el estado de un organizador con la solicitud rechazada; solo puede consultarse su información',
+      );
+    }
+    if (user.organizerProfile?.status === 'PENDING') {
+      throw new ForbiddenException(
+        'Este organizador tiene una solicitud pendiente: apruébala o recházala en la pestaña Solicitudes',
       );
     }
     await this.prisma.user.update({
