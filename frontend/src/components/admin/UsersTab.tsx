@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Search, Loader2, Inbox, IdCard, Phone, Building2, Link2, CalendarDays, Mail, X, Lock } from 'lucide-react';
 import { AccountStatus, EventStatus, OrganizerStatus, UserRole, apiJson } from '../../services/auth';
 import {
@@ -86,15 +86,20 @@ export default function UsersTab({ onChanged }: { onChanged: () => void }) {
     return params.toString();
   }, [group, role, flaggedStatus, debouncedSearch]);
 
+  // Al cambiar rápido de pestaña o filtro, una respuesta anterior puede llegar después de la
+  // última: solo se muestra la de la consulta más reciente
+  const lastRequest = useRef(0);
   const loadUsers = async () => {
+    const request = ++lastRequest.current;
     setLoading(true);
     setError(null);
     try {
-      setUsers(await apiJson<UserRow[]>(`/admin/users?${query}`));
+      const data = await apiJson<UserRow[]>(`/admin/users?${query}`);
+      if (request === lastRequest.current) setUsers(data);
     } catch (err: any) {
-      setError(err.message || 'No se pudieron cargar los usuarios.');
+      if (request === lastRequest.current) setError(err.message || 'No se pudieron cargar los usuarios.');
     } finally {
-      setLoading(false);
+      if (request === lastRequest.current) setLoading(false);
     }
   };
 
@@ -115,6 +120,7 @@ export default function UsersTab({ onChanged }: { onChanged: () => void }) {
   }, [selectedId]);
 
   const changeGroup = (next: Group) => {
+    if (next !== group) setUsers([]); // no mostrar el listado de la pestaña anterior mientras carga
     setGroup(next);
     setFlaggedStatus('ALL');
     setSelectedId(null);

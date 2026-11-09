@@ -27,9 +27,10 @@ const TAB_STORAGE_KEY = 'ubik_admin_tab';
 interface AdminDashboardProps {
   explore: React.ReactNode; // buscador, mapa y catálogo de la vista normal
   onEventsChanged: () => void;
+  onOpenEvent: (id: string) => void; // detalle del evento, donde el equipo publica anotaciones
 }
 
-export default function AdminDashboard({ explore, onEventsChanged }: AdminDashboardProps) {
+export default function AdminDashboard({ explore, onEventsChanged, onOpenEvent }: AdminDashboardProps) {
   const [tab, setTab] = useState<AdminTab>('overview');
   const [overview, setOverview] = useState<Overview | null>(null);
 
@@ -104,7 +105,7 @@ export default function AdminDashboard({ explore, onEventsChanged }: AdminDashbo
       {tab === 'overview' && <OverviewTab overview={overview} onNavigate={selectTab} />}
       {tab === 'requests' && <AdminPanel />}
       {tab === 'users' && <UsersTab onChanged={loadOverview} />}
-      {tab === 'events' && <EventsTab onChanged={() => { loadOverview(); onEventsChanged(); }} />}
+      {tab === 'events' && <EventsTab onChanged={() => { loadOverview(); onEventsChanged(); }} onOpenEvent={onOpenEvent} />}
       {tab === 'cargos' && <CargosTab onChanged={() => { loadOverview(); onEventsChanged(); }} />}
       {tab === 'reports' && <ReportsTab />}
       {tab === 'explore' && explore}

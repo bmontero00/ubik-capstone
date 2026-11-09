@@ -195,7 +195,7 @@ export class EventsService {
   }
 
   async update(id: string, user: AuthenticatedUser, dto: UpdateEventDto, imageUrl: string | null | undefined) {
-    const event = await this.assertCanManage(id, user);
+    const event = await this.assertCanManage(id, user, { datos: true });
     if (dto.categoryId) await this.assertCategoryExists(dto.categoryId);
 
     // La fecha solo se exige futura si cambia (un admin puede corregir otros datos de un evento pasado)
@@ -361,7 +361,7 @@ export class EventsService {
   // Oferta del organizador: un precio rebajado que se anuncia en las novedades del evento.
   // Se puede cambiar mientras está vigente (queda registrado cada cambio).
   async setOffer(id: string, user: AuthenticatedUser, dto: OfertaEventDto) {
-    const event = await this.assertCanManage(id, user);
+    const event = await this.assertCanManage(id, user, { datos: true });
     if (event.price <= 0) throw new BadRequestException('Los eventos gratuitos no pueden tener ofertas');
     if (event.status !== 'PUBLISHED' || event.date.getTime() <= Date.now()) {
       throw new BadRequestException('Solo puedes poner en oferta un evento publicado que aún no se realiza');
@@ -404,7 +404,7 @@ export class EventsService {
 
   // Termina la oferta: el precio vuelve a ser el normal
   async endOffer(id: string, user: AuthenticatedUser) {
-    const event = await this.assertCanManage(id, user);
+    const event = await this.assertCanManage(id, user, { datos: true });
     if (!ofertaVigente(event)) throw new BadRequestException('Este evento no tiene una oferta vigente');
     const tiposEntrada = await this.prisma.tipoEntrada.findMany({ where: { eventoId: id } });
     const [updated] = await this.prisma.$transaction([
@@ -513,11 +513,20 @@ export class EventsService {
     }
   }
 
-  // El admin puede modificar cualquier evento; el organizador, solo los suyos y vigentes
-  private async assertCanManage(id: string, user: AuthenticatedUser) {
+  // El organizador gestiona solo sus eventos vigentes. El admin cambia el estado de cualquier evento
+  // (cancelar, postergar, reactivar), pero los datos y las ofertas ("datos") solo de los que creó él:
+  // los de un organizador los modifica su organizador; el equipo deja anotaciones en sus novedades.
+  private async assertCanManage(id: string, user: AuthenticatedUser, { datos = false } = {}) {
     const event = await this.prisma.event.findUnique({ where: { id } });
     if (!event) throw new NotFoundException('Evento no encontrado');
-    if (user.role === 'ADMIN') return event;
+    if (user.role === 'ADMIN') {
+      if (datos && event.organizerId !== user.sub) {
+        throw new ForbiddenException(
+          'El equipo de UBIK no modifica la información de los eventos de los organizadores: puedes cambiar su estado o publicar una anotación en sus novedades',
+        );
+      }
+      return event;
+    }
 
     this.assertOwner(event, user);
     await this.assertCanPublish(user);

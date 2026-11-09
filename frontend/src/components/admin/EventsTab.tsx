@@ -1,17 +1,16 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
-import { Search, Loader2, Inbox, CalendarDays, MapPin, User as UserIcon, Tag, X, Pencil } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Search, Loader2, Inbox, CalendarDays, MapPin, User as UserIcon, Tag, X, Megaphone } from 'lucide-react';
 import { AccountStatus, EventStatus, apiJson } from '../../services/auth';
 import {
   ACCOUNT_STATUS_LABELS, EVENT_STATUS_LABELS, StatusPill, formatDate,
 } from '../../utils/labels';
 import StatusChangeForm, { StatusOption } from './StatusChangeForm';
 import { Chip } from './UsersTab';
-import EventFormModal from '../events/EventFormModal';
 import EventFeeForm from './EventFeeForm';
 import type { EventoCargo } from '../../services/cargos';
-import { Category, EventItem, fetchCategories } from '../../services/events';
+
 
 interface AdminEvent {
   id: string;
@@ -39,7 +38,7 @@ const EVENT_STATUSES = Object.keys(EVENT_STATUS_LABELS) as EventStatus[];
 
 const EVENT_OPTIONS: StatusOption<EventStatus>[] = EVENT_STATUSES.map((value) => ({ value, ...EVENT_STATUS_LABELS[value] }));
 
-export default function EventsTab({ onChanged }: { onChanged: () => void }) {
+export default function EventsTab({ onChanged, onOpenEvent }: { onChanged: () => void; onOpenEvent: (id: string) => void }) {
   const [status, setStatus] = useState<EventStatus | 'ALL'>('ALL');
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -48,14 +47,6 @@ export default function EventsTab({ onChanged }: { onChanged: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<AdminEvent | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  // El admin puede editar los datos de cualquier evento con el mismo formulario del organizador
-  const [editing, setEditing] = useState(false);
-  const [categories, setCategories] = useState<Category[]>([]);
-
-  useEffect(() => {
-    fetchCategories().then(setCategories).catch(() => setCategories([]));
-  }, []);
-
   useEffect(() => {
     const id = setTimeout(() => setDebouncedSearch(search), 300);
     return () => clearTimeout(id);
@@ -68,15 +59,19 @@ export default function EventsTab({ onChanged }: { onChanged: () => void }) {
     return params.toString();
   }, [status, debouncedSearch]);
 
+  // Solo se muestra la respuesta de la consulta más reciente (al cambiar rápido de filtro)
+  const lastRequest = useRef(0);
   const loadEvents = async () => {
+    const request = ++lastRequest.current;
     setLoading(true);
     setError(null);
     try {
-      setEvents(await apiJson<AdminEvent[]>(`/admin/events?${query}`));
+      const data = await apiJson<AdminEvent[]>(`/admin/events?${query}`);
+      if (request === lastRequest.current) setEvents(data);
     } catch (err: any) {
-      setError(err.message || 'No se pudieron cargar los eventos.');
+      if (request === lastRequest.current) setError(err.message || 'No se pudieron cargar los eventos.');
     } finally {
-      setLoading(false);
+      if (request === lastRequest.current) setLoading(false);
     }
   };
 
@@ -97,17 +92,6 @@ export default function EventsTab({ onChanged }: { onChanged: () => void }) {
         : prev.filter((e) => e.id !== updated.id),
     );
     setNotice(`"${updated.title}" ahora está ${EVENT_STATUS_LABELS[updated.status].label.toLowerCase()}.`);
-    onChanged();
-  };
-
-  const handleEdited = (saved: EventItem) => {
-    if (!selected) return;
-    // El formulario devuelve el evento sin los datos propios del panel de admin
-    const merged: AdminEvent = { ...selected, ...saved, description: saved.description, imageUrl: saved.imageUrl ?? null, organizer: selected.organizer };
-    setSelected(merged);
-    setEvents((prev) => prev.map((e) => (e.id === merged.id ? merged : e)));
-    setEditing(false);
-    setNotice(`Guardamos los cambios de "${merged.title}".`);
     onChanged();
   };
 
@@ -190,11 +174,12 @@ export default function EventsTab({ onChanged }: { onChanged: () => void }) {
                 <h3 className="text-lg font-bold text-white">{selected.title}</h3>
                 <StatusPill {...EVENT_STATUS_LABELS[selected.status]} />
               </div>
+              {/* El equipo de UBIK no edita los datos del organizador: cambia el estado o deja una anotación */}
               <button
-                onClick={() => { setEditing(true); setNotice(null); }}
+                onClick={() => onOpenEvent(selected.id)}
                 className="mb-3 flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg bg-slate-800 hover:bg-indigo-600 transition-colors"
               >
-                <Pencil className="w-3.5 h-3.5" /> Editar datos del evento
+                <Megaphone className="w-3.5 h-3.5" /> Ver detalle y publicar una anotación
               </button>
               {selected.description && <p className="text-xs text-slate-400 mb-4">{selected.description}</p>}
 
@@ -250,14 +235,6 @@ export default function EventsTab({ onChanged }: { onChanged: () => void }) {
         </div>
       </div>
 
-      {editing && selected && (
-        <EventFormModal
-          categories={categories}
-          event={{ ...selected, description: selected.description ?? '' } as EventItem}
-          onClose={() => setEditing(false)}
-          onSaved={handleEdited}
-        />
-      )}
     </section>
   );
 }

@@ -461,7 +461,7 @@ export default function HomePage() {
             )}
 
             {user.role === 'ADMIN' ? (
-              <AdminDashboard explore={exploreContent} onEventsChanged={fetchEvents} />
+              <AdminDashboard explore={exploreContent} onEventsChanged={fetchEvents} onOpenEvent={openDetailById} />
             ) : isApprovedOrganizer ? (
               <>
                 <nav className="mb-6 inline-flex bg-slate-900/80 border border-slate-800 rounded-2xl p-1.5 gap-1" role="tablist">
