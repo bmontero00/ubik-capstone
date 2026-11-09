@@ -12,6 +12,7 @@ import {
 import { formatRut, isValidRut } from '../utils/rut';
 import { PHONE_PREFIX, formatLocalPhone, isValidLocalPhone, toFullPhone } from '../utils/phone';
 import { formatDate } from '../utils/labels';
+import PasswordRecovery from './PasswordRecovery';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -25,7 +26,7 @@ interface AuthModalProps {
   reason?: string | null;
 }
 
-type View = 'login' | 'chooseType' | 'register' | 'submitted' | 'suspended' | 'rejected';
+type View = 'login' | 'chooseType' | 'register' | 'submitted' | 'suspended' | 'rejected' | 'recover';
 type AccountType = RegisterPayload['accountType'];
 type ReapplyMode = 'resume' | 'fresh' | null;
 
@@ -61,6 +62,7 @@ export default function AuthModal({
   const [suspended, setSuspended] = useState<SuspendedInfo | null>(initialSuspended);
   const [rejected, setRejected] = useState<RejectedInfo | null>(null);
   const [reapplyMode, setReapplyMode] = useState<ReapplyMode>(null);
+  const [notice, setNotice] = useState<string | null>(null); // ej. "Tu contraseña fue actualizada"
 
   if (!isOpen) return null;
 
@@ -74,6 +76,7 @@ export default function AuthModal({
   const goTo = (next: View) => {
     setView(next);
     setError(null);
+    setNotice(null);
     setEmailConflict(false);
     setSubmitAttempted(false);
     setTouched({});
@@ -238,6 +241,18 @@ export default function AuthModal({
         >
           <X className="w-5 h-5" />
         </button>
+
+        {view === 'recover' && (
+          <PasswordRecovery
+            initialEmail={form.email}
+            onBack={() => goTo('login')}
+            onDone={(email) => {
+              setForm({ ...emptyForm, email });
+              goTo('login');
+              setNotice('Tu contraseña fue actualizada. Ingresa con tu nueva contraseña.');
+            }}
+          />
+        )}
 
         {view === 'suspended' && suspended && (
           <div className="text-center py-2">
@@ -421,6 +436,10 @@ export default function AuthModal({
               </div>
             )}
 
+            {notice && !error && (
+              <p className="mb-4 p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/25 text-emerald-200 text-sm">{notice}</p>
+            )}
+
             {error && (
               <div className="mb-4 p-3 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-400 text-sm">
                 {error}
@@ -495,6 +514,14 @@ export default function AuthModal({
                   </>,
                   view === 'register' ? 'Mínimo 6 caracteres' : undefined,
                 )}
+
+              {view === 'login' && (
+                <div className="-mt-2 text-right">
+                  <button type="button" onClick={() => goTo('recover')} className="text-xs text-emerald-400 hover:underline font-semibold">
+                    ¿Olvidaste tu contraseña?
+                  </button>
+                </div>
+              )}
 
               {isOrganizer && (
                 <>

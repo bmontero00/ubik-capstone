@@ -113,6 +113,26 @@ export async function loginUser(email: string, password: string): Promise<AuthRe
   return parseResponse(response, 'Credenciales inválidas');
 }
 
+// Recuperación de contraseña: código de 6 dígitos por correo → verificarlo → nueva contraseña
+const postRecuperacion = async <T,>(paso: string, body: object, fallback: string): Promise<T> =>
+  parseResponse<T>(
+    await fetch(`${API_URL}/auth/recuperar/${paso}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+    fallback,
+  );
+
+export const requestPasswordCode = (email: string) =>
+  postRecuperacion<{ mensaje: string; minutosVigencia: number }>('solicitar', { email }, 'No pudimos enviar el código');
+
+export const verifyPasswordCode = (email: string, codigo: string) =>
+  postRecuperacion<{ valido: boolean }>('verificar', { email, codigo }, 'No pudimos verificar el código');
+
+export const resetPassword = (email: string, codigo: string, password: string) =>
+  postRecuperacion<{ mensaje: string }>('restablecer', { email, codigo, password }, 'No pudimos actualizar tu contraseña');
+
 export async function reapplyOrganizer(payload: ReapplyPayload): Promise<AuthResponse> {
   const response = await fetch(`${API_URL}/auth/organizer/reapply`, {
     method: 'POST',

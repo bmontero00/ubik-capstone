@@ -7,8 +7,9 @@ import { OrganizersModule } from './organizers/organizers.module';
 import { ComprasModule } from './compras/compras.module';
 import { ParametrosModule } from './parametros/parametros.module';
 import { PagosModule } from './pagos/pagos.module';
+import { CorreoModule } from './correo/correo.module';
 
 @Module({
-  imports: [AuthModule, EventsModule, PrismaModule, AdminModule, OrganizersModule, ComprasModule, ParametrosModule, PagosModule],
+  imports: [AuthModule, EventsModule, PrismaModule, AdminModule, OrganizersModule, ComprasModule, ParametrosModule, PagosModule, CorreoModule],
 })
 export class AppModule {}

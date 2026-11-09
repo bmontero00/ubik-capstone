@@ -42,7 +42,7 @@ export class JwtAuthGuard implements CanActivate {
       throw new UnauthorizedException('Debes iniciar sesión para realizar esta acción');
     }
 
-    let payload: JwtPayload & { purpose?: string };
+    let payload: JwtPayload & { purpose?: string; iat?: number };
     try {
       payload = this.jwtService.verify(token, { secret: JWT_SECRET });
     } catch {
@@ -53,9 +53,13 @@ export class JwtAuthGuard implements CanActivate {
 
     const user = await this.prisma.user.findUnique({
       where: { id: payload.sub },
-      select: { role: true, status: true, statusReason: true, statusChangedAt: true },
+      select: { role: true, status: true, statusReason: true, statusChangedAt: true, contrasenaCambiadaEn: true },
     });
     if (!user) throw new UnauthorizedException('Tu sesión ya no es válida, vuelve a iniciar sesión');
+    // Un token emitido antes del último cambio de contraseña ya no sirve (iat viene en segundos)
+    if (user.contrasenaCambiadaEn && (payload.iat ?? 0) < Math.floor(user.contrasenaCambiadaEn.getTime() / 1000)) {
+      throw new UnauthorizedException('Tu contraseña cambió: vuelve a iniciar sesión');
+    }
     if (user.status === 'SUSPENDED') throw accountSuspendedError(user);
 
     request.user = { sub: payload.sub, email: payload.email, role: user.role, status: user.status } satisfies AuthenticatedUser;

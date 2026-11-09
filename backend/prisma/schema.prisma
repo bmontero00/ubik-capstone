@@ -37,6 +37,11 @@ model User {
   historialCargos      HistorialCargoEvento[]
   condicionesRevisadas Event[]                @relation("CondicionRevisadaPor")
 
+  // Recuperación de contraseña por correo. Al cambiar la contraseña se registra la fecha y las
+  // sesiones abiertas antes de ese momento dejan de ser válidas.
+  contrasenaCambiadaEn DateTime?
+  codigosRecuperacion  CodigoRecuperacion[]
+
   // Relación con los eventos creados por el usuario
   events Event[]
 
@@ -46,6 +51,24 @@ model User {
   organizerReviews OrganizerReview[]
 
   @@map("users")
+}
+
+// Código de 6 dígitos para recuperar la contraseña: se envía por correo, se guarda cifrado,
+// vence a los pocos minutos y sirve una sola vez
+model CodigoRecuperacion {
+  id            String    @id @default(uuid())
+  codigoHash    String
+  expiraEn      DateTime
+  intentos      Int       @default(0) // intentos fallidos al ingresarlo
+  usadoEn       DateTime? // se usó para cambiar la contraseña
+  anuladoEn     DateTime? // se pidió otro código o se agotaron los intentos
+  fechaCreacion DateTime  @default(now())
+
+  usuarioId String
+  usuario   User   @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@index([usuarioId, fechaCreacion])
+  @@map("codigos_recuperacion")
 }
 
 // ACTIVE: uso normal. UNDER_REVIEW: cuenta reportada, solo puede ver eventos.
