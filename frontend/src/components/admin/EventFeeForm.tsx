@@ -45,6 +45,8 @@ export default function EventFeeForm({ event, onSaved }: { event: EventoCargo; o
   const [error, setError] = useState<string | null>(null);
   const parsed = parsePercent(pct);
   const pending = event.estadoCondicion === 'PENDIENTE';
+  // Si ya tiene un % especial (condición aprobada o cambios anteriores) se ofrece modificarlo
+  const hasSpecial = event.estadoCondicion === 'APROBADA' || (event.historialCargos?.length ?? 0) > 0;
 
   const submit = async () => {
     setTouched(true);
@@ -74,7 +76,7 @@ export default function EventFeeForm({ event, onSaved }: { event: EventoCargo; o
         </p>
         {!open && !pending && (
           <button onClick={() => { setOpen(true); setPct(String(current)); setError(null); }} className="flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-bold rounded-lg bg-slate-800 hover:bg-indigo-600 transition-colors">
-            <Percent className="w-3.5 h-3.5" /> Fijar % especial
+            <Percent className="w-3.5 h-3.5" /> {hasSpecial ? 'Modificar %' : 'Fijar % especial'}
           </button>
         )}
       </div>
