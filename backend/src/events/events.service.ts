@@ -15,6 +15,10 @@ import { claveNombre, disponibilidadEventos } from './tipos-entrada';
 // con su aviso para que los asistentes se enteren; los en revisión y finalizados no.
 export const PUBLIC_EVENT_STATUSES: EventStatus[] = ['PUBLISHED', 'POSTPONED', 'CANCELLED'];
 
+// En Explorar (mapa y catálogo) solo aparecen los eventos vigentes; los cancelados y
+// finalizados siguen accesibles por su detalle (ej. desde Mis entradas o el perfil del organizador)
+const EXPLORE_EVENT_STATUSES: EventStatus[] = ['PUBLISHED', 'POSTPONED'];
+
 // Un organizador solo edita sus eventos vigentes; los demás estados los gestiona un admin
 const ORGANIZER_EDITABLE_STATUSES: EventStatus[] = ['PUBLISHED', 'POSTPONED'];
 
@@ -105,7 +109,7 @@ export class EventsService {
 
   async findAll(lat?: number, lng?: number, radiusKm?: number) {
     const events = await this.prisma.event.findMany({
-      where: { status: { in: PUBLIC_EVENT_STATUSES } },
+      where: { status: { in: EXPLORE_EVENT_STATUSES } },
       include: publicInclude,
       orderBy: { date: 'asc' },
     });
