@@ -1,5 +1,6 @@
 import { API_URL, EventStatus } from './auth';
 import { Category, OfferInfo } from './events';
+import { Resena } from './resenas';
 
 export interface OrganizerEvent extends OfferInfo {
   id: string;
@@ -11,14 +12,6 @@ export interface OrganizerEvent extends OfferInfo {
   imageUrl: string | null;
   status: EventStatus;
   category: Category;
-}
-
-export interface OrganizerReview {
-  id: string;
-  autor: string;
-  estrellas: number;
-  comentario: string;
-  fecha: string;
 }
 
 // Perfil público: sin datos de contacto ni de verificación (RUT, teléfono, correo)
@@ -41,8 +34,8 @@ export interface OrganizerProfile {
   categoriasFrecuentes: (Category & { eventos: number })[];
   proximosEventos: OrganizerEvent[];
   eventosRealizados: OrganizerEvent[];
-  calificacion: { promedio: number | null; total: number };
-  resenas: OrganizerReview[];
+  calificacion: { promedio: number | null; total: number; distribucion: Record<number, number> };
+  ultimaResena: Resena | null; // la más reciente; el resto en GET /resenas/organizador/:id
 }
 
 export async function fetchOrganizerProfile(id: string): Promise<OrganizerProfile> {

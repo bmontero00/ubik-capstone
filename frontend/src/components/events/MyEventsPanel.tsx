@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   CalendarPlus, CalendarDays, MapPin, Pencil, Ban, Loader2, Inbox, Lock, ImageIcon, Copy, CalendarClock, Eye,
-  ShieldAlert, Megaphone, PlayCircle, Check, Rocket, Hourglass, BadgePercent, Flag, Ticket,
+  ShieldAlert, Megaphone, PlayCircle, Check, Rocket, Hourglass, BadgePercent, Flag, Ticket, MessageSquareQuote, ChevronRight,
 } from 'lucide-react';
 import {
   EntradaBitacora, EventItem, cancelEvent, fetchMyEvents, formatEventDate, formatPercent, formatPrice, imageSrc,
@@ -16,6 +16,8 @@ import { ReasonToggle } from '../AuthModal';
 import { Chip } from '../admin/UsersTab';
 import OfferForm from './OfferForm';
 import { OfferBadge } from './OfferBadge';
+import StarRating from '../organizers/StarRating';
+import { ResenasOrganizador, fetchResenasOrganizador } from '../../services/resenas';
 
 type Filter = 'upcoming' | 'finished' | 'cancelled' | 'all';
 
@@ -49,10 +51,20 @@ interface MyEventsPanelProps {
   onDuplicate: (event: EventItem) => void;
   onOpen: (event: EventItem) => void;
   onChanged: () => void;
+  organizerId: string;
+  onOpenReviews: () => void; // abre sus reseñas para leerlas y responderlas
 }
 
 // Eventos del organizador: solo ve y administra los suyos
-export default function MyEventsPanel({ canManage, refreshKey, onCreate, onEdit, onDuplicate, onOpen, onChanged }: MyEventsPanelProps) {
+export default function MyEventsPanel({ canManage, refreshKey, onCreate, onEdit, onDuplicate, onOpen, onChanged, organizerId, onOpenReviews }: MyEventsPanelProps) {
+  // Calificación que le dan los asistentes y reseñas pendientes de responder
+  const [reviews, setReviews] = useState<ResenasOrganizador | null>(null);
+  useEffect(() => {
+    let active = true;
+    fetchResenasOrganizador(organizerId).then((r) => active && setReviews(r)).catch(() => {});
+    return () => { active = false; };
+  }, [organizerId, refreshKey]);
+
   const [events, setEvents] = useState<EventItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -211,6 +223,33 @@ export default function MyEventsPanel({ canManage, refreshKey, onCreate, onEdit,
             <Stat icon={Megaphone} label="Anuncios publicados" value={stats.announcements} tone="text-amber-200" />
           </div>
         </div>
+      )}
+
+      {reviews && reviews.resumen.total > 0 && (
+        <button
+          onClick={onOpenReviews}
+          className="mb-6 w-full flex flex-col sm:flex-row sm:items-center gap-3 p-4 rounded-2xl bg-slate-900/80 border border-slate-800 hover:border-amber-500/40 text-left transition-colors"
+        >
+          <span className="flex items-center gap-3 flex-1 min-w-0">
+            <MessageSquareQuote className="w-5 h-5 text-amber-300 shrink-0" />
+            <span className="min-w-0">
+              <span className="block text-xs text-slate-400">Tu calificación según los asistentes</span>
+              <span className="flex flex-wrap items-center gap-2">
+                <strong className="text-xl text-white">{reviews.resumen.promedio!.toFixed(1)}</strong>
+                <StarRating value={reviews.resumen.promedio} size="sm" />
+                <span className="text-xs text-slate-400">{reviews.resumen.total} {reviews.resumen.total === 1 ? 'reseña' : 'reseñas'}</span>
+              </span>
+            </span>
+          </span>
+          {reviews.sinResponder > 0 && (
+            <span className="self-start sm:self-auto text-[11px] font-bold text-indigo-100 bg-indigo-500/25 rounded-lg px-2.5 py-1">
+              {reviews.sinResponder} sin responder
+            </span>
+          )}
+          <span className="self-start sm:self-auto flex items-center gap-1 text-xs font-bold text-amber-200">
+            Ver y responder reseñas <ChevronRight className="w-4 h-4" />
+          </span>
+        </button>
       )}
 
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">

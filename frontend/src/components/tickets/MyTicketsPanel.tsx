@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   Ticket, CalendarDays, MapPin, Loader2, Inbox, Timer, ChevronDown, Compass, CalendarClock, Ban, Eye, Copy, Check, Receipt, Car,
+  Star, Pencil, MessageSquareQuote,
 } from 'lucide-react';
 import { Compra, cancelCompra, compraValida } from '../../services/compras';
 import { formatEventDate, formatPrice, imageSrc, relativeTime } from '../../services/events';
@@ -10,6 +11,9 @@ import { formatRut } from '../../utils/rut';
 import { formatDate } from '../../utils/labels';
 import { categoryColor } from '../../utils/mapTiles';
 import ReceiptModal from './ReceiptModal';
+import ReviewFormModal from '../resenas/ReviewFormModal';
+import StarRating from '../organizers/StarRating';
+import { EstadoResena, diasRestantes, fetchMisResenas } from '../../services/resenas';
 
 interface MyTicketsPanelProps {
   compras: Compra[];
@@ -27,6 +31,18 @@ type Filter = 'upcoming' | 'past';
 export default function MyTicketsPanel({ compras, loading, error, onExplore, onOpenEvent, onResumePayment, onChanged }: MyTicketsPanelProps) {
   const [filter, setFilter] = useState<Filter>('upcoming');
   const [now, setNow] = useState(Date.now());
+  // Reseñas: qué eventos finalizados se pueden calificar y las reseñas ya escritas
+  const [reviews, setReviews] = useState<Map<string, EstadoResena>>(new Map());
+  const [reviewing, setReviewing] = useState<Compra | null>(null);
+  const [reviewNotice, setReviewNotice] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    fetchMisResenas()
+      .then((list) => active && setReviews(new Map(list.map((r) => [r.eventoId, r]))))
+      .catch(() => {});
+    return () => { active = false; };
+  }, [compras]);
 
   // Mantiene al día la cuenta regresiva de las compras pendientes
   const hasPending = compras.some((c) => c.estado === 'PENDIENTE_PAGO');
@@ -43,6 +59,14 @@ export default function MyTicketsPanel({ compras, loading, error, onExplore, onO
   const past = valid.filter((c) => !isUpcoming(c));
   const visible = filter === 'upcoming' ? upcoming : past;
   const totalTickets = upcoming.reduce((n, c) => n + c.cantidad, 0);
+  const toReview = [...reviews.values()].filter((r) => r.puedeResenar).length;
+  // Con varias compras del mismo evento, la invitación a reseñar va solo en la primera
+  const firstOfEvent = new Set<string>();
+  const reviewFor = (c: Compra) => {
+    if (firstOfEvent.has(c.evento.id)) return undefined;
+    firstOfEvent.add(c.evento.id);
+    return reviews.get(c.evento.id);
+  };
 
   if (loading) return <div className="flex justify-center py-16 text-indigo-400"><Loader2 className="w-6 h-6 animate-spin" /></div>;
   if (error) return <p className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 text-sm text-rose-300">{error}</p>;
@@ -52,6 +76,22 @@ export default function MyTicketsPanel({ compras, loading, error, onExplore, onO
       {pending.map((c) => (
         <PendingPayment key={c.id} compra={c} now={now} onResume={() => onResumePayment(c)} onChanged={onChanged} />
       ))}
+
+      {reviewNotice && (
+        <p className="mb-4 flex items-center gap-2 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-sm text-emerald-200" role="status">
+          <Check className="w-4 h-4 shrink-0" /> {reviewNotice}
+        </p>
+      )}
+      {toReview > 0 && filter === 'upcoming' && (
+        <div className="mb-4 flex flex-col sm:flex-row sm:items-center gap-3 p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30">
+          <MessageSquareQuote className="w-5 h-5 text-amber-300 shrink-0" />
+          <p className="flex-1 text-sm text-amber-100">
+            <strong>{toReview === 1 ? 'Tienes 1 evento por calificar.' : `Tienes ${toReview} eventos por calificar.`}</strong>{' '}
+            <span className="text-amber-100/80">Cuéntanos cómo te fue: tu reseña ayuda a otros asistentes.</span>
+          </p>
+          <button onClick={() => setFilter('past')} className="self-end sm:self-auto px-3 py-2 text-xs font-bold rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950">Calificar</button>
+        </div>
+      )}
 
       <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
         <div className="inline-flex gap-1 bg-slate-900/80 border border-slate-800 rounded-xl p-1 text-xs" role="tablist">
@@ -86,8 +126,37 @@ export default function MyTicketsPanel({ compras, loading, error, onExplore, onO
         </div>
       ) : (
         <ul className="space-y-4">
-          {visible.map((c) => <PurchaseCard key={c.id} compra={c} past={filter === 'past'} onOpenEvent={() => onOpenEvent(c.evento.id)} />)}
+          {visible.map((c) => (
+            <PurchaseCard
+              key={c.id}
+              compra={c}
+              past={filter === 'past'}
+              review={filter === 'past' ? reviewFor(c) : undefined}
+              onReview={() => { setReviewNotice(null); setReviewing(c); }}
+              onOpenEvent={() => onOpenEvent(c.evento.id)}
+            />
+          ))}
         </ul>
+      )}
+
+      {reviewing && (
+        <ReviewFormModal
+          evento={reviewing.evento}
+          resena={reviews.get(reviewing.evento.id)?.resena}
+          cierre={reviews.get(reviewing.evento.id)?.cierre}
+          onClose={() => setReviewing(null)}
+          onSaved={(resena, mensaje) => {
+            const id = reviewing.evento.id;
+            setReviews((prev) => {
+              const next = new Map(prev);
+              const actual = prev.get(id);
+              if (actual) next.set(id, { ...actual, resena, puedeResenar: !resena, puedeEditar: !!resena });
+              return next;
+            });
+            setReviewing(null);
+            setReviewNotice(mensaje);
+          }}
+        />
       )}
     </section>
   );
@@ -118,7 +187,13 @@ function PendingPayment({ compra, now, onResume, onChanged }: { compra: Compra; 
   );
 }
 
-function PurchaseCard({ compra, past, onOpenEvent }: { compra: Compra; past: boolean; onOpenEvent: () => void }) {
+function PurchaseCard({ compra, past, review, onReview, onOpenEvent }: {
+  compra: Compra;
+  past: boolean;
+  review?: EstadoResena;
+  onReview: () => void;
+  onOpenEvent: () => void;
+}) {
   const [open, setOpen] = useState(false); // las entradas se muestran con "Ver entradas"
   const [receipt, setReceipt] = useState(false);
   const e = compra.evento;
@@ -132,7 +207,7 @@ function PurchaseCard({ compra, past, onOpenEvent }: { compra: Compra; past: boo
         : null;
 
   return (
-    <li className={`bg-slate-900/80 border border-slate-800 rounded-2xl overflow-hidden ${past ? 'opacity-80' : ''}`}>
+    <li className="bg-slate-900/80 border border-slate-800 rounded-2xl overflow-hidden">
       <div className="flex flex-col sm:flex-row">
         <button onClick={onOpenEvent} className="sm:w-48 h-32 sm:h-auto shrink-0 relative" style={{ background: `linear-gradient(135deg, ${color}55, #0f172a)` }} aria-label={`Ver ${e.title}`}>
           {src && <img src={src} alt="" className={`absolute inset-0 w-full h-full object-cover ${past ? 'grayscale-[50%]' : ''}`} />}
@@ -172,6 +247,7 @@ function PurchaseCard({ compra, past, onOpenEvent }: { compra: Compra; past: boo
               <Receipt className="w-3.5 h-3.5" /> Comprobante
             </button>
           </div>
+          {review && <ReviewBox review={review} onReview={onReview} />}
         </div>
       </div>
 
@@ -184,6 +260,39 @@ function PurchaseCard({ compra, past, onOpenEvent }: { compra: Compra; past: boo
       )}
       {receipt && <ReceiptModal compra={compra} onClose={() => setReceipt(false)} />}
     </li>
+  );
+}
+
+// Invitación a calificar un evento finalizado o la reseña ya escrita (editable mientras dure el plazo)
+function ReviewBox({ review, onReview }: { review: EstadoResena; onReview: () => void }) {
+  if (review.resena) {
+    return (
+      <div className="mt-3 p-3 rounded-xl bg-slate-950 border border-slate-800">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-xs font-semibold text-slate-300 flex items-center gap-2">Tu reseña <StarRating value={review.resena.estrellas} size="sm" /></span>
+          {review.puedeEditar && (
+            <button onClick={onReview} className="flex items-center gap-1 text-xs font-semibold text-indigo-300 hover:text-indigo-200">
+              <Pencil className="w-3 h-3" /> Editar
+            </button>
+          )}
+        </div>
+        <p className="text-xs text-slate-400 mt-1.5 line-clamp-2 break-words">{review.resena.comentario}</p>
+        {review.resena.respuesta && <p className="text-[11px] text-emerald-300/90 mt-1.5">El organizador respondió tu reseña</p>}
+      </div>
+    );
+  }
+  if (!review.puedeResenar) return null;
+  const dias = diasRestantes(review.cierre);
+  return (
+    <div className="mt-3 flex flex-col sm:flex-row sm:items-center gap-3 p-3 rounded-xl bg-gradient-to-r from-amber-500/15 to-slate-950 border border-amber-500/30">
+      <div className="flex-1">
+        <p className="text-sm font-bold text-amber-100">¿Cómo estuvo el evento?</p>
+        <p className="text-[11px] text-amber-100/70">Califica al organizador · {dias === 1 ? 'queda 1 día' : `quedan ${dias} días`} para reseñar</p>
+      </div>
+      <button onClick={onReview} className="self-start sm:self-auto flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950">
+        <Star className="w-3.5 h-3.5" /> Calificar
+      </button>
+    </div>
   );
 }
 

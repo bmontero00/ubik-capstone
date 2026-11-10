@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { PUBLIC_EVENT_STATUSES } from '../events/events.service';
 import { conPrecios } from '../parametros/cargos';
+import { ResenasService } from '../resenas/resenas.service';
 
 const eventSelect = {
   id: true,
@@ -30,7 +31,10 @@ const LIST_LIMIT = 6;
 
 @Injectable()
 export class OrganizersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly resenas: ResenasService,
+  ) {}
 
   async getPublicProfile(id: string) {
     const user = await this.prisma.user.findUnique({
@@ -84,9 +88,11 @@ export class OrganizersService {
       .slice(0, 3)
       .map((c) => ({ ...categories.find((cat) => cat.id === c.categoryId)!, eventos: c._count._all }));
 
-    const upcomingCount = await this.prisma.event.count({
-      where: { organizerId: id, status: { in: ['PUBLISHED', 'POSTPONED'] }, date: { gte: now } },
-    });
+    const [upcomingCount, calificacion, ultimaResena] = await Promise.all([
+      this.prisma.event.count({ where: { organizerId: id, status: { in: ['PUBLISHED', 'POSTPONED'] }, date: { gte: now } } }),
+      this.resenas.resumen(id),
+      this.resenas.ultima(id),
+    ]);
 
     return {
       id: user.id,
@@ -108,9 +114,9 @@ export class OrganizersService {
       categoriasFrecuentes: topCategories,
       proximosEventos: upcoming.map((e) => conPrecios(e)),
       eventosRealizados: past.map((e) => conPrecios(e)),
-      // Espacio reservado: la calificación y las reseñas se habilitarán más adelante
-      calificacion: { promedio: null as number | null, total: 0 },
-      resenas: [] as { id: string; autor: string; estrellas: number; comentario: string; fecha: string }[],
+      // Promedio de estrellas y la reseña más reciente; el listado completo está en GET /resenas/organizador/:id
+      calificacion,
+      ultimaResena,
     };
   }
 }

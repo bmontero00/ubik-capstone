@@ -50,6 +50,10 @@ model User {
   reviewedProfiles OrganizerProfile[] @relation("ReviewedBy")
   organizerReviews OrganizerReview[]
 
+  // Reseñas de eventos: las que escribió como asistente y las que recibió como organizador
+  resenasEscritas  Resena[] @relation("ResenaAutor")
+  resenasRecibidas Resena[] @relation("ResenaOrganizador")
+
   @@map("users")
 }
 
@@ -184,6 +188,7 @@ model Event {
   // Compras de entradas (o confirmaciones de asistencia si el evento es gratuito)
   compras  Compra[]
   entradas Entrada[]
+  resenas  Resena[]
 
   // Cargo por servicio de UBIK: se fija al crear el evento con el % vigente y no cambia si después
   // se modifica el % de la plataforma. "price" es lo que recibe el organizador por entrada; el
@@ -421,4 +426,28 @@ model HistorialCargoEvento {
 
   @@index([eventoId, fecha])
   @@map("historial_cargos_evento")
+}
+
+// Reseña de un asistente sobre un evento finalizado al que compró o confirmó entradas. Califica al
+// organizador del evento: una por asistente y evento. El organizador puede responderla públicamente.
+model Resena {
+  id             String    @id @default(uuid())
+  estrellas      Int // de 1 a 5
+  comentario     String // entre 20 y 500 caracteres
+  respuesta      String? // respuesta pública del organizador (una por reseña)
+  fechaRespuesta DateTime?
+  fechaCreacion  DateTime  @default(now())
+  fechaEdicion   DateTime? // última vez que el autor la modificó
+
+  eventoId      String
+  evento        Event  @relation(fields: [eventoId], references: [id], onDelete: Cascade)
+  autorId       String
+  autor         User   @relation("ResenaAutor", fields: [autorId], references: [id], onDelete: Cascade)
+  // Copia del organizador del evento para calcular su promedio sin recorrer sus eventos
+  organizadorId String
+  organizador   User   @relation("ResenaOrganizador", fields: [organizadorId], references: [id], onDelete: Cascade)
+
+  @@unique([eventoId, autorId])
+  @@index([organizadorId, fechaCreacion])
+  @@map("resenas")
 }

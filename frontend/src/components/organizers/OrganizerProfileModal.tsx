@@ -1,9 +1,9 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   X, BadgeCheck, ArrowLeft, Loader2, ExternalLink, CalendarDays, CalendarCheck2, CalendarClock, Ban, Sparkles,
-  MessageSquareQuote, ImageIcon, MapPin, Star,
+  MessageSquareQuote, ImageIcon, MapPin, Star, ChevronRight,
 } from 'lucide-react';
 import { OrganizerEvent, OrganizerProfile, fetchOrganizerProfile } from '../../services/organizers';
 import { formatEventDate, formatPrice, imageSrc } from '../../services/events';
@@ -11,12 +11,15 @@ import { EVENT_STATUS_LABELS, StatusPill } from '../../utils/labels';
 import { categoryColor } from '../../utils/mapTiles';
 import StarRating from './StarRating';
 import { OfferBadge, OfferPrice } from '../events/OfferBadge';
+import ReviewItem from '../resenas/ReviewItem';
+import OrganizerReviews from '../resenas/OrganizerReviews';
 
 interface OrganizerProfileModalProps {
   organizerId: string;
   onClose: () => void;
   onOpenEvent: (eventId: string) => void;
   back?: { label: string; onBack: () => void }; // ej. volver al evento desde el que se abrió
+  initialView?: 'profile' | 'reviews'; // ej. el organizador abre directo sus reseñas para responderlas
 }
 
 const initials = (name: string) =>
@@ -32,11 +35,18 @@ const avatarColor = (name: string) => {
 const monthYear = (value: string) => new Date(value).toLocaleDateString('es-CL', { month: 'long', year: 'numeric' });
 
 // Perfil público del organizador: quién es, su trayectoria en UBIK, sus eventos y lo que opinan los asistentes
-export default function OrganizerProfileModal({ organizerId, onClose, onOpenEvent, back }: OrganizerProfileModalProps) {
+export default function OrganizerProfileModal({ organizerId, onClose, onOpenEvent, back, initialView = 'profile' }: OrganizerProfileModalProps) {
   const [profile, setProfile] = useState<OrganizerProfile | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<'upcoming' | 'past'>('upcoming');
   const [attempt, setAttempt] = useState(0);
+  // Perfil o listado completo de reseñas (dentro del mismo modal, con "volver al perfil")
+  const [view, setView] = useState<'profile' | 'reviews'>(initialView);
+  const scroller = useRef<HTMLDivElement>(null);
+  const showView = (next: 'profile' | 'reviews') => {
+    setView(next);
+    scroller.current?.scrollTo({ top: 0 });
+  };
 
   useEffect(() => {
     let active = true;
@@ -74,7 +84,7 @@ export default function OrganizerProfileModal({ organizerId, onClose, onOpenEven
       aria-modal="true"
       aria-label={profile ? `Perfil de ${profile.nombre}` : 'Perfil del organizador'}
     >
-      <div className="relative w-full sm:max-w-3xl max-h-[94vh] overflow-y-auto bg-slate-900 border border-slate-800 rounded-t-3xl sm:rounded-3xl shadow-2xl">
+      <div ref={scroller} className="relative w-full sm:max-w-3xl max-h-[94vh] overflow-y-auto bg-slate-900 border border-slate-800 rounded-t-3xl sm:rounded-3xl shadow-2xl">
         {/* Portada */}
         <div
           className="h-28 sm:h-32"
@@ -85,7 +95,11 @@ export default function OrganizerProfileModal({ organizerId, onClose, onOpenEven
           }}
         />
         <div className="absolute top-3 left-3 right-3 flex justify-between">
-          {back ? (
+          {view === 'reviews' && profile ? (
+            <button onClick={() => showView('profile')} className="flex items-center gap-1.5 px-3 py-2 rounded-full bg-slate-950/70 hover:bg-slate-950 text-xs font-semibold text-white backdrop-blur">
+              <ArrowLeft className="w-4 h-4" /> Volver al perfil
+            </button>
+          ) : back ? (
             <button onClick={back.onBack} className="flex items-center gap-1.5 px-3 py-2 rounded-full bg-slate-950/70 hover:bg-slate-950 text-xs font-semibold text-white backdrop-blur">
               <ArrowLeft className="w-4 h-4" /> {back.label}
             </button>
@@ -125,14 +139,24 @@ export default function OrganizerProfileModal({ organizerId, onClose, onOpenEven
                   <BadgeCheck className="w-6 h-6 text-emerald-400 shrink-0" aria-label="Organizador verificado" />
                 </h2>
                 <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
-                  <span className="inline-flex items-center gap-2">
-                    <StarRating value={profile.calificacion.promedio} />
-                    <span className="text-sm text-slate-400">
-                      {profile.calificacion.promedio === null
-                        ? 'Sin calificaciones aún'
-                        : `${profile.calificacion.promedio.toFixed(1)} · ${profile.calificacion.total} ${profile.calificacion.total === 1 ? 'calificación' : 'calificaciones'}`}
+                  {profile.calificacion.promedio === null ? (
+                    <span className="inline-flex items-center gap-2">
+                      <StarRating value={null} />
+                      <span className="text-sm text-slate-400">Sin calificaciones aún</span>
                     </span>
-                  </span>
+                  ) : (
+                    <button
+                      onClick={() => showView(view === 'reviews' ? 'profile' : 'reviews')}
+                      title="Ver todas las reseñas"
+                      className="inline-flex items-center gap-2 rounded-lg -mx-1 px-1 hover:bg-slate-800/70"
+                    >
+                      <StarRating value={profile.calificacion.promedio} />
+                      <span className="text-sm text-slate-300">
+                        <strong className="text-white">{profile.calificacion.promedio.toFixed(1)}</strong>
+                        {' · '}{profile.calificacion.total} {profile.calificacion.total === 1 ? 'reseña' : 'reseñas'}
+                      </span>
+                    </button>
+                  )}
                 </div>
               </div>
               {profile.redSocial && (
@@ -147,6 +171,20 @@ export default function OrganizerProfileModal({ organizerId, onClose, onOpenEven
               )}
             </div>
 
+            {view === 'reviews' ? (
+              <div className="mt-6">
+                <h3 className="text-base font-bold text-white flex items-center gap-2 mb-3">
+                  <MessageSquareQuote className="w-4 h-4 text-amber-300" /> Reseñas de asistentes
+                </h3>
+                <OrganizerReviews
+                  organizadorId={profile.id}
+                  organizador={profile.nombre}
+                  onOpenEvent={onOpenEvent}
+                  onChanged={() => setAttempt((n) => n + 1)}
+                />
+              </div>
+            ) : (
+            <>
             <p className="mt-3 text-xs text-slate-400 flex flex-wrap gap-x-3 gap-y-1">
               <span className="text-emerald-300/90">Verificado por UBIK desde {monthYear(profile.verificadoDesde)}</span>
               {profile.responsable && <span>Responsable: {profile.responsable}</span>}
@@ -223,36 +261,47 @@ export default function OrganizerProfileModal({ organizerId, onClose, onOpenEven
               )}
             </div>
 
-            {/* Reseñas */}
+            {/* Reseñas: promedio, la más reciente y acceso al listado completo */}
             <div className="mt-8">
-              <h3 className="text-base font-bold text-white flex items-center gap-2 mb-3">
-                <MessageSquareQuote className="w-4 h-4 text-amber-300" /> Reseñas de asistentes
-              </h3>
-              {profile.resenas.length === 0 ? (
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  <MessageSquareQuote className="w-4 h-4 text-amber-300" /> Reseñas de asistentes
+                </h3>
+                {profile.calificacion.total > 0 && (
+                  <span className="inline-flex items-center gap-1.5 text-sm text-slate-300">
+                    <Star className="w-4 h-4 text-amber-400 fill-amber-400" />
+                    <strong className="text-white">{profile.calificacion.promedio!.toFixed(1)}</strong>
+                    <span className="text-slate-500">de 5 · {profile.calificacion.total} {profile.calificacion.total === 1 ? 'reseña' : 'reseñas'}</span>
+                  </span>
+                )}
+              </div>
+              {!profile.ultimaResena ? (
                 <div className="flex flex-col items-center text-center px-6 py-8 rounded-2xl border border-dashed border-slate-700 bg-slate-950/50">
                   <div className="flex gap-1 mb-3 text-slate-700" aria-hidden>
                     {[0, 1, 2, 3, 4].map((i) => <Star key={i} className="w-6 h-6" />)}
                   </div>
                   <p className="text-sm font-semibold text-slate-300">Aún no hay reseñas</p>
                   <p className="text-xs text-slate-500 mt-1 max-w-sm">
-                    Muy pronto quienes asistan a sus eventos podrán calificar su experiencia y dejar un comentario.
+                    Quienes asistan a sus eventos podrán calificar su experiencia y dejar un comentario cuando el evento finalice.
                   </p>
                 </div>
               ) : (
-                <ul className="space-y-3">
-                  {profile.resenas.map((r) => (
-                    <li key={r.id} className="p-4 rounded-2xl bg-slate-950 border border-slate-800">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-sm font-semibold text-slate-200">{r.autor}</span>
-                        <StarRating value={r.estrellas} size="sm" />
-                      </div>
-                      <p className="text-sm text-slate-300 mt-2 whitespace-pre-line break-words">{r.comentario}</p>
-                      <p className="text-[11px] text-slate-500 mt-2">{new Date(r.fecha).toLocaleDateString('es-CL', { dateStyle: 'medium' })}</p>
-                    </li>
-                  ))}
-                </ul>
+                <>
+                  <p className="text-[11px] uppercase tracking-wider font-bold text-slate-500 mb-2">Reseña más reciente</p>
+                  <ul>
+                    <ReviewItem resena={profile.ultimaResena} organizador={profile.nombre} onOpenEvent={onOpenEvent} />
+                  </ul>
+                  <button
+                    onClick={() => showView('reviews')}
+                    className="mt-3 w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-bold rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-100 hover:bg-amber-500/20"
+                  >
+                    Ver todas las reseñas ({profile.calificacion.total}) <ChevronRight className="w-4 h-4" />
+                  </button>
+                </>
               )}
             </div>
+            </>
+            )}
           </div>
         )}
       </div>

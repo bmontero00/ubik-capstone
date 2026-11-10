@@ -62,7 +62,11 @@ export default function HomePage() {
   // Detalle del evento ("Ver más"); se puede abrir con un enlace compartido (?evento=<id>)
   const [detail, setDetail] = useState<{ id: string; preview?: EventItem } | null>(null);
   // Perfil público del organizador; recuerda el evento desde el que se abrió para poder volver
-  const [organizerProfile, setOrganizerProfile] = useState<{ id: string; fromEvent?: { id: string; preview?: EventItem } } | null>(null);
+  const [organizerProfile, setOrganizerProfile] = useState<{
+    id: string;
+    fromEvent?: { id: string; preview?: EventItem };
+    view?: 'profile' | 'reviews'; // abrir directo en las reseñas
+  } | null>(null);
   // Vista del organizador: explorar el catálogo o administrar sus eventos
   const [organizerView, setOrganizerView] = useState<'explore' | 'mine'>('explore');
   // Vista del asistente: explorar o sus entradas
@@ -501,6 +505,8 @@ export default function HomePage() {
                     onDuplicate={(event) => setEventForm({ duplicateFrom: event })}
                     onOpen={openDetail}
                     onChanged={fetchEvents}
+                    organizerId={user!.id}
+                    onOpenReviews={() => setOrganizerProfile({ id: user!.id, view: 'reviews' })}
                   />
                 )}
               </>
@@ -573,8 +579,8 @@ export default function HomePage() {
           tickets={ticketOptions ?? guestTicketOptions}
           onClose={closeDetail}
           onAnnouncementsChange={() => setMyEventsKey((k) => k + 1)}
-          onOpenOrganizer={(id) => {
-            setOrganizerProfile({ id, fromEvent: detail });
+          onOpenOrganizer={(id, view) => {
+            setOrganizerProfile({ id, fromEvent: detail, view });
             closeDetail();
           }}
         />
@@ -598,9 +604,14 @@ export default function HomePage() {
 
       {organizerProfile && (
         <OrganizerProfileModal
-          key={organizerProfile.id}
+          key={`${organizerProfile.id}-${organizerProfile.view ?? 'profile'}`}
           organizerId={organizerProfile.id}
-          onClose={() => setOrganizerProfile(null)}
+          initialView={organizerProfile.view}
+          onClose={() => {
+            // Si respondió reseñas desde su panel, se actualiza el contador de pendientes
+            if (organizerProfile.id === user?.id) setMyEventsKey((k) => k + 1);
+            setOrganizerProfile(null);
+          }}
           back={
             organizerProfile.fromEvent && {
               label: 'Volver al evento',

@@ -16,6 +16,7 @@ import TicketSelector from '../tickets/TicketSelector';
 import type { TicketSelection } from '../../services/compras';
 import { OfferBadge, OfferPrice } from './OfferBadge';
 import { SoldOutBadge } from './EventCard';
+import EventReviewCard from '../resenas/EventReviewCard';
 
 const LocationPicker = dynamic(() => import('./LocationPicker'), {
   ssr: false,
@@ -36,7 +37,7 @@ interface EventDetailModalProps {
   };
   onClose: () => void;
   onAnnouncementsChange?: () => void;
-  onOpenOrganizer?: (organizerId: string) => void;
+  onOpenOrganizer?: (organizerId: string, view?: 'profile' | 'reviews') => void;
 }
 
 // Aviso destacado para los estados que afectan a los asistentes
@@ -201,6 +202,14 @@ export default function EventDetailModal({
                   onViewTickets={tickets.onViewTickets}
                 />
               </div>
+            )}
+
+            {/* Evento finalizado: el asistente con entradas puede calificarlo */}
+            {tickets && viewer && detail?.status === 'FINISHED' && (
+              <EventReviewCard
+                evento={{ id: detail.id, title: detail.title, date: detail.date }}
+                onOpenOrganizerReviews={onOpenOrganizer && detail.organizer.perfilPublico ? () => onOpenOrganizer(detail.organizer.id, 'reviews') : undefined}
+              />
             )}
 
             {event.description && (
