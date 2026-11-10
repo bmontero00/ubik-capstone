@@ -23,6 +23,13 @@ export class ResenasController {
     return this.resenasService.listarDeOrganizador(id, viewer, p, e);
   }
 
+  // GET /resenas/organizador/:id/resumen: resumen con IA (público; con sugerencias para el organizador)
+  @Get('organizador/:id/resumen')
+  @UseGuards(OptionalJwtAuthGuard)
+  resumen(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() viewer: AuthenticatedUser | undefined) {
+    return this.resenasService.resumenDeOrganizador(id, viewer);
+  }
+
   // Estado de reseña de los eventos de los que el asistente tiene entradas
   @Get('mias')
   @UseGuards(JwtAuthGuard, RolesGuard)

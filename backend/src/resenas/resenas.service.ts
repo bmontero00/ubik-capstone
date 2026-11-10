@@ -5,6 +5,8 @@ import type { AuthenticatedUser } from '../auth/auth.guards';
 import { accountUnderReviewError } from '../auth/account-status';
 import { CrearResenaDto, GuardarResenaDto, ResponderResenaDto } from './dto/resena.dto';
 import { RESENA, cierreResenas, nombrePublico } from './resenas.reglas';
+import { ModeracionService } from './moderacion.service';
+import { ResumenIaService } from './resumen-ia.service';
 
 const resenaPublica = {
   id: true,
@@ -35,7 +37,11 @@ const MENSAJES: Record<MotivoSinResena, string> = {
 
 @Injectable()
 export class ResenasService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly moderacion: ModeracionService,
+    private readonly resumenIa: ResumenIaService,
+  ) {}
 
   // Formato público: el autor se muestra con su nombre y la inicial del apellido
   static publica(r: ResenaConDatos, viewerId?: string) {
@@ -60,6 +66,11 @@ export class ResenasService {
     const total = grupos.reduce((n, g) => n + g._count._all, 0);
     const suma = grupos.reduce((n, g) => n + g.estrellas * g._count._all, 0);
     return { promedio: total ? Math.round((suma / total) * 10) / 10 : null, total, distribucion };
+  }
+
+  // Resumen de sus reseñas generado con IA (las sugerencias, solo para el propio organizador)
+  resumenDeOrganizador(organizadorId: string, viewer?: AuthenticatedUser) {
+    return this.resumenIa.obtener(organizadorId, viewer?.sub === organizadorId);
   }
 
   // La reseña más reciente (la que se destaca en el perfil del organizador)
@@ -158,11 +169,13 @@ export class ResenasService {
     if (estado.resena) throw new ConflictException('Ya reseñaste este evento: puedes editar tu reseña');
     const evento = await this.prisma.event.findUniqueOrThrow({ where: { id: dto.eventoId }, select: { organizerId: true } });
     if (evento.organizerId === user.sub) throw new ForbiddenException('No puedes reseñar tus propios eventos');
+    await this.moderacion.revisar(dto.comentario, 'resena');
     try {
       const r = await this.prisma.resena.create({
         data: { estrellas: dto.estrellas, comentario: dto.comentario, eventoId: dto.eventoId, autorId: user.sub, organizadorId: evento.organizerId },
         select: resenaPublica,
       });
+      this.resumenIa.programar(evento.organizerId);
       return ResenasService.publica(r, user.sub);
     } catch (e) {
       // Dos envíos al mismo tiempo: la restricción única deja pasar solo uno
@@ -184,11 +197,13 @@ export class ResenasService {
     const r = await this.buscar(id);
     if (r.autorId !== user.sub) throw new ForbiddenException('Solo el autor puede editar esta reseña');
     await this.assertPuedeEscribir(r.eventoId, user);
+    await this.moderacion.revisar(dto.comentario, 'resena');
     const actualizada = await this.prisma.resena.update({
       where: { id },
       data: { estrellas: dto.estrellas, comentario: dto.comentario, fechaEdicion: new Date() },
       select: resenaPublica,
     });
+    this.resumenIa.programar(r.organizadorId);
     return ResenasService.publica(actualizada, user.sub);
   }
 
@@ -197,6 +212,7 @@ export class ResenasService {
     const r = await this.buscar(id);
     if (r.autorId !== user.sub && user.role !== 'ADMIN') throw new ForbiddenException('No puedes eliminar esta reseña');
     await this.prisma.resena.delete({ where: { id } });
+    this.resumenIa.programar(r.organizadorId);
     return { ok: true };
   }
 
@@ -205,6 +221,7 @@ export class ResenasService {
     const r = await this.buscar(id);
     if (r.organizadorId !== user.sub) throw new ForbiddenException('Solo el organizador del evento puede responder esta reseña');
     if (dto && user.status !== 'ACTIVE') throw accountUnderReviewError();
+    if (dto) await this.moderacion.revisar(dto.respuesta, 'respuesta');
     const actualizada = await this.prisma.resena.update({
       where: { id },
       data: dto ? { respuesta: dto.respuesta, fechaRespuesta: new Date() } : { respuesta: null, fechaRespuesta: null },

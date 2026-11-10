@@ -56,6 +56,23 @@ export interface EstadoResena {
   resena: Resena | null;
 }
 
+// Resumen de las reseñas generado con IA (o en modo de prueba sin API key)
+export type ResumenIa =
+  | { disponible: false; generando?: boolean; minimo: number; total: number }
+  | {
+      disponible: true;
+      resumen: string;
+      destacados: string[];
+      aMejorar: string[];
+      sugerencias?: string[]; // solo para el propio organizador
+      totalResenas: number;
+      origen: 'IA' | 'PRUEBA';
+      fechaGeneracion: string;
+      actualizando: boolean;
+    };
+
+export const fetchResumenIa = (organizadorId: string) => apiJson<ResumenIa>(`/resenas/organizador/${organizadorId}/resumen`);
+
 export const fetchResenasOrganizador = (id: string, pagina = 1, estrellas?: number) =>
   apiJson<ResenasOrganizador>(`/resenas/organizador/${id}?pagina=${pagina}${estrellas ? `&estrellas=${estrellas}` : ''}`);
 

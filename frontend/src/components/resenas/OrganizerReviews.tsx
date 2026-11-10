@@ -4,6 +4,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Loader2, Star, MessageSquareQuote, Inbox } from 'lucide-react';
 import StarRating from '../organizers/StarRating';
 import ReviewItem from './ReviewItem';
+import AiReviewSummary from './AiReviewSummary';
 import { Resena, ResenasOrganizador, fetchResenasOrganizador } from '../../services/resenas';
 
 // Promedio grande con la distribución por estrellas. Las barras sirven de filtro si se pasa onFilter.
@@ -126,7 +127,9 @@ export default function OrganizerReviews({ organizadorId, organizador, onOpenEve
   return (
     <div>
       <RatingSummary resumen={data.resumen} active={filtro} onFilter={setFiltro} />
-      {/* Más adelante: resumen de las reseñas generado con IA (lo más valorado y lo que se puede mejorar) */}
+      <div className="mt-4">
+        <AiReviewSummary organizadorId={organizadorId} />
+      </div>
 
       <div className="flex flex-wrap items-center justify-between gap-2 mt-5 mb-3">
         <p className="text-sm text-slate-300">

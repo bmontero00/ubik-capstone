@@ -51,8 +51,9 @@ model User {
   organizerReviews OrganizerReview[]
 
   // Reseñas de eventos: las que escribió como asistente y las que recibió como organizador
-  resenasEscritas  Resena[] @relation("ResenaAutor")
-  resenasRecibidas Resena[] @relation("ResenaOrganizador")
+  resenasEscritas  Resena[]        @relation("ResenaAutor")
+  resenasRecibidas Resena[]        @relation("ResenaOrganizador")
+  resumenResenas   ResumenResenas?
 
   @@map("users")
 }
@@ -450,4 +451,23 @@ model Resena {
   @@unique([eventoId, autorId])
   @@index([organizadorId, fechaCreacion])
   @@map("resenas")
+}
+
+// Resumen de las reseñas de un organizador generado con IA (o con el modo de prueba si no hay API key).
+// Se regenera en segundo plano cuando cambian sus reseñas; uno por organizador.
+model ResumenResenas {
+  id              String   @id @default(uuid())
+  organizadorId   String   @unique
+  organizador     User     @relation(fields: [organizadorId], references: [id], onDelete: Cascade)
+  resumen         String // párrafo breve y público
+  destacados      Json // string[]: lo más valorado
+  aMejorar        Json // string[]: lo que se puede mejorar
+  sugerencias     Json // string[]: recomendaciones privadas para el organizador
+  totalResenas    Int // reseñas consideradas
+  promedio        Float
+  origen          String // IA | PRUEBA
+  modelo          String? // modelo de IA usado (null en modo de prueba)
+  fechaGeneracion DateTime @default(now())
+
+  @@map("resumenes_resenas")
 }

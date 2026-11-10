@@ -13,6 +13,7 @@ import StarRating from './StarRating';
 import { OfferBadge, OfferPrice } from '../events/OfferBadge';
 import ReviewItem from '../resenas/ReviewItem';
 import OrganizerReviews from '../resenas/OrganizerReviews';
+import AiReviewSummary from '../resenas/AiReviewSummary';
 
 interface OrganizerProfileModalProps {
   organizerId: string;
@@ -287,6 +288,7 @@ export default function OrganizerProfileModal({ organizerId, onClose, onOpenEven
                 </div>
               ) : (
                 <>
+                  <div className="mb-4"><AiReviewSummary organizadorId={profile.id} compact /></div>
                   <p className="text-[11px] uppercase tracking-wider font-bold text-slate-500 mb-2">Reseña más reciente</p>
                   <ul>
                     <ReviewItem resena={profile.ultimaResena} organizador={profile.nombre} onOpenEvent={onOpenEvent} />
