@@ -1,4 +1,4 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { AccountStatus, EventStatus, OrganizerStatus, Prisma, Role } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { cambioEstado } from '../events/bitacora';
@@ -17,9 +17,12 @@ export interface UserFilters {
 }
 
 export interface EventFilters {
-  status?: EventStatus;
+  statuses?: EventStatus[];
   search?: string;
 }
+
+// Un evento cancelado o finalizado ya no cambia de estado
+export const FINAL_EVENT_STATUSES: EventStatus[] = ['CANCELLED', 'FINISHED'];
 
 const userListSelect = {
   id: true,
@@ -253,10 +256,10 @@ export class AdminService {
 
   // --- Eventos ---
 
-  async listEvents({ status, search }: EventFilters) {
+  async listEvents({ statuses, search }: EventFilters) {
     const events = await this.prisma.event.findMany({
       where: {
-        ...(status && { status }),
+        ...(statuses?.length && { status: { in: statuses } }),
         ...(search?.trim() && {
           OR: [
             { title: { contains: search.trim(), mode: 'insensitive' } },
@@ -280,6 +283,13 @@ export class AdminService {
   async updateEventStatus(id: string, adminId: string, status: EventStatus, reason: string) {
     const event = await this.prisma.event.findUnique({ where: { id }, select: { id: true, status: true } });
     if (!event) throw new NotFoundException('Evento no encontrado');
+    if (FINAL_EVENT_STATUSES.includes(event.status)) {
+      throw new BadRequestException(
+        event.status === 'CANCELLED'
+          ? 'Este evento fue cancelado: su estado ya no se puede modificar'
+          : 'Este evento ya finalizó: su estado ya no se puede modificar',
+      );
+    }
 
     // El cambio queda en la bitácora del evento (firmado como "Equipo UBIK")
     const [updated] = await this.prisma.$transaction([

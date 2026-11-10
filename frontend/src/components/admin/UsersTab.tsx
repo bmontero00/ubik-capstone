@@ -44,9 +44,12 @@ interface UserDetail extends Omit<UserRow, 'organizerProfile'> {
   events: { id: string; title: string; date: string; status: EventStatus }[];
 }
 
-type Group = 'active' | 'flagged' | 'rejected';
-type RoleFilter = 'ALL' | 'ATTENDEE' | 'ORGANIZER';
-type FlaggedFilter = 'ALL' | 'UNDER_REVIEW' | 'SUSPENDED';
+export type UserGroup = 'active' | 'flagged' | 'rejected';
+export type UserRoleFilter = 'ALL' | 'ATTENDEE' | 'ORGANIZER';
+export type FlaggedStatusFilter = 'ALL' | 'UNDER_REVIEW' | 'SUSPENDED';
+type Group = UserGroup;
+type RoleFilter = UserRoleFilter;
+type FlaggedFilter = FlaggedStatusFilter;
 
 const ACCOUNT_OPTIONS: StatusOption<AccountStatus>[] = [
   { value: 'ACTIVE', description: 'Uso normal de la plataforma.', ...ACCOUNT_STATUS_LABELS.ACTIVE },
@@ -58,10 +61,14 @@ const ACCOUNT_OPTIONS: StatusOption<AccountStatus>[] = [
   { value: 'SUSPENDED', description: 'No puede iniciar sesión. Verá el motivo al intentarlo.', ...ACCOUNT_STATUS_LABELS.SUSPENDED },
 ];
 
-export default function UsersTab({ onChanged }: { onChanged: () => void }) {
-  const [group, setGroup] = useState<Group>('active');
-  const [role, setRole] = useState<RoleFilter>('ALL');
-  const [flaggedStatus, setFlaggedStatus] = useState<FlaggedFilter>('ALL');
+export default function UsersTab({ onChanged, initialFilter }: {
+  onChanged: () => void;
+  // Filtro con el que se abre desde una tarjeta del resumen (ej. cuentas suspendidas)
+  initialFilter?: { group: Group; role?: RoleFilter; status?: FlaggedFilter };
+}) {
+  const [group, setGroup] = useState<Group>(initialFilter?.group ?? 'active');
+  const [role, setRole] = useState<RoleFilter>(initialFilter?.role ?? 'ALL');
+  const [flaggedStatus, setFlaggedStatus] = useState<FlaggedFilter>(initialFilter?.status ?? 'ALL');
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [users, setUsers] = useState<UserRow[]>([]);

@@ -1,9 +1,9 @@
 'use client';
 
 import React from 'react';
-import { Loader2, ShieldCheck, Users, UserX, TriangleAlert, CalendarCheck, CalendarX2, ChevronRight, Percent } from 'lucide-react';
+import { Loader2, ShieldCheck, Users, UserX, TriangleAlert, CalendarCheck, CalendarX2, ChevronRight, Percent, Flag } from 'lucide-react';
 import type { AccountStatus, EventStatus, UserRole } from '../../services/auth';
-import type { AdminTab } from './AdminDashboard';
+import type { AdminFilter, AdminTab } from './AdminDashboard';
 
 export interface Overview {
   users: { role: UserRole; status: AccountStatus; count: number }[];
@@ -16,7 +16,7 @@ export interface Overview {
 
 interface OverviewTabProps {
   overview: Overview | null;
-  onNavigate: (tab: AdminTab) => void;
+  onNavigate: (tab: AdminTab, filter?: AdminFilter) => void;
 }
 
 export default function OverviewTab({ overview, onNavigate }: OverviewTabProps) {
@@ -40,6 +40,7 @@ export default function OverviewTab({ overview, onNavigate }: OverviewTabProps) 
     icon: React.ElementType;
     tone: string;
     tab: AdminTab;
+    filter?: AdminFilter; // filtro con el que se abre la pestaña
     highlight?: boolean;
   }[] = [
     {
@@ -67,14 +68,16 @@ export default function OverviewTab({ overview, onNavigate }: OverviewTabProps) 
       icon: Users,
       tone: 'text-emerald-300 bg-emerald-500/15',
       tab: 'users',
+      filter: { users: { group: 'active', role: 'ATTENDEE' } },
     },
     {
       label: 'Organizadores activos',
       value: countUsers((u) => u.role === 'ORGANIZER' && u.status === 'ACTIVE'),
-      hint: `Verificados y pendientes · ${overview.rejectedOrganizers} rechazados aparte`,
+      hint: `Verificados · pendientes y ${overview.rejectedOrganizers} rechazados aparte`,
       icon: Users,
       tone: 'text-indigo-300 bg-indigo-500/15',
       tab: 'users',
+      filter: { users: { group: 'active', role: 'ORGANIZER' } },
     },
     {
       label: 'Cuentas en revisión',
@@ -83,6 +86,7 @@ export default function OverviewTab({ overview, onNavigate }: OverviewTabProps) 
       icon: TriangleAlert,
       tone: 'text-amber-300 bg-amber-500/15',
       tab: 'users',
+      filter: { users: { group: 'flagged', status: 'UNDER_REVIEW' } },
     },
     {
       label: 'Cuentas suspendidas',
@@ -91,6 +95,7 @@ export default function OverviewTab({ overview, onNavigate }: OverviewTabProps) 
       icon: UserX,
       tone: 'text-rose-300 bg-rose-500/15',
       tab: 'users',
+      filter: { users: { group: 'flagged', status: 'SUSPENDED' } },
     },
     {
       label: 'Próximos eventos publicados',
@@ -99,6 +104,7 @@ export default function OverviewTab({ overview, onNavigate }: OverviewTabProps) 
       icon: CalendarCheck,
       tone: 'text-emerald-300 bg-emerald-500/15',
       tab: 'events',
+      filter: { events: ['PUBLISHED'] },
     },
     {
       label: 'Eventos en revisión',
@@ -107,6 +113,7 @@ export default function OverviewTab({ overview, onNavigate }: OverviewTabProps) 
       icon: TriangleAlert,
       tone: 'text-amber-300 bg-amber-500/15',
       tab: 'events',
+      filter: { events: ['UNDER_REVIEW'] },
     },
     {
       label: 'Cancelados o postergados',
@@ -115,15 +122,26 @@ export default function OverviewTab({ overview, onNavigate }: OverviewTabProps) 
       icon: CalendarX2,
       tone: 'text-rose-300 bg-rose-500/15',
       tab: 'events',
+      filter: { events: ['CANCELLED', 'POSTPONED'] },
+    },
+    {
+      // Se finalizan solos a la medianoche del día siguiente a su fecha (hora de Chile)
+      label: 'Eventos finalizados',
+      value: countEvents('FINISHED'),
+      hint: 'Ya realizados: salen del catálogo y del mapa',
+      icon: Flag,
+      tone: 'text-slate-300 bg-slate-500/15',
+      tab: 'events',
+      filter: { events: ['FINISHED'] },
     },
   ];
 
   return (
-    <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
-      {cards.map(({ label, value, hint, icon: Icon, tone, tab, highlight }) => (
+    <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 mb-8">
+      {cards.map(({ label, value, hint, icon: Icon, tone, tab, filter, highlight }) => (
         <button
           key={label}
-          onClick={() => onNavigate(tab)}
+          onClick={() => onNavigate(tab, filter)}
           className={`group text-left bg-slate-900/80 border rounded-2xl p-5 transition-all hover:-translate-y-0.5 hover:border-slate-600 ${
             highlight ? 'border-amber-500/50' : 'border-slate-800'
           }`}

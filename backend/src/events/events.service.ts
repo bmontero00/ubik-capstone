@@ -438,6 +438,13 @@ export class EventsService {
     reason: string | null,
     extra: { date?: Date; cambios?: object[] } = {},
   ) {
+    if (event.status === 'CANCELLED' || event.status === 'FINISHED') {
+      throw new BadRequestException(
+        event.status === 'CANCELLED'
+          ? 'Este evento fue cancelado: su estado ya no se puede modificar'
+          : 'Este evento ya finalizó: su estado ya no se puede modificar',
+      );
+    }
     const [updated] = await this.prisma.$transaction([
       this.prisma.event.update({
         where: { id: event.id },

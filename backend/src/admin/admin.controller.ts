@@ -120,10 +120,11 @@ export class AdminController {
     return this.adminService.updateUserStatus(id, admin.sub, dto.status, dto.reason);
   }
 
-  // GET /admin/events?status=CANCELLED&search=feria
+  // GET /admin/events?status=CANCELLED,POSTPONED&search=feria (uno o varios estados)
   @Get('events')
   listEvents(@Query('status') status?: string, @Query('search') search?: string) {
-    return this.adminService.listEvents({ status: pick(EventStatus, status), search });
+    const statuses = (status ?? '').split(',').map((s) => pick(EventStatus, s.trim())).filter((s): s is EventStatus => !!s);
+    return this.adminService.listEvents({ statuses, search });
   }
 
   @Patch('events/:id/status')

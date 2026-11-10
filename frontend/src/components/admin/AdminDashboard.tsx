@@ -2,15 +2,20 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import { LayoutDashboard, ShieldCheck, Users, CalendarCog, ChartColumn, Compass, Percent } from 'lucide-react';
-import { apiJson } from '../../services/auth';
+import { EventStatus, apiJson } from '../../services/auth';
 import AdminPanel from '../AdminPanel';
 import OverviewTab, { Overview } from './OverviewTab';
-import UsersTab from './UsersTab';
+import UsersTab, { FlaggedStatusFilter, UserGroup, UserRoleFilter } from './UsersTab';
 import EventsTab from './EventsTab';
 import ReportsTab from './ReportsTab';
 import CargosTab from './CargosTab';
 
 export type AdminTab = 'overview' | 'requests' | 'users' | 'events' | 'cargos' | 'reports' | 'explore';
+
+// Filtro con el que se abre una pestaña desde una tarjeta del resumen
+export type AdminFilter =
+  | { events: EventStatus[] }
+  | { users: { group: UserGroup; role?: UserRoleFilter; status?: FlaggedStatusFilter } };
 
 const TABS: { id: AdminTab; label: string; icon: React.ElementType }[] = [
   { id: 'overview', label: 'Resumen', icon: LayoutDashboard },
@@ -32,6 +37,8 @@ interface AdminDashboardProps {
 
 export default function AdminDashboard({ explore, onEventsChanged, onOpenEvent }: AdminDashboardProps) {
   const [tab, setTab] = useState<AdminTab>('overview');
+  // Filtro elegido desde el resumen; "visit" vuelve a montar la pestaña para aplicarlo
+  const [filter, setFilter] = useState<{ value?: AdminFilter; visit: number }>({ visit: 0 });
   const [overview, setOverview] = useState<Overview | null>(null);
 
   // Recuerda la última pestaña abierta en este navegador
@@ -55,7 +62,8 @@ export default function AdminDashboard({ explore, onEventsChanged, onOpenEvent }
     loadOverview();
   }, [tab, loadOverview]);
 
-  const selectTab = (next: AdminTab) => {
+  const selectTab = (next: AdminTab, value?: AdminFilter) => {
+    setFilter((prev) => ({ value, visit: prev.visit + 1 }));
     setTab(next);
     try {
       localStorage.setItem(TAB_STORAGE_KEY, next);
@@ -104,8 +112,21 @@ export default function AdminDashboard({ explore, onEventsChanged, onOpenEvent }
 
       {tab === 'overview' && <OverviewTab overview={overview} onNavigate={selectTab} />}
       {tab === 'requests' && <AdminPanel />}
-      {tab === 'users' && <UsersTab onChanged={loadOverview} />}
-      {tab === 'events' && <EventsTab onChanged={() => { loadOverview(); onEventsChanged(); }} onOpenEvent={onOpenEvent} />}
+      {tab === 'users' && (
+        <UsersTab
+          key={filter.visit}
+          initialFilter={filter.value && 'users' in filter.value ? filter.value.users : undefined}
+          onChanged={loadOverview}
+        />
+      )}
+      {tab === 'events' && (
+        <EventsTab
+          key={filter.visit}
+          initialStatuses={filter.value && 'events' in filter.value ? filter.value.events : undefined}
+          onChanged={() => { loadOverview(); onEventsChanged(); }}
+          onOpenEvent={onOpenEvent}
+        />
+      )}
       {tab === 'cargos' && <CargosTab onChanged={() => { loadOverview(); onEventsChanged(); }} />}
       {tab === 'reports' && <ReportsTab />}
       {tab === 'explore' && explore}

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Search, Loader2, Inbox, CalendarDays, MapPin, User as UserIcon, Tag, X, Megaphone } from 'lucide-react';
+import { Search, Loader2, Inbox, CalendarDays, MapPin, User as UserIcon, Tag, X, Megaphone, Lock } from 'lucide-react';
 import { AccountStatus, EventStatus, apiJson } from '../../services/auth';
 import {
   ACCOUNT_STATUS_LABELS, EVENT_STATUS_LABELS, StatusPill, formatDate,
@@ -38,8 +38,16 @@ const EVENT_STATUSES = Object.keys(EVENT_STATUS_LABELS) as EventStatus[];
 
 const EVENT_OPTIONS: StatusOption<EventStatus>[] = EVENT_STATUSES.map((value) => ({ value, ...EVENT_STATUS_LABELS[value] }));
 
-export default function EventsTab({ onChanged, onOpenEvent }: { onChanged: () => void; onOpenEvent: (id: string) => void }) {
-  const [status, setStatus] = useState<EventStatus | 'ALL'>('ALL');
+// Un evento cancelado o finalizado ya no cambia de estado (el backend también lo impide)
+const FINAL_STATUSES: EventStatus[] = ['CANCELLED', 'FINISHED'];
+
+export default function EventsTab({ onChanged, onOpenEvent, initialStatuses }: {
+  onChanged: () => void;
+  onOpenEvent: (id: string) => void;
+  initialStatuses?: EventStatus[]; // filtro con el que se abre desde el resumen (ej. cancelados y postergados)
+}) {
+  // Sin estados elegidos se muestran todos; desde el resumen pueden venir varios a la vez
+  const [statuses, setStatuses] = useState<EventStatus[]>(initialStatuses ?? []);
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [events, setEvents] = useState<AdminEvent[]>([]);
@@ -54,10 +62,10 @@ export default function EventsTab({ onChanged, onOpenEvent }: { onChanged: () =>
 
   const query = useMemo(() => {
     const params = new URLSearchParams();
-    if (status !== 'ALL') params.set('status', status);
+    if (statuses.length) params.set('status', statuses.join(','));
     if (debouncedSearch.trim()) params.set('search', debouncedSearch.trim());
     return params.toString();
-  }, [status, debouncedSearch]);
+  }, [statuses, debouncedSearch]);
 
   // Solo se muestra la respuesta de la consulta más reciente (al cambiar rápido de filtro)
   const lastRequest = useRef(0);
@@ -87,7 +95,7 @@ export default function EventsTab({ onChanged, onOpenEvent }: { onChanged: () =>
     });
     setSelected(updated);
     setEvents((prev) =>
-      status === 'ALL' || status === updated.status
+      !statuses.length || statuses.includes(updated.status)
         ? prev.map((e) => (e.id === updated.id ? updated : e))
         : prev.filter((e) => e.id !== updated.id),
     );
@@ -110,9 +118,9 @@ export default function EventsTab({ onChanged, onOpenEvent }: { onChanged: () =>
 
       <div className="flex flex-wrap items-center gap-2 mb-4 text-xs">
         <span className="text-slate-500 font-semibold mr-1">Estado:</span>
-        <Chip active={status === 'ALL'} onClick={() => setStatus('ALL')}>Todos</Chip>
+        <Chip active={!statuses.length} onClick={() => setStatuses([])}>Todos</Chip>
         {EVENT_STATUSES.map((s) => (
-          <Chip key={s} active={status === s} onClick={() => setStatus(s)}>{EVENT_STATUS_LABELS[s].label}</Chip>
+          <Chip key={s} active={statuses.includes(s)} onClick={() => setStatuses([s])}>{EVENT_STATUS_LABELS[s].label}</Chip>
         ))}
       </div>
 
@@ -222,13 +230,26 @@ export default function EventsTab({ onChanged, onOpenEvent }: { onChanged: () =>
 
               <div className="pt-4 border-t border-slate-800">
                 <p className="text-xs font-bold text-slate-300 uppercase tracking-wider mb-3">Cambiar estado del evento</p>
-                <StatusChangeForm
-                  current={selected.status}
-                  options={EVENT_OPTIONS}
-                  reasonPlaceholder="Ej. El organizador informó un cambio de fecha por lluvia."
-                  confirmText={{ CANCELLED: 'Los asistentes verán el evento como cancelado y no podrá recibir reservas. ¿Confirmas la cancelación?' }}
-                  onSubmit={updateStatus}
-                />
+                {FINAL_STATUSES.includes(selected.status) ? (
+                  <div className="flex gap-3 p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-300">
+                    <Lock className="w-4 h-4 shrink-0 text-slate-500 mt-0.5" />
+                    <span>
+                      <strong className="text-slate-200">Estado bloqueado.</strong>{' '}
+                      {selected.status === 'CANCELLED'
+                        ? 'El evento fue cancelado, así que su estado ya no se puede modificar.'
+                        : 'El evento ya finalizó, así que su estado ya no se puede modificar.'}{' '}
+                      Puedes seguir publicando anotaciones en sus novedades.
+                    </span>
+                  </div>
+                ) : (
+                  <StatusChangeForm
+                    current={selected.status}
+                    options={EVENT_OPTIONS}
+                    reasonPlaceholder="Ej. El organizador informó un cambio de fecha por lluvia."
+                    confirmText={{ CANCELLED: 'Los asistentes verán el evento como cancelado y no podrá recibir reservas. ¿Confirmas la cancelación?' }}
+                    onSubmit={updateStatus}
+                  />
+                )}
               </div>
             </div>
           )}
