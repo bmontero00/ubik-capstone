@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   CalendarPlus, CalendarDays, MapPin, Pencil, Ban, Loader2, Inbox, Lock, ImageIcon, Copy, CalendarClock, Eye,
-  ShieldAlert, Megaphone, PlayCircle, Check, Rocket, Hourglass, BadgePercent,
+  ShieldAlert, Megaphone, PlayCircle, Check, Rocket, Hourglass, BadgePercent, Flag, Ticket,
 } from 'lucide-react';
 import {
   EntradaBitacora, EventItem, cancelEvent, fetchMyEvents, formatEventDate, formatPercent, formatPrice, imageSrc,
@@ -17,11 +17,11 @@ import { Chip } from '../admin/UsersTab';
 import OfferForm from './OfferForm';
 import { OfferBadge } from './OfferBadge';
 
-type Filter = 'upcoming' | 'past' | 'cancelled' | 'all';
+type Filter = 'upcoming' | 'finished' | 'cancelled' | 'all';
 
 const FILTERS: { id: Filter; label: string }[] = [
   { id: 'upcoming', label: 'Próximos' },
-  { id: 'past', label: 'Pasados' },
+  { id: 'finished', label: 'Finalizados' },
   { id: 'cancelled', label: 'Cancelados' },
   { id: 'all', label: 'Todos' },
 ];
@@ -80,19 +80,24 @@ export default function MyEventsPanel({ canManage, refreshKey, onCreate, onEdit,
   const isUpcoming = (e: EventItem) => new Date(e.date).getTime() >= now;
   const pendingNotice = (e: EventItem) => (e.ultimoAvisoEquipo && !seen.includes(e.ultimoAvisoEquipo.id) ? e.ultimoAvisoEquipo : null);
 
+  // Un evento sigue entre los próximos durante todo su día y se finaliza solo a la medianoche
+  // siguiente (hora de Chile); los finalizados se cuentan por su estado
+  const isOpen = (e: EventItem) => e.status !== 'CANCELLED' && e.status !== 'FINISHED';
   const counts = useMemo(() => ({
-    upcoming: events.filter((e) => e.status !== 'CANCELLED' && isUpcoming(e)).length,
-    past: events.filter((e) => e.status !== 'CANCELLED' && !isUpcoming(e)).length,
+    upcoming: events.filter(isOpen).length,
+    finished: events.filter((e) => e.status === 'FINISHED').length,
     cancelled: events.filter((e) => e.status === 'CANCELLED').length,
     all: events.length,
-  }), [events, now]);
+  }), [events]);
 
   const stats = useMemo(() => ({
-    published: events.filter((e) => e.status === 'PUBLISHED' && isUpcoming(e)).length,
+    published: events.filter((e) => e.status === 'PUBLISHED').length,
     postponed: events.filter((e) => e.status === 'POSTPONED').length,
+    finished: events.filter((e) => e.status === 'FINISHED').length,
+    sold: events.reduce((sum, e) => sum + (e.tiposEntrada ?? []).reduce((n, t) => n + (t.vendidas ?? 0), 0), 0),
     notices: events.filter((e) => pendingNotice(e)).length,
     announcements: events.reduce((sum, e) => sum + (e.totalAnuncios ?? 0), 0),
-  }), [events, seen, now]);
+  }), [events, seen]);
 
   // El próximo evento vigente, destacado arriba
   const next = useMemo(
@@ -104,8 +109,8 @@ export default function MyEventsPanel({ canManage, refreshKey, onCreate, onEdit,
 
   const visible = events
     .filter((e) => {
-      if (filter === 'upcoming') return e.status !== 'CANCELLED' && isUpcoming(e);
-      if (filter === 'past') return e.status !== 'CANCELLED' && !isUpcoming(e);
+      if (filter === 'upcoming') return isOpen(e);
+      if (filter === 'finished') return e.status === 'FINISHED';
       if (filter === 'cancelled') return e.status === 'CANCELLED';
       return true;
     })
@@ -197,9 +202,11 @@ export default function MyEventsPanel({ canManage, refreshKey, onCreate, onEdit,
               )}
             </div>
           )}
-          <div className="lg:col-span-2 grid grid-cols-2 gap-3">
+          <div className="lg:col-span-2 grid grid-cols-2 sm:grid-cols-3 gap-3">
             <Stat icon={Check} label="Publicados y próximos" value={stats.published} tone="text-emerald-300" />
             <Stat icon={CalendarClock} label="Postergados" value={stats.postponed} tone="text-sky-300" />
+            <Stat icon={Flag} label="Finalizados" value={stats.finished} tone="text-slate-300" />
+            <Stat icon={Ticket} label="Entradas vendidas" value={stats.sold} tone="text-indigo-300" />
             <Stat icon={ShieldAlert} label="Avisos del equipo UBIK" value={stats.notices} tone={stats.notices ? 'text-amber-300' : 'text-slate-400'} highlight={stats.notices > 0} />
             <Stat icon={Megaphone} label="Anuncios publicados" value={stats.announcements} tone="text-amber-200" />
           </div>
