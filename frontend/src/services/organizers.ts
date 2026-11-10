@@ -1,6 +1,7 @@
 import { API_URL, EventStatus } from './auth';
 import { Category, OfferInfo } from './events';
 import { Resena } from './resenas';
+import type { PortadaIa } from '../utils/portadas';
 
 export interface OrganizerEvent extends OfferInfo {
   id: string;
@@ -10,6 +11,7 @@ export interface OrganizerEvent extends OfferInfo {
   price: number;
   precioFinal?: number;
   imageUrl: string | null;
+  portadaIa?: PortadaIa | null;
   status: EventStatus;
   category: Category;
 }

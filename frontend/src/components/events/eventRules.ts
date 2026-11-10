@@ -1,3 +1,4 @@
+import type { PortadaIa } from '../../utils/portadas';
 import { TICKET_TYPE_LIMITS, nameKey, typeDescriptionError, typeNameError } from './ticketTypeRules';
 
 // Mismos límites que el backend (backend/src/events/dto/event.dto.ts)
@@ -49,6 +50,7 @@ export interface EventFormState {
   image: File | null;
   currentImageUrl: string | null; // imagen ya guardada (al editar)
   removeImage: boolean;
+  portadaIa: PortadaIa | null; // portada diseñada con IA (se usa si no hay imagen)
   // Condición especial de cargo por servicio (solo al crear un evento con valor)
   solicitarCondicion: boolean;
   justificacionCondicion: string;

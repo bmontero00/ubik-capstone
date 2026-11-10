@@ -3,7 +3,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   X, BadgeCheck, ArrowLeft, Loader2, ExternalLink, CalendarDays, CalendarCheck2, CalendarClock, Ban, Sparkles,
-  MessageSquareQuote, ImageIcon, MapPin, Star, ChevronRight,
+  MessageSquareQuote, MapPin, Star, ChevronRight,
 } from 'lucide-react';
 import { OrganizerEvent, OrganizerProfile, fetchOrganizerProfile } from '../../services/organizers';
 import { formatEventDate, formatPrice, imageSrc } from '../../services/events';
@@ -14,6 +14,7 @@ import { OfferBadge, OfferPrice } from '../events/OfferBadge';
 import ReviewItem from '../resenas/ReviewItem';
 import OrganizerReviews from '../resenas/OrganizerReviews';
 import AiReviewSummary from '../resenas/AiReviewSummary';
+import EventCover from '../events/EventCover';
 
 interface OrganizerProfileModalProps {
   organizerId: string;
@@ -326,8 +327,8 @@ function EventRow({ event, past, onOpen }: { event: OrganizerEvent; past: boolea
   return (
     <li>
       <button onClick={onOpen} className="w-full flex gap-3 p-2.5 rounded-2xl bg-slate-950 border border-slate-800 hover:border-slate-600 text-left transition-colors">
-        <div className="w-20 h-20 rounded-xl overflow-hidden bg-slate-900 shrink-0 flex items-center justify-center">
-          {src ? <img src={src} alt="" className={`w-full h-full object-cover ${past ? 'grayscale-[40%]' : ''}`} /> : <ImageIcon className="w-5 h-5 text-slate-700" />}
+        <div className="relative w-20 h-20 rounded-xl overflow-hidden bg-slate-900 shrink-0 flex items-center justify-center">
+          {src ? <img src={src} alt="" className={`w-full h-full object-cover ${past ? 'grayscale-[40%]' : ''}`} /> : <EventCover portada={event.portadaIa} categoria={event.category.name} size="thumb" muted={past} />}
         </div>
         <div className="min-w-0 flex-1">
           <span className="text-[10px] uppercase font-bold tracking-wider" style={{ color: categoryColor(event.category.name) }}>{event.category.name}</span>

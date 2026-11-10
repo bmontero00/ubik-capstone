@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Search, Loader2, Inbox, CalendarDays, MapPin, User as UserIcon, Tag, X, Megaphone, Lock } from 'lucide-react';
+import { Search, Loader2, Inbox, CalendarDays, MapPin, User as UserIcon, Tag, X, Megaphone, Lock, ImageOff, ShieldCheck } from 'lucide-react';
 import { AccountStatus, EventStatus, apiJson } from '../../services/auth';
+import { imageSrc } from '../../services/events';
 import {
   ACCOUNT_STATUS_LABELS, EVENT_STATUS_LABELS, StatusPill, formatDate,
 } from '../../utils/labels';
@@ -22,6 +23,7 @@ interface AdminEvent {
   latitude: number;
   longitude: number;
   imageUrl: string | null;
+  imagenModeradaEn: string | null; // null con imagen: la IA no pudo revisarla
   status: EventStatus;
   statusReason: string | null;
   statusChangedAt: string | null;
@@ -163,6 +165,11 @@ export default function EventsTab({ onChanged, onOpenEvent, initialStatuses }: {
                     <span className="block text-xs text-slate-400 mt-0.5">
                       {formatDate(e.date)} · {e.organizer.name}
                     </span>
+                    {e.imageUrl && !e.imagenModeradaEn && (
+                      <span className="mt-1 inline-flex items-center gap-1 text-[10px] font-semibold text-amber-200 bg-amber-500/10 border border-amber-500/25 rounded px-1.5 py-0.5">
+                        <ImageOff className="w-3 h-3" /> Imagen sin verificar
+                      </span>
+                    )}
                   </button>
                 </li>
               ))}
@@ -189,6 +196,19 @@ export default function EventsTab({ onChanged, onOpenEvent, initialStatuses }: {
               >
                 <Megaphone className="w-3.5 h-3.5" /> Ver detalle y publicar una anotación
               </button>
+              {selected.imageUrl && (
+                <div className="mb-4">
+                  <img src={imageSrc(selected.imageUrl) ?? ''} alt={`Portada de ${selected.title}`} className="w-full max-h-48 object-cover rounded-xl border border-slate-800" />
+                  {selected.imagenModeradaEn ? (
+                    <p className="mt-1.5 text-[11px] text-emerald-300 flex items-center gap-1"><ShieldCheck className="w-3.5 h-3.5" /> Imagen revisada y aprobada por IA</p>
+                  ) : (
+                    <p className="mt-1.5 text-[11px] text-amber-200 flex items-start gap-1">
+                      <ImageOff className="w-3.5 h-3.5 shrink-0 mt-px" />
+                      La IA no pudo revisar esta imagen al subirla. Revísala: si no es apropiada, pon el evento en revisión con el motivo.
+                    </p>
+                  )}
+                </div>
+              )}
               {selected.description && <p className="text-xs text-slate-400 mb-4">{selected.description}</p>}
 
               <div className="grid sm:grid-cols-2 gap-x-6 gap-y-1.5 text-xs text-slate-300 mb-5">

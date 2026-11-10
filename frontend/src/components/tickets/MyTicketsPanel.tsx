@@ -11,6 +11,7 @@ import { formatRut } from '../../utils/rut';
 import { formatDate } from '../../utils/labels';
 import { categoryColor } from '../../utils/mapTiles';
 import ReceiptModal from './ReceiptModal';
+import EventCover from '../events/EventCover';
 import ReviewFormModal from '../resenas/ReviewFormModal';
 import StarRating from '../organizers/StarRating';
 import { EstadoResena, diasRestantes, fetchMisResenas } from '../../services/resenas';
@@ -209,8 +210,10 @@ function PurchaseCard({ compra, past, review, onReview, onOpenEvent }: {
   return (
     <li className="bg-slate-900/80 border border-slate-800 rounded-2xl overflow-hidden">
       <div className="flex flex-col sm:flex-row">
-        <button onClick={onOpenEvent} className="sm:w-48 h-32 sm:h-auto shrink-0 relative" style={{ background: `linear-gradient(135deg, ${color}55, #0f172a)` }} aria-label={`Ver ${e.title}`}>
-          {src && <img src={src} alt="" className={`absolute inset-0 w-full h-full object-cover ${past ? 'grayscale-[50%]' : ''}`} />}
+        <button onClick={onOpenEvent} className="sm:w-48 h-32 sm:h-auto shrink-0 relative overflow-hidden" aria-label={`Ver ${e.title}`}>
+          {src
+            ? <img src={src} alt="" className={`absolute inset-0 w-full h-full object-cover ${past ? 'grayscale-[50%]' : ''}`} />
+            : <EventCover portada={e.portadaIa} categoria={e.category.name} size="thumb" muted={past} />}
         </button>
         <div className="flex-1 p-4 sm:p-5 min-w-0">
           <div className="flex flex-wrap items-start justify-between gap-2">

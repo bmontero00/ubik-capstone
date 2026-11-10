@@ -3,9 +3,10 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Search, ArrowRight, CalendarDays, MapPin, Compass, Ticket, PartyPopper, BadgeCheck, Megaphone, ChevronRight,
-  ChevronLeft, ImageIcon, X, SearchX,
+  ChevronLeft, X, SearchX,
 } from 'lucide-react';
 import UbikLogo from '../UbikLogo';
+import EventCover from '../events/EventCover';
 import { API_URL } from '../../services/auth';
 import { Category, EventItem, formatEventDate, formatPrice, imageSrc, publicPrice, relativeTime } from '../../services/events';
 import { categoryColor } from '../../utils/mapTiles';
@@ -280,11 +281,11 @@ function UpcomingCard({ event, onOpen }: { event: EventItem; onOpen: () => void 
   return (
     <li className="snap-start shrink-0 w-64">
       <button onClick={onOpen} className="group w-full text-left rounded-2xl overflow-hidden bg-slate-900 border border-slate-800 hover:border-slate-600 transition-colors">
-        <div className="relative h-32" style={{ background: `linear-gradient(135deg, ${color}55, #0f172a)` }}>
+        <div className="relative h-32 overflow-hidden">
           {src ? (
             <img src={src} alt="" onError={() => setBroken(true)} className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
           ) : (
-            <ImageIcon className="absolute inset-0 m-auto w-6 h-6 text-white/30" />
+            <EventCover portada={event.portadaIa} categoria={event.category?.name} size="thumb" />
           )}
           <span className="absolute top-2 left-2 text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-md text-slate-950" style={{ background: color }}>
             {event.category?.name}

@@ -393,7 +393,6 @@ export default function HomePage() {
                 <EventCard
                   key={evt.id}
                   event={{ ...evt, price: publicPrice(evt), categoryName: evt.category?.name, distanceFrom: location.coords ? undefined : 'Santiago centro' }}
-                  placeholderImage
                   onOpen={() => openDetail(evt)}
                   footerAction={
                     <button

@@ -1,7 +1,9 @@
 'use client';
 
 import React, { useState } from 'react';
-import { CalendarDays, MapPin, ImageIcon, Hourglass, Ban } from 'lucide-react';
+import { CalendarDays, MapPin, Hourglass, Ban } from 'lucide-react';
+import EventCover from './EventCover';
+import type { PortadaIa } from '../../utils/portadas';
 import { EventStatus } from '../../services/auth';
 import { OfferInfo, formatEventDate, imageSrc } from '../../services/events';
 import { OfferBadge, OfferPrice } from './OfferBadge';
@@ -22,6 +24,7 @@ export interface EventCardData extends OfferInfo {
   statusReason?: string | null;
   ventaPausada?: boolean; // condición especial en revisión: la venta se libera pronto
   agotado?: boolean; // todos los tipos de entrada sin cupo
+  portadaIa?: PortadaIa | null; // portada diseñada con IA cuando no hay imagen
 }
 
 export const categoryBadge = (categoryName?: string) => {
@@ -44,13 +47,12 @@ export function SoldOutBadge({ className = '' }: { className?: string }) {
 }
 
 // Tarjeta del catálogo; también se usa como vista previa en el formulario de eventos
-export default function EventCard({ event, footerAction, placeholderImage = false, onOpen }: {
+export default function EventCard({ event, footerAction, onOpen }: {
   event: EventCardData;
   footerAction?: React.ReactNode;
   onOpen?: () => void; // abre el detalle al hacer clic en la imagen o el título
-  placeholderImage?: boolean; // muestra un espacio para la imagen aunque no haya
 }) {
-  // Si la imagen no carga (ej. el archivo no existe en este servidor), se muestra el espacio vacío
+  // Si la imagen no carga (ej. el archivo no existe en este servidor), se muestra la portada de reemplazo
   const [broken, setBroken] = useState(false);
   const src = broken ? null : event.imagePreview ?? imageSrc(event.imageUrl);
   const isFree = event.price === 0;
@@ -63,15 +65,14 @@ export default function EventCard({ event, footerAction, placeholderImage = fals
           <OfferBadge event={event} className="absolute top-3 left-3" />
           {event.agotado && <SoldOutBadge className="absolute top-3 right-3" />}
         </div>
-      ) : placeholderImage ? (
-        <div className="relative w-full h-40 bg-slate-950 flex flex-col items-center justify-center text-slate-600 text-xs gap-1">
-          <ImageIcon className="w-6 h-6" /> Sin imagen de portada
+      ) : (
+        // Sin imagen: portada diseñada (con IA o según la categoría)
+        <div className={`relative w-full h-40 overflow-hidden ${onOpen ? 'cursor-pointer' : ''}`} onClick={onOpen}>
+          <EventCover portada={event.portadaIa} categoria={event.categoryName} />
           <OfferBadge event={event} className="absolute top-3 left-3" />
           {event.agotado && <SoldOutBadge className="absolute top-3 right-3" />}
         </div>
-      ) : event.ofertaActiva ? (
-        <div className="px-6 pt-5"><OfferBadge event={event} /></div>
-      ) : null}
+      )}
       <div className="p-6 flex-1">
         <div className="flex justify-between items-center mb-3 gap-2">
           <span className={`text-[10px] uppercase font-bold px-2 py-1 rounded border ${categoryBadge(event.categoryName)}`}>

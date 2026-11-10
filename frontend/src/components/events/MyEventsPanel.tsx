@@ -16,6 +16,7 @@ import { ReasonToggle } from '../AuthModal';
 import { Chip } from '../admin/UsersTab';
 import OfferForm from './OfferForm';
 import { OfferBadge } from './OfferBadge';
+import EventCover from './EventCover';
 import StarRating from '../organizers/StarRating';
 import { ResenasOrganizador, fetchResenasOrganizador } from '../../services/resenas';
 
@@ -312,9 +313,9 @@ export default function MyEventsPanel({ canManage, refreshKey, onCreate, onEdit,
                   <button
                     onClick={() => onOpen(e)}
                     aria-label={`Ver detalle de ${e.title}`}
-                    className="w-full sm:w-36 h-28 sm:h-24 rounded-xl overflow-hidden bg-slate-950 shrink-0 flex items-center justify-center"
+                    className="relative w-full sm:w-36 h-28 sm:h-24 rounded-xl overflow-hidden bg-slate-950 shrink-0 flex items-center justify-center"
                   >
-                    {src ? <img src={src} alt="" className="w-full h-full object-cover hover:scale-105 transition-transform" /> : <ImageIcon className="w-6 h-6 text-slate-700" />}
+                    {src ? <img src={src} alt="" className="w-full h-full object-cover hover:scale-105 transition-transform" /> : <EventCover portada={e.portadaIa} categoria={e.category?.name} size="thumb" />}
                   </button>
                   <div className="flex-1 min-w-0">
                     <div className="flex flex-wrap items-center gap-2 mb-1">

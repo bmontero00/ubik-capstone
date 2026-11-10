@@ -28,6 +28,7 @@ const compraInclude = {
       date: true,
       address: true,
       imageUrl: true,
+      portadaIa: true,
       status: true,
       statusReason: true,
       price: true,

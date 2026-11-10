@@ -7,6 +7,8 @@ import {
   ImagePlus, Trash2, RefreshCw, Pencil, Eye, Sparkles, Copy, Percent, Hourglass, BadgePercent,
 } from 'lucide-react';
 import EventCard from './EventCard';
+import { AiCoverPicker, DescriptionAssistant } from './AiEventHelpers';
+import { optimizarImagen, verificarImagen } from '../../services/ia';
 import {
   EVENT_LIMITS, EventFormState, FieldErrors, STEPS, TICKETS_STEP, TicketTypeForm, lowestPrice, newTicketType, ticketTypeErrors,
   toDateTime, validateStep,
@@ -84,6 +86,7 @@ function initialState(event?: EventItem, location?: { lat: number; lng: number }
       image: null,
       currentImageUrl: source.imageUrl ?? null,
       removeImage: false,
+      portadaIa: source.portadaIa ?? null,
       solicitarCondicion: false,
       justificacionCondicion: '',
       porcentajeSolicitado: '',
@@ -110,6 +113,7 @@ function initialState(event?: EventItem, location?: { lat: number; lng: number }
     image: null,
     currentImageUrl: null,
     removeImage: false,
+    portadaIa: null,
     solicitarCondicion: false,
     justificacionCondicion: '',
     porcentajeSolicitado: '',
@@ -244,6 +248,8 @@ export default function EventFormModal({ categories, event, initialLocation, dup
         ? { indicacionesEstacionamiento: form.indicacionesEstacionamiento.normalize('NFC').trim() } : {}),
       image: form.image,
       ...(isEdit && form.removeImage && !form.image ? { removeImage: true } : {}),
+      // Portada con IA: se guarda la elegida, o se quita si el evento tenía una y se descartó
+      ...(form.portadaIa ? { portadaIa: form.portadaIa } : isEdit && event?.portadaIa ? { portadaIa: 'null' as const } : {}),
       ...(requestsCondition ? {
         solicitarCondicionEspecial: true,
         justificacionCondicion: form.justificacionCondicion.normalize('NFC').trim(),
@@ -375,6 +381,10 @@ export default function EventFormModal({ categories, event, initialLocation, dup
                       placeholder="Ej. Feria con artesanos locales, música en vivo y comida típica. Entrada apta para toda la familia y mascotas."
                       className={`${inputClass(!!err('description'))} resize-y min-h-[120px]`}
                     />
+                    <DescriptionAssistant
+                      datos={{ titulo: form.title, categoria: category?.name, descripcion: form.description }}
+                      onUse={(texto) => set('description', texto)}
+                    />
                   </Field>
                 </>
               )}
@@ -468,7 +478,14 @@ export default function EventFormModal({ categories, event, initialLocation, dup
                 </>
               )}
 
-              {step === 3 && <ImageField form={form} set={set} shownImage={shownImage} />}
+              {step === 3 && (
+                <ImageField
+                  form={form}
+                  set={set}
+                  shownImage={shownImage}
+                  datosIa={{ titulo: form.title, categoria: category?.name, descripcion: form.description }}
+                />
+              )}
 
               {step === 4 && (
                 <div className="space-y-3">
@@ -534,7 +551,6 @@ export default function EventFormModal({ categories, event, initialLocation, dup
                   <Eye className="w-3.5 h-3.5" /> Vista previa
                 </p>
                 <EventCard
-                  placeholderImage
                   event={{
                     title: form.title.trim(),
                     description: form.description.trim(),
@@ -545,6 +561,7 @@ export default function EventFormModal({ categories, event, initialLocation, dup
                     address: form.address.trim(),
                     categoryName: category?.name,
                     imagePreview: shownImage,
+                    portadaIa: shownImage ? null : form.portadaIa,
                     status: event?.status,
                     statusReason: event?.statusReason,
                   }}
@@ -801,28 +818,50 @@ function LocationField({ form, set, setForm, error }: {
 }
 
 // Imagen de portada: arrastrar o elegir, con vista previa y validación de tipo y tamaño
-function ImageField({ form, set, shownImage }: {
+function ImageField({ form, set, shownImage, datosIa }: {
   form: EventFormState;
   set: <K extends keyof EventFormState>(key: K, value: EventFormState[K]) => void;
   shownImage: string | null;
+  datosIa: { titulo: string; categoria?: string; descripcion: string };
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [checking, setChecking] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
 
-  const accept = (file?: File | null) => {
+  // La imagen se revisa con IA apenas se elige (contenido sexual, violento, ofensivo o datos personales)
+  const accept = async (file?: File | null) => {
     if (!file) return;
     if (!/\.(jpe?g|png)$/i.test(file.name)) return setError('Usa una imagen .jpg o .png');
     if (file.size > EVENT_LIMITS.imageMaxBytes) return setError('La imagen supera los 5 MB');
     setError(null);
-    set('image', file);
-    set('removeImage', false);
+    setNotice(null);
+    setChecking(true);
+    try {
+      const optimizada = await optimizarImagen(file);
+      const revision = await verificarImagen(optimizada).catch(() => ({ estado: 'SIN_VERIFICAR' as const }));
+      if (revision.estado === 'RECHAZADA') {
+        setError(revision.mensaje);
+        if (inputRef.current) inputRef.current.value = '';
+        return;
+      }
+      if (revision.estado === 'SIN_VERIFICAR') setNotice('No pudimos revisar la imagen automáticamente. Se publicará y el equipo de UBIK la revisará.');
+      set('image', optimizada);
+      set('removeImage', false);
+    } finally {
+      setChecking(false);
+    }
   };
 
   return (
-    <Field label="Imagen de portada (opcional)" error={error ?? undefined} hint="JPG o PNG de hasta 5 MB. Ideal horizontal (16:9)">
+    <Field label="Imagen de portada (opcional)" error={error ?? undefined} hint="JPG o PNG de hasta 5 MB. Ideal horizontal (16:9). La revisamos con IA para cuidar a la comunidad.">
       <input ref={inputRef} type="file" accept=".jpg,.jpeg,.png" className="hidden" onChange={(e) => accept(e.target.files?.[0])} />
-      {shownImage ? (
+      {checking ? (
+        <div className="w-full h-40 rounded-xl border border-violet-500/30 bg-violet-500/5 flex flex-col items-center justify-center gap-2 text-sm text-violet-200" role="status">
+          <Loader2 className="w-6 h-6 animate-spin" /> Revisando la imagen…
+        </div>
+      ) : shownImage ? (
         <div className="relative rounded-xl overflow-hidden border border-slate-800 group">
           <img src={shownImage} alt="Portada del evento" className="w-full h-48 object-cover" />
           <div className="absolute inset-x-0 bottom-0 p-2 flex justify-end gap-2 bg-gradient-to-t from-black/80 to-transparent">
@@ -852,6 +891,10 @@ function ImageField({ form, set, shownImage }: {
           <ImagePlus className="w-7 h-7" />
           <span><strong className="text-slate-200">Elige una imagen</strong> o arrástrala aquí</span>
         </button>
+      )}
+      {notice && <p className="mt-2 text-[11px] text-amber-200">{notice}</p>}
+      {!shownImage && !checking && (
+        <AiCoverPicker datos={datosIa} portada={form.portadaIa} onChange={(p) => set('portadaIa', p)} />
       )}
     </Field>
   );

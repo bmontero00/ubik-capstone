@@ -17,6 +17,7 @@ import type { TicketSelection } from '../../services/compras';
 import { OfferBadge, OfferPrice } from './OfferBadge';
 import { SoldOutBadge } from './EventCard';
 import EventReviewCard from '../resenas/EventReviewCard';
+import EventCover from './EventCover';
 
 const LocationPicker = dynamic(() => import('./LocationPicker'), {
   ssr: false,
@@ -109,7 +110,7 @@ export default function EventDetailModal({
           {src ? (
             <img src={src} alt="" className="w-full h-full object-cover" />
           ) : (
-            <div className="w-full h-full" style={{ background: `radial-gradient(circle at 25% 30%, ${color}55, transparent 60%), linear-gradient(135deg, #1e1b4b, #0f172a)` }} />
+            event ? <EventCover portada={event.portadaIa} categoria={event.category?.name} size="hero" /> : <div className="w-full h-full bg-slate-950" />
           )}
           <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-slate-900/30 to-transparent" />
           <button

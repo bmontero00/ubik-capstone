@@ -9,6 +9,9 @@ import {
 import { bitacoraInclude, cambioEstado, diffEvent, serializeBitacora } from './bitacora';
 import { ParametrosService } from '../parametros/parametros.service';
 import { conPrecios, ofertaVigente, precioFinal } from '../parametros/cargos';
+import { readFile, unlink } from 'fs/promises';
+import { ModeracionImagenService, tipoImagen } from '../ia/moderacion-imagen.service';
+import { normalizarPortada } from '../ia/portada';
 import { claveNombre, disponibilidadEventos } from './tipos-entrada';
 
 // Estados visibles en el catálogo público. Los cancelados y postergados se muestran
@@ -45,7 +48,20 @@ export class EventsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly parametros: ParametrosService,
+    private readonly moderacionImagen: ModeracionImagenService,
   ) {}
+
+  // Revisa con IA la imagen subida. Si se rechaza se borra el archivo y se informa el motivo; si la IA no
+  // está disponible se acepta sin verificar (el admin la ve marcada para revisarla).
+  private async imagenRevisada(file?: Express.Multer.File) {
+    if (!file) return null;
+    const resultado = await this.moderacionImagen.revisar(await readFile(file.path), tipoImagen(file.originalname));
+    if (resultado.estado === 'RECHAZADA') {
+      await unlink(file.path).catch(() => {});
+      throw new BadRequestException({ message: resultado.mensaje, code: 'IMAGEN_RECHAZADA', motivo: resultado.motivo });
+    }
+    return { imageUrl: `/uploads/${file.filename}`, imagenModeradaEn: resultado.estado === 'APROBADA' ? new Date() : null };
+  }
 
   // Precios y disponibilidad (entradas y estacionamientos ocupados) de una lista de eventos
   private async conDisponibilidad<T extends Event & { tiposEntrada: TipoEntrada[] }>(events: T[], privado: (e: T) => boolean) {
@@ -58,7 +74,7 @@ export class EventsService {
     return { porcentajeCargoServicio: await this.parametros.porcentajeCargoVigente() };
   }
 
-  async create(dto: CreateEventDto, user: AuthenticatedUser, imageUrl: string | null) {
+  async create(dto: CreateEventDto, user: AuthenticatedUser, file?: Express.Multer.File) {
     await this.assertCategoryExists(dto.categoryId);
     const date = this.parseFutureDate(dto.date);
     const { sourceEventId, solicitarCondicionEspecial, justificacionCondicion, porcentajeSolicitado } = dto;
@@ -68,14 +84,21 @@ export class EventsService {
     }
     // El % de cargo queda fijo para este evento aunque después cambie el de la plataforma
     const porcentajeCargo = await this.parametros.porcentajeCargoVigente();
+    const imagen = await this.imagenRevisada(file);
+    let imageUrl = imagen?.imageUrl ?? null;
+    let imagenModeradaEn = imagen?.imagenModeradaEn ?? null;
+    const portadaIa = normalizarPortada(dto.portadaIa);
 
     // Duplicar: sin imagen nueva se reutiliza la del evento original (solo de un evento propio)
     if (!imageUrl && sourceEventId) {
       const source = await this.prisma.event.findUnique({
         where: { id: sourceEventId },
-        select: { organizerId: true, imageUrl: true },
+        select: { organizerId: true, imageUrl: true, imagenModeradaEn: true },
       });
-      if (source && (source.organizerId === user.sub || user.role === 'ADMIN')) imageUrl = source.imageUrl;
+      if (source && (source.organizerId === user.sub || user.role === 'ADMIN')) {
+        imageUrl = source.imageUrl;
+        imagenModeradaEn = source.imagenModeradaEn;
+      }
     }
 
     const created = await this.prisma.event.create({
@@ -93,6 +116,8 @@ export class EventsService {
         date,
         organizerId: user.sub,
         imageUrl,
+        imagenModeradaEn,
+        ...(portadaIa && { portadaIa: portadaIa as unknown as Prisma.InputJsonObject }),
         porcentajeCargo,
         // Con una condición especial pendiente, la venta queda en pausa hasta que un admin responda
         ...(solicitarCondicionEspecial && {
@@ -198,7 +223,7 @@ export class EventsService {
     }));
   }
 
-  async update(id: string, user: AuthenticatedUser, dto: UpdateEventDto, imageUrl: string | null | undefined) {
+  async update(id: string, user: AuthenticatedUser, dto: UpdateEventDto, file?: Express.Multer.File) {
     const event = await this.assertCanManage(id, user, { datos: true });
     if (dto.categoryId) await this.assertCategoryExists(dto.categoryId);
 
@@ -206,8 +231,11 @@ export class EventsService {
     const dateChanged = dto.date && new Date(dto.date).getTime() !== event.date.getTime();
     const {
       removeImage, date, tiposEntrada, aforo, estacionamiento, precioEstacionamiento, cuposEstacionamiento,
-      indicacionesEstacionamiento, ...fields
+      indicacionesEstacionamiento, portadaIa, ...fields
     } = dto;
+    const imagen = await this.imagenRevisada(file);
+    // Portada con IA: undefined no la cambia; null (o una inválida) la quita
+    const portada = portadaIa === undefined ? undefined : normalizarPortada(portadaIa);
 
     // Tipos de entrada: se actualizan los existentes, se crean los nuevos y se quitan los que no vienen
     // (solo si no tienen entradas vendidas). Ningún cupo puede quedar bajo lo ya vendido.
@@ -263,7 +291,8 @@ export class EventsService {
           ...(price !== undefined && { price, aforo }),
           ...estacionamientoData,
           ...(dateChanged && { date: this.parseFutureDate(date!) }),
-          ...(imageUrl ? { imageUrl } : removeImage ? { imageUrl: null } : {}),
+          ...(imagen ? imagen : removeImage ? { imageUrl: null, imagenModeradaEn: null } : {}),
+          ...(portada !== undefined && { portadaIa: portada ? (portada as unknown as Prisma.InputJsonObject) : Prisma.DbNull }),
         },
       }),
       ...operaciones,

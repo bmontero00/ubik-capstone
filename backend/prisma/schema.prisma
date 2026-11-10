@@ -157,17 +157,21 @@ model Category {
 }
 
 model Event {
-  id          String   @id @default(uuid())
-  title       String
-  description String?
-  price       Float    @default(0)
-  date        DateTime
-  address     String
-  latitude    Float
-  longitude   Float
-  imageUrl    String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id               String    @id @default(uuid())
+  title            String
+  description      String?
+  price            Float     @default(0)
+  date             DateTime
+  address          String
+  latitude         Float
+  longitude        Float
+  imageUrl         String?
+  // Fecha en que la IA aprobó la imagen; null si no se pudo verificar (el admin la revisa)
+  imagenModeradaEn DateTime?
+  // Portada diseñada con IA para eventos sin imagen: { paleta, patron, emoji, frase }
+  portadaIa        Json?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
   // Llaves foráneas y relaciones
   categoryId String

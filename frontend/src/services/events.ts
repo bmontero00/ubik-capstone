@@ -1,4 +1,5 @@
 import { API_URL, EventStatus, apiJson, authFetch } from './auth';
+import type { PortadaIa } from '../utils/portadas';
 
 export interface Category {
   id: string;
@@ -31,6 +32,8 @@ export interface EventItem {
   latitude: number;
   longitude: number;
   imageUrl?: string | null;
+  imagenModeradaEn?: string | null; // null con imagen = la IA no pudo verificarla (la revisa un admin)
+  portadaIa?: PortadaIa | null; // portada diseñada con IA (eventos sin imagen)
   distanceKm?: number;
   category: Category;
   // El correo solo llega en "Mis eventos" y en el panel de administración
@@ -167,6 +170,7 @@ export interface EventPayload {
   categoryId: string;
   image?: File | null;
   removeImage?: boolean;
+  portadaIa?: PortadaIa | 'null'; // 'null' la quita al editar
   sourceEventId?: string; // al duplicar: reutiliza la imagen del evento original
   // Solicitud de condición especial de cargo (solo al crear)
   solicitarCondicionEspecial?: boolean;

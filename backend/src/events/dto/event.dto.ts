@@ -1,7 +1,7 @@
 import { Transform, Type, plainToInstance } from 'class-transformer';
 import {
   ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsIn, IsISO8601, IsInt, IsLatitude, IsLongitude, IsNotEmpty, IsNumber,
-  IsOptional, IsString, IsUUID, Length, Matches, Max, MaxLength, Min, Validate, ValidateIf, ValidateNested,
+  IsObject, IsOptional, IsString, IsUUID, Length, Matches, Max, MaxLength, Min, Validate, ValidateIf, ValidateNested,
   ValidationArguments, ValidatorConstraint, ValidatorConstraintInterface,
 } from 'class-validator';
 import { OFERTA_LIMITS, PORCENTAJE_CARGO_MAX } from '../../parametros/cargos';
@@ -91,6 +91,20 @@ const tiposDesdeJson = () =>
 export const ESTACIONAMIENTO_OPCIONES = ['NINGUNO', 'GRATUITO', 'PAGADO'] as const;
 export type OpcionEstacionamiento = (typeof ESTACIONAMIENTO_OPCIONES)[number];
 const esPagado = (o: { estacionamiento?: OpcionEstacionamiento }) => o.estacionamiento === 'PAGADO';
+
+
+// Portada con IA: llega como texto JSON (o "null" para quitarla); su contenido se valida en el servicio
+const portadaDesdeJson = () =>
+  Transform(({ value }) => {
+    if (value === undefined) return undefined;
+    if (value === null || value === '' || value === 'null') return null;
+    if (typeof value !== 'string') return value;
+    try {
+      return JSON.parse(value);
+    } catch {
+      return 'invalida';
+    }
+  });
 
 export class CreateEventDto {
   @trim()
@@ -191,6 +205,12 @@ export class CreateEventDto {
   @Min(0, { message: 'El porcentaje propuesto no puede ser negativo' })
   @Max(PORCENTAJE_CARGO_MAX, { message: `El porcentaje propuesto puede ser como máximo ${PORCENTAJE_CARGO_MAX}%` })
   porcentajeSolicitado?: number;
+
+  // Portada diseñada con IA para eventos sin imagen
+  @IsOptional()
+  @portadaDesdeJson()
+  @IsObject({ message: 'La portada no es válida' })
+  portadaIa?: Record<string, unknown> | null;
 }
 
 export class UpdateEventDto {
@@ -283,6 +303,12 @@ export class UpdateEventDto {
   @toBoolean()
   @IsBoolean()
   removeImage?: boolean;
+
+  // Portada diseñada con IA para eventos sin imagen
+  @IsOptional()
+  @portadaDesdeJson()
+  @IsObject({ message: 'La portada no es válida' })
+  portadaIa?: Record<string, unknown> | null;
 }
 
 // Oferta: % de descuento sobre el precio de todos los tipos de entrada

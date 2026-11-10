@@ -12,6 +12,7 @@ const eventSelect = {
   address: true,
   price: true,
   imageUrl: true,
+  portadaIa: true,
   status: true,
   statusReason: true,
   latitude: true,

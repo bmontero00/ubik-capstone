@@ -76,7 +76,7 @@ export class EventsController {
   ) {
     await this.eventsService.assertCanPublish(user);
     // El organizador sale del token, nunca del formulario
-    return this.eventsService.create(dto, user, file ? `/uploads/${file.filename}` : null);
+    return this.eventsService.create(dto, user, file);
   }
 
   // El organizador edita solo sus eventos; el admin puede editar cualquiera
@@ -90,7 +90,7 @@ export class EventsController {
     @CurrentUser() user: AuthenticatedUser,
     @UploadedFile() file?: Express.Multer.File,
   ) {
-    return this.eventsService.update(id, user, dto, file ? `/uploads/${file.filename}` : undefined);
+    return this.eventsService.update(id, user, dto, file);
   }
 
   @Patch(':id/cancel')

@@ -1,4 +1,5 @@
 import { EventStatus, apiJson } from './auth';
+import type { PortadaIa } from '../utils/portadas';
 import { Category } from './events';
 
 export type EstadoCompra = 'PENDIENTE_PAGO' | 'PAGADA' | 'CONFIRMADA' | 'CANCELADA' | 'EXPIRADA';
@@ -49,6 +50,7 @@ export interface Compra {
     date: string;
     address: string;
     imageUrl: string | null;
+    portadaIa?: PortadaIa | null;
     status: EventStatus;
     statusReason: string | null;
     price: number;

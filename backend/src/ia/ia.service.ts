@@ -26,7 +26,7 @@ export class IaService {
   async estructurado<T extends z.ZodType>(opciones: {
     esquema: T;
     sistema: string;
-    contenido: string;
+    contenido: string | Anthropic.ContentBlockParam[]; // texto, o bloques (ej. una imagen + texto)
     esfuerzo?: 'low' | 'medium' | 'high';
     maxTokens?: number;
   }): Promise<z.infer<T> | null> {
