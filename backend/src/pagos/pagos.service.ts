@@ -122,9 +122,9 @@ export class PagosService {
       return destino('rechazado', tx.compraId);
     }
 
-    // Se confirma solo si la compra sigue reservada y el evento sigue publicado
+    // Se confirma solo si la compra sigue reservada y el evento sigue vendiendo (publicado o postergado)
     const { count } = await this.prisma.compra.updateMany({
-      where: { id: tx.compraId, estado: 'PENDIENTE_PAGO', evento: { status: 'PUBLISHED' } },
+      where: { id: tx.compraId, estado: 'PENDIENTE_PAGO', evento: { status: { in: ['PUBLISHED', 'POSTPONED'] } } },
       data: { estado: 'PAGADA', fechaPago: new Date(), medioPago: 'WEBPAY', expiraEn: null },
     });
     if (count) {

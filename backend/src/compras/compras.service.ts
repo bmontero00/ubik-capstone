@@ -1,7 +1,7 @@
 import {
   BadRequestException, ConflictException, ForbiddenException, GoneException, Injectable, NotFoundException,
 } from '@nestjs/common';
-import { EstadoCompra, Event, Prisma, TipoEntrada } from '@prisma/client';
+import { EstadoCompra, Event, EventStatus, Prisma, TipoEntrada } from '@prisma/client';
 import { randomInt } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import type { AuthenticatedUser } from '../auth/auth.guards';
@@ -46,6 +46,9 @@ const compraInclude = {
 
 type CompraConDetalle = Prisma.CompraGetPayload<{ include: typeof compraInclude }>;
 
+// Un evento postergado sigue vendiendo mientras le queden entradas (valen para la nueva fecha)
+const ESTADOS_CON_VENTA: EventStatus[] = ['PUBLISHED', 'POSTPONED'];
+
 @Injectable()
 export class ComprasService {
   constructor(private readonly prisma: PrismaService) {}
@@ -57,7 +60,7 @@ export class ComprasService {
 
     const event = await this.prisma.event.findUnique({ where: { id: dto.eventoId }, include: { tiposEntrada: true } });
     if (!event) throw new NotFoundException('Evento no encontrado');
-    if (event.status !== 'PUBLISHED' || event.date.getTime() <= Date.now()) {
+    if (!ESTADOS_CON_VENTA.includes(event.status) || event.date.getTime() <= Date.now()) {
       throw new BadRequestException('Este evento no tiene entradas disponibles en este momento');
     }
     if (event.estadoCondicion === 'PENDIENTE') {
@@ -237,7 +240,7 @@ export class ComprasService {
       await this.prisma.compra.update({ where: { id }, data: { estado: 'EXPIRADA' } });
       throw new GoneException('El tiempo para pagar expiró. Vuelve a seleccionar tus entradas.');
     }
-    if (compra.evento.status !== 'PUBLISHED' || compra.evento.date.getTime() <= Date.now()) {
+    if (!ESTADOS_CON_VENTA.includes(compra.evento.status) || compra.evento.date.getTime() <= Date.now()) {
       throw new BadRequestException('Este evento ya no tiene entradas disponibles');
     }
     return compra;

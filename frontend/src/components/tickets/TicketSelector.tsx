@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Minus, Plus, Ticket, ArrowRight, Info, TicketCheck, Hourglass, Car } from 'lucide-react';
+import { Minus, Plus, Ticket, ArrowRight, Info, TicketCheck, Hourglass, Car, Ban, CalendarClock } from 'lucide-react';
 import { EventItem, TipoEntrada, formatPrice } from '../../services/events';
 import { TicketSelection } from '../../services/compras';
 import { TICKET_LIMITS } from './ticketRules';
@@ -152,15 +152,32 @@ export default function TicketSelector({ event, available, blockedReason, owned,
         </p>
       )}
 
-      {disabled ? (
+      {/* Postergado con entradas: la venta sigue y se recuerda que valen para la nueva fecha */}
+      {event.status === 'POSTPONED' && !soldOut && (
+        <p className="mt-3 flex items-start gap-2 text-xs text-sky-200 bg-sky-500/10 border border-sky-500/25 rounded-lg px-3 py-2">
+          <CalendarClock className="w-4 h-4 shrink-0" />
+          El evento se postergó: las entradas que compres son válidas para la nueva fecha.
+        </p>
+      )}
+
+      {soldOut ? (
+        <div className="mt-4 flex items-start gap-3 rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3">
+          <Ban className="w-5 h-5 shrink-0 text-rose-300 mt-0.5" />
+          <div>
+            <p className="font-extrabold text-rose-100 uppercase tracking-wider text-sm">Sold Out</p>
+            <p className="text-xs text-slate-300 mt-0.5">
+              Se vendieron todas las entradas para este evento, así que ya no es posible comprar más.
+              {event.status === 'POSTPONED' && ' Quienes ya compraron mantienen su entrada para la nueva fecha.'}
+            </p>
+          </div>
+        </div>
+      ) : disabled ? (
         <p className="mt-3 flex items-start gap-2 text-xs text-slate-400">
           <Info className="w-4 h-4 shrink-0" />
           {blockedReason ??
-            (soldOut
-              ? 'Las entradas para este evento están agotadas.'
-              : !available
-                ? 'Este evento no tiene entradas disponibles en este momento.'
-                : `Llegaste al máximo de ${TICKET_LIMITS.maxPorEvento} entradas para este evento.`)}
+            (!available
+              ? 'Este evento no tiene entradas disponibles en este momento.'
+              : `Llegaste al máximo de ${TICKET_LIMITS.maxPorEvento} entradas para este evento.`)}
         </p>
       ) : (
         <>

@@ -15,6 +15,7 @@ import EventBitacora from './EventBitacora';
 import TicketSelector from '../tickets/TicketSelector';
 import type { TicketSelection } from '../../services/compras';
 import { OfferBadge, OfferPrice } from './OfferBadge';
+import { SoldOutBadge } from './EventCard';
 
 const LocationPicker = dynamic(() => import('./LocationPicker'), {
   ssr: false,
@@ -123,6 +124,7 @@ export default function EventDetailModal({
                 {event.category?.name}
               </span>
               {event.status !== 'PUBLISHED' && <StatusPill {...EVENT_STATUS_LABELS[event.status]} />}
+              {event.agotado && <SoldOutBadge />}
             </div>
           )}
         </div>
@@ -192,8 +194,8 @@ export default function EventDetailModal({
               <div className="mt-4">
                 <TicketSelector
                   event={event}
-                  available={event.status === 'PUBLISHED' && !!upcoming}
-                  blockedReason={tickets.blockedReason ?? (event.status === 'POSTPONED' ? 'La venta de entradas está pausada mientras el evento está postergado.' : undefined)}
+                  available={!!upcoming}
+                  blockedReason={tickets.blockedReason}
                   owned={tickets.owned(event.id)}
                   onContinue={(selection) => tickets.onContinue(event, selection)}
                   onViewTickets={tickets.onViewTickets}

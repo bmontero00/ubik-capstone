@@ -34,6 +34,15 @@ export const categoryBadge = (categoryName?: string) => {
   }
 };
 
+// Aviso de entradas agotadas: se mantiene visible hasta que el evento se finaliza solo
+export function SoldOutBadge({ className = '' }: { className?: string }) {
+  return (
+    <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-rose-600 text-white text-[11px] font-extrabold uppercase tracking-wider shadow-lg shadow-rose-950/50 ${className}`}>
+      <Ban className="w-3.5 h-3.5" /> Sold Out
+    </span>
+  );
+}
+
 // Tarjeta del catálogo; también se usa como vista previa en el formulario de eventos
 export default function EventCard({ event, footerAction, placeholderImage = false, onOpen }: {
   event: EventCardData;
@@ -50,13 +59,15 @@ export default function EventCard({ event, footerAction, placeholderImage = fals
     <article className="flex flex-col bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden hover:border-slate-700 transition-all h-full">
       {src ? (
         <div className={`relative w-full h-40 bg-slate-950 overflow-hidden ${onOpen ? 'cursor-pointer' : ''}`} onClick={onOpen}>
-          <img src={src} alt={event.title} onError={() => setBroken(true)} className={`w-full h-full object-cover ${onOpen ? 'hover:scale-105 transition-transform duration-300' : ''}`} />
+          <img src={src} alt={event.title} onError={() => setBroken(true)} className={`w-full h-full object-cover ${onOpen ? 'hover:scale-105 transition-transform duration-300' : ''} ${event.agotado ? 'opacity-60' : ''}`} />
           <OfferBadge event={event} className="absolute top-3 left-3" />
+          {event.agotado && <SoldOutBadge className="absolute top-3 right-3" />}
         </div>
       ) : placeholderImage ? (
         <div className="relative w-full h-40 bg-slate-950 flex flex-col items-center justify-center text-slate-600 text-xs gap-1">
           <ImageIcon className="w-6 h-6" /> Sin imagen de portada
           <OfferBadge event={event} className="absolute top-3 left-3" />
+          {event.agotado && <SoldOutBadge className="absolute top-3 right-3" />}
         </div>
       ) : event.ofertaActiva ? (
         <div className="px-6 pt-5"><OfferBadge event={event} /></div>
@@ -92,7 +103,7 @@ export default function EventCard({ event, footerAction, placeholderImage = fals
         )}
         {event.agotado && (
           <p className="mb-3 inline-flex items-center gap-1.5 text-[11px] font-semibold text-rose-200 bg-rose-500/10 border border-rose-500/25 rounded-lg px-2 py-1">
-            <Ban className="w-3.5 h-3.5" /> Entradas agotadas
+            <Ban className="w-3.5 h-3.5" /> Sold Out · Se vendieron todas las entradas
           </p>
         )}
         <p className="text-xs text-slate-400 line-clamp-2 mb-4 break-words">
