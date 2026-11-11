@@ -33,6 +33,7 @@ export type ParkingOption = 'NINGUNO' | 'GRATUITO' | 'PAGADO';
 export interface EventFormState {
   title: string;
   categoryId: string;
+  categoriaSugerida: string; // con la categoría "Otra": cuál faltaría
   description: string;
   date: string; // yyyy-mm-dd
   time: string; // hh:mm
@@ -111,6 +112,8 @@ export function validateStep(step: number, f: EventFormState): FieldErrors {
     if (len(f.title) < EVENT_LIMITS.titleMin) e.title = `Escribe un título de al menos ${EVENT_LIMITS.titleMin} caracteres`;
     else if (len(f.title) > EVENT_LIMITS.titleMax) e.title = `El título puede tener como máximo ${EVENT_LIMITS.titleMax} caracteres`;
     if (!f.categoryId) e.categoryId = 'Elige la categoría que mejor describe tu evento';
+    const sugerencia = len(f.categoriaSugerida);
+    if (sugerencia > 0 && sugerencia < 3) e.categoriaSugerida = 'Escribe al menos 3 caracteres';
     if (len(f.description) < EVENT_LIMITS.descriptionMin) {
       e.description = `Cuéntales un poco más a los asistentes (mínimo ${EVENT_LIMITS.descriptionMin} caracteres)`;
     }

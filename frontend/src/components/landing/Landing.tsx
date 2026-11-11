@@ -55,7 +55,8 @@ export default function Landing({ categories, explore, activeQuery, onSearch, on
   // Categorías con eventos próximos primero
   const quickCategories = useMemo(() => {
     const count = (c: Category) => upcoming.filter((e) => e.category?.id === c.id).length;
-    return [...categories].sort((a, b) => count(b) - count(a)).slice(0, 6);
+    // Solo las disponibles y sin la comodín "Otra"
+    return categories.filter((c) => c.activa !== false && c.name !== 'Otra').sort((a, b) => count(b) - count(a)).slice(0, 6);
   }, [categories, upcoming]);
 
   // El carrusel muestra los próximos eventos o, si hay búsqueda, sus resultados (el mapa se filtra igual)
@@ -119,7 +120,7 @@ export default function Landing({ categories, explore, activeQuery, onSearch, on
                   className="px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors hover:brightness-125"
                   style={{ color: categoryColor(c.name), borderColor: `${categoryColor(c.name)}55`, background: `${categoryColor(c.name)}14` }}
                 >
-                  {c.name}
+                  {c.emoji && <span aria-hidden className="mr-1">{c.emoji}</span>}{c.name}
                 </button>
               ))}
             </div>

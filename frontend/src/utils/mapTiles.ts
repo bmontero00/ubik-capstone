@@ -1,3 +1,4 @@
+import { infoCategoria } from './categorias';
 // Mapa base de OpenStreetMap con un filtro CSS que lo oscurece (clase "ubik-dark-tiles" en
 // globals.css), acorde al diseño de UBIK y sin claves de API. Nota: los mapas públicos de OSM
 // no admiten uso intensivo en producción; para lanzar se debe usar un proveedor con cuota.
@@ -20,4 +21,5 @@ const CATEGORY_COLORS: Record<string, string> = {
   videojuegos: '#c084fc',
 };
 
-export const categoryColor = (name?: string) => CATEGORY_COLORS[name?.toLowerCase() ?? ''] ?? '#818cf8';
+export const categoryColor = (name?: string) =>
+  infoCategoria(name)?.color ?? CATEGORY_COLORS[name?.toLowerCase() ?? ''] ?? '#818cf8';

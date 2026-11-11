@@ -62,6 +62,15 @@ export class IaController {
     return this.asistente.mejorarDescripcion(dto);
   }
 
+  // POST /ia/categoria: propone la categoría que mejor describe el evento
+  @Post('categoria')
+  @HttpCode(200)
+  categoria(@Body() dto: DatosEventoIaDto, @CurrentUser() user: AuthenticatedUser) {
+    if (dto.descripcion.length < 10) throw new BadRequestException('Escribe al menos una idea del evento (10 caracteres) para sugerir su categoría');
+    permitir(limiteTexto, `cat:${user.sub}`);
+    return this.asistente.sugerirCategoria(dto);
+  }
+
   // POST /ia/portada: elige colores, patrón, emoji y frase según el evento
   @Post('portada')
   @HttpCode(200)

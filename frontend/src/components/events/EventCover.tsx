@@ -13,7 +13,7 @@ export default function EventCover({ portada, categoria, size = 'card', muted = 
   muted?: boolean; // eventos pasados
 }) {
   const p = portada ?? portadaPorCategoria(categoria);
-  const [c1, c2, fondo] = PALETAS[p.paleta] ?? PALETAS.noche;
+  const [c1, c2, fondo] = p.colores ?? PALETAS[p.paleta] ?? PALETAS.noche;
   const patron = PATRONES[p.patron] ?? PATRONES.puntos;
   const emojiSize = size === 'thumb' ? 'text-3xl' : size === 'hero' ? 'text-7xl sm:text-8xl' : 'text-5xl';
 

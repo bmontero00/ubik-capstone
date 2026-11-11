@@ -22,6 +22,7 @@ import {
   fetchCurrentUser, isAccountActive, loadStoredUser, markApprovalNoticeSeen, saveSession, updateStoredUser,
 } from '../services/auth';
 import { Category, EventItem, fetchCategories as fetchCategoryList, publicPrice } from '../services/events';
+import { registrarCategorias } from '../utils/categorias';
 import { useUserLocation } from '../utils/location';
 import LocationNotice, { RequestLocationOnMount } from '../components/LocationNotice';
 import dynamic from 'next/dynamic';
@@ -154,7 +155,9 @@ export default function HomePage() {
 
   const fetchCategories = async () => {
     try {
-      setCategories(await fetchCategoryList());
+      const lista = await fetchCategoryList();
+      registrarCategorias(lista);
+      setCategories(lista);
     } catch (err) {
       console.error('Error al cargar categorías:', err);
     }
@@ -464,7 +467,7 @@ export default function HomePage() {
             )}
 
             {user.role === 'ADMIN' ? (
-              <AdminDashboard explore={exploreContent} onEventsChanged={fetchEvents} onOpenEvent={openDetailById} />
+              <AdminDashboard explore={exploreContent} onEventsChanged={fetchEvents} onOpenEvent={openDetailById} onCategoriesChanged={fetchCategories} />
             ) : isApprovedOrganizer ? (
               <>
                 <nav className="mb-6 inline-flex bg-slate-900/80 border border-slate-800 rounded-2xl p-1.5 gap-1" role="tablist">

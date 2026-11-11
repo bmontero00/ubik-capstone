@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { LayoutDashboard, ShieldCheck, Users, CalendarCog, ChartColumn, Compass, Percent } from 'lucide-react';
+import { LayoutDashboard, ShieldCheck, Users, CalendarCog, ChartColumn, Compass, Percent, Tags } from 'lucide-react';
+import CategoriesTab from './CategoriesTab';
 import { EventStatus, apiJson } from '../../services/auth';
 import AdminPanel from '../AdminPanel';
 import OverviewTab, { Overview } from './OverviewTab';
@@ -10,7 +11,7 @@ import EventsTab from './EventsTab';
 import ReportsTab from './ReportsTab';
 import CargosTab from './CargosTab';
 
-export type AdminTab = 'overview' | 'requests' | 'users' | 'events' | 'cargos' | 'reports' | 'explore';
+export type AdminTab = 'overview' | 'requests' | 'users' | 'events' | 'categories' | 'cargos' | 'reports' | 'explore';
 
 // Filtro con el que se abre una pestaña desde una tarjeta del resumen
 export type AdminFilter =
@@ -22,6 +23,7 @@ const TABS: { id: AdminTab; label: string; icon: React.ElementType }[] = [
   { id: 'requests', label: 'Solicitudes', icon: ShieldCheck },
   { id: 'users', label: 'Gestión de usuarios', icon: Users },
   { id: 'events', label: 'Gestión de eventos', icon: CalendarCog },
+  { id: 'categories', label: 'Categorías', icon: Tags },
   { id: 'cargos', label: 'Cargos', icon: Percent },
   { id: 'reports', label: 'Reportes', icon: ChartColumn },
   { id: 'explore', label: 'Explorar', icon: Compass },
@@ -33,9 +35,10 @@ interface AdminDashboardProps {
   explore: React.ReactNode; // buscador, mapa y catálogo de la vista normal
   onEventsChanged: () => void;
   onOpenEvent: (id: string) => void; // detalle del evento, donde el equipo publica anotaciones
+  onCategoriesChanged: () => void; // vuelve a cargar las categorías del sitio (colores, emojis, disponibles)
 }
 
-export default function AdminDashboard({ explore, onEventsChanged, onOpenEvent }: AdminDashboardProps) {
+export default function AdminDashboard({ explore, onEventsChanged, onOpenEvent, onCategoriesChanged }: AdminDashboardProps) {
   const [tab, setTab] = useState<AdminTab>('overview');
   // Filtro elegido desde el resumen; "visit" vuelve a montar la pestaña para aplicarlo
   const [filter, setFilter] = useState<{ value?: AdminFilter; visit: number }>({ visit: 0 });
@@ -127,6 +130,7 @@ export default function AdminDashboard({ explore, onEventsChanged, onOpenEvent }
           onOpenEvent={onOpenEvent}
         />
       )}
+      {tab === 'categories' && <CategoriesTab onChanged={() => { onCategoriesChanged(); onEventsChanged(); }} />}
       {tab === 'cargos' && <CargosTab onChanged={() => { loadOverview(); onEventsChanged(); }} />}
       {tab === 'reports' && <ReportsTab />}
       {tab === 'explore' && explore}

@@ -6,6 +6,7 @@ import {
 } from 'class-validator';
 import { OFERTA_LIMITS, PORCENTAJE_CARGO_MAX } from '../../parametros/cargos';
 import { IsReason } from '../../common/reason.validator';
+import { SUGERENCIA_LIMITES } from '../../common/categorias';
 import { TIPO_ENTRADA_LIMITS, errorDescripcionTipo, errorNombreTipo, normalizarNombreTipo } from '../tipos-entrada';
 
 // Límites compartidos con el formulario del frontend (frontend/src/components/events/eventRules.ts)
@@ -211,6 +212,15 @@ export class CreateEventDto {
   @portadaDesdeJson()
   @IsObject({ message: 'La portada no es válida' })
   portadaIa?: Record<string, unknown> | null;
+
+  // Si la categoría es "Otra": cuál faltaría (ej. "Mascotas")
+  @IsOptional()
+  @trim()
+  @IsString()
+  @Length(SUGERENCIA_LIMITES.min, SUGERENCIA_LIMITES.max, {
+    message: `Indica en ${SUGERENCIA_LIMITES.min} a ${SUGERENCIA_LIMITES.max} caracteres qué categoría describiría tu evento`,
+  })
+  categoriaSugerida?: string;
 }
 
 export class UpdateEventDto {
@@ -309,6 +319,15 @@ export class UpdateEventDto {
   @portadaDesdeJson()
   @IsObject({ message: 'La portada no es válida' })
   portadaIa?: Record<string, unknown> | null;
+
+  // Si la categoría es "Otra": cuál faltaría (ej. "Mascotas")
+  @IsOptional()
+  @trim()
+  @IsString()
+  @Length(SUGERENCIA_LIMITES.min, SUGERENCIA_LIMITES.max, {
+    message: `Indica en ${SUGERENCIA_LIMITES.min} a ${SUGERENCIA_LIMITES.max} caracteres qué categoría describiría tu evento`,
+  })
+  categoriaSugerida?: string;
 }
 
 // Oferta: % de descuento sobre el precio de todos los tipos de entrada

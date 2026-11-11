@@ -7,7 +7,8 @@ import {
   ImagePlus, Trash2, RefreshCw, Pencil, Eye, Sparkles, Copy, Percent, Hourglass, BadgePercent,
 } from 'lucide-react';
 import EventCard from './EventCard';
-import { AiCoverPicker, DescriptionAssistant } from './AiEventHelpers';
+import { AiCoverPicker, CategorySuggestion, DescriptionAssistant } from './AiEventHelpers';
+import { CATEGORIA_OTRA } from '../../utils/categorias';
 import { optimizarImagen, verificarImagen } from '../../services/ia';
 import {
   EVENT_LIMITS, EventFormState, FieldErrors, STEPS, TICKETS_STEP, TicketTypeForm, lowestPrice, newTicketType, ticketTypeErrors,
@@ -73,6 +74,7 @@ function initialState(event?: EventItem, location?: { lat: number; lng: number }
     return {
       title: source.title,
       categoryId: source.category.id,
+      categoriaSugerida: source.categoriaSugerida ?? '',
       description: source.description ?? '',
       date: toLocalDate(d),
       time: toLocalTime(d),
@@ -96,6 +98,7 @@ function initialState(event?: EventItem, location?: { lat: number; lng: number }
   return {
     title: '',
     categoryId: '',
+    categoriaSugerida: '',
     description: '',
     date: toLocalDate(tomorrow),
     time: '19:00',
@@ -227,6 +230,8 @@ export default function EventFormModal({ categories, event, initialLocation, dup
       title: form.title.normalize('NFC').trim(),
       description: form.description.normalize('NFC').trim(),
       categoryId: form.categoryId,
+      ...(category?.name === CATEGORIA_OTRA && form.categoriaSugerida.trim()
+        ? { categoriaSugerida: form.categoriaSugerida.normalize('NFC').trim() } : {}),
       date: toDateTime(form.date, form.time)!.toISOString(),
       address: form.address.normalize('NFC').trim(),
       latitude: Number(form.latitude.toFixed(6)),
@@ -343,28 +348,7 @@ export default function EventFormModal({ categories, event, initialLocation, dup
                     />
                   </Field>
 
-                  <Field label="Categoría" error={err('categoryId')}>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2" role="radiogroup" aria-label="Categoría">
-                      {categories.map((c) => {
-                        const selected = form.categoryId === c.id;
-                        return (
-                          <button
-                            key={c.id}
-                            type="button"
-                            role="radio"
-                            aria-checked={selected}
-                            onClick={() => set('categoryId', c.id)}
-                            className={`flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl border text-sm font-semibold transition-colors ${
-                              selected ? 'border-indigo-500 bg-indigo-500/15 text-white' : 'border-slate-800 bg-slate-950 text-slate-300 hover:border-slate-600'
-                            }`}
-                          >
-                            <span className="truncate">{c.name}</span>
-                            {selected && <Check className="w-4 h-4 text-indigo-300 shrink-0" />}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </Field>
+
 
                   <Field
                     label="Descripción"
@@ -386,6 +370,52 @@ export default function EventFormModal({ categories, event, initialLocation, dup
                       onUse={(texto) => set('description', texto)}
                     />
                   </Field>
+                  <Field label="Categoría" error={err('categoryId')}>
+                    <CategorySuggestion
+                      datos={{ titulo: form.title, descripcion: form.description }}
+                      categorias={categories}
+                      onUse={(id, sugerencia) => { set('categoryId', id); if (sugerencia) set('categoriaSugerida', sugerencia); }}
+                    />
+                    <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Categoría">
+                      {categories
+                        // Solo las disponibles (y la que ya tenía el evento, aunque se haya ocultado)
+                        .filter((c) => c.activa !== false || c.id === event?.category.id)
+                        .map((c) => {
+                          const selected = form.categoryId === c.id;
+                          return (
+                            <button
+                              key={c.id}
+                              type="button"
+                              role="radio"
+                              aria-checked={selected}
+                              onClick={() => set('categoryId', c.id)}
+                              className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border text-sm font-semibold transition-colors text-left ${
+                                selected ? 'border-indigo-500 bg-indigo-500/15 text-white' : 'border-slate-800 bg-slate-950 text-slate-300 hover:border-slate-600'
+                              }`}
+                            >
+                              <span aria-hidden className="text-base shrink-0">{c.emoji ?? '✨'}</span>
+                              <span className="flex-1 min-w-0 truncate">{c.name}</span>
+                              {selected && <Check className="w-4 h-4 text-indigo-300 shrink-0" />}
+                            </button>
+                          );
+                        })}
+                    </div>
+                  </Field>
+                  {category?.name === CATEGORIA_OTRA && (
+                    <Field
+                      label="¿Qué categoría describiría mejor tu evento?"
+                      error={err('categoriaSugerida')}
+                      hint="Opcional. Nos ayuda a crear las categorías que faltan; si se crea, movemos tu evento a ella."
+                    >
+                      <input
+                        value={form.categoriaSugerida}
+                        maxLength={40}
+                        onChange={(e) => set('categoriaSugerida', e.target.value)}
+                        placeholder="Ej. Mascotas"
+                        className={inputClass(!!err('categoriaSugerida'))}
+                      />
+                    </Field>
+                  )}
                 </>
               )}
 

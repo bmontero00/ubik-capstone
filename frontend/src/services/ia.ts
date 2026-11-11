@@ -12,6 +12,9 @@ export interface DatosEventoIa {
 export const mejorarDescripcion = (datos: DatosEventoIa) =>
   apiJson<{ descripcion: string; consejos: string[] }>('/ia/descripcion', { method: 'POST', body: JSON.stringify(datos) });
 
+export const sugerirCategoria = (datos: DatosEventoIa) =>
+  apiJson<{ categoryId: string; nombre: string; sugerenciaNueva: string | null }>('/ia/categoria', { method: 'POST', body: JSON.stringify(datos) });
+
 export const disenarPortada = (datos: DatosEventoIa) =>
   apiJson<PortadaIa>('/ia/portada', { method: 'POST', body: JSON.stringify(datos) });
 

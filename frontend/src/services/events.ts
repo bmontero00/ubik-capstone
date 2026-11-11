@@ -4,6 +4,9 @@ import type { PortadaIa } from '../utils/portadas';
 export interface Category {
   id: string;
   name: string;
+  color?: string; // #rrggbb (lo define el admin)
+  emoji?: string;
+  activa?: boolean; // oculta = no se ofrece para eventos nuevos
 }
 
 // Tipo de entrada de un evento (General, VIP, Expositor...)
@@ -33,6 +36,7 @@ export interface EventItem {
   longitude: number;
   imageUrl?: string | null;
   imagenModeradaEn?: string | null; // null con imagen = la IA no pudo verificarla (la revisa un admin)
+  categoriaSugerida?: string | null; // con la categoría "Otra"
   portadaIa?: PortadaIa | null; // portada diseñada con IA (eventos sin imagen)
   distanceKm?: number;
   category: Category;
@@ -171,6 +175,7 @@ export interface EventPayload {
   image?: File | null;
   removeImage?: boolean;
   portadaIa?: PortadaIa | 'null'; // 'null' la quita al editar
+  categoriaSugerida?: string; // solo con la categoría "Otra"
   sourceEventId?: string; // al duplicar: reutiliza la imagen del evento original
   // Solicitud de condición especial de cargo (solo al crear)
   solicitarCondicionEspecial?: boolean;

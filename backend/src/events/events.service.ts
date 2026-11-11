@@ -12,6 +12,7 @@ import { conPrecios, ofertaVigente, precioFinal } from '../parametros/cargos';
 import { readFile, unlink } from 'fs/promises';
 import { ModeracionImagenService, tipoImagen } from '../ia/moderacion-imagen.service';
 import { normalizarPortada } from '../ia/portada';
+import { CATEGORIA_OTRA } from '../common/categorias';
 import { claveNombre, disponibilidadEventos } from './tipos-entrada';
 
 // Estados visibles en el catálogo público. Los cancelados y postergados se muestran
@@ -75,7 +76,8 @@ export class EventsService {
   }
 
   async create(dto: CreateEventDto, user: AuthenticatedUser, file?: Express.Multer.File) {
-    await this.assertCategoryExists(dto.categoryId);
+    const categoria = await this.categoriaDisponible(dto.categoryId);
+    const categoriaSugerida = categoria.name === CATEGORIA_OTRA ? dto.categoriaSugerida ?? null : null;
     const date = this.parseFutureDate(dto.date);
     const { sourceEventId, solicitarCondicionEspecial, justificacionCondicion, porcentajeSolicitado } = dto;
     const { price } = this.validarEntradas(dto.tiposEntrada, dto.aforo);
@@ -109,6 +111,7 @@ export class EventsService {
         latitude: dto.latitude,
         longitude: dto.longitude,
         categoryId: dto.categoryId,
+        categoriaSugerida,
         price,
         aforo: dto.aforo,
         tiposEntrada: { create: dto.tiposEntrada.map((t, orden) => this.datosTipo(t, orden)) },
@@ -225,13 +228,17 @@ export class EventsService {
 
   async update(id: string, user: AuthenticatedUser, dto: UpdateEventDto, file?: Express.Multer.File) {
     const event = await this.assertCanManage(id, user, { datos: true });
-    if (dto.categoryId) await this.assertCategoryExists(dto.categoryId);
+    // Una categoría oculta solo se mantiene si el evento ya la tenía; la sugerencia solo aplica con "Otra"
+    const categoria = dto.categoryId
+      ? await this.categoriaDisponible(dto.categoryId, event.categoryId)
+      : await this.prisma.category.findUniqueOrThrow({ where: { id: event.categoryId }, select: { name: true } });
+    const esOtra = categoria.name === CATEGORIA_OTRA;
 
     // La fecha solo se exige futura si cambia (un admin puede corregir otros datos de un evento pasado)
     const dateChanged = dto.date && new Date(dto.date).getTime() !== event.date.getTime();
     const {
       removeImage, date, tiposEntrada, aforo, estacionamiento, precioEstacionamiento, cuposEstacionamiento,
-      indicacionesEstacionamiento, portadaIa, ...fields
+      indicacionesEstacionamiento, portadaIa, categoriaSugerida, ...fields
     } = dto;
     const imagen = await this.imagenRevisada(file);
     // Portada con IA: undefined no la cambia; null (o una inválida) la quita
@@ -293,6 +300,7 @@ export class EventsService {
           ...(dateChanged && { date: this.parseFutureDate(date!) }),
           ...(imagen ? imagen : removeImage ? { imageUrl: null, imagenModeradaEn: null } : {}),
           ...(portada !== undefined && { portadaIa: portada ? (portada as unknown as Prisma.InputJsonObject) : Prisma.DbNull }),
+          ...(!esOtra ? { categoriaSugerida: null } : categoriaSugerida !== undefined ? { categoriaSugerida } : {}),
         },
       }),
       ...operaciones,
@@ -578,9 +586,12 @@ export class EventsService {
     return event;
   }
 
-  private async assertCategoryExists(categoryId: string) {
-    const category = await this.prisma.category.findUnique({ where: { id: categoryId }, select: { id: true } });
+  // La categoría debe existir y estar activa (salvo que el evento ya la tuviera antes de ocultarse)
+  private async categoriaDisponible(categoryId: string, actualId?: string) {
+    const category = await this.prisma.category.findUnique({ where: { id: categoryId }, select: { id: true, name: true, activa: true } });
     if (!category) throw new BadRequestException('La categoría seleccionada no existe');
+    if (!category.activa && category.id !== actualId) throw new BadRequestException('Esta categoría ya no está disponible: elige otra');
+    return category;
   }
 
   private parseFutureDate(value: string) {
@@ -591,10 +602,11 @@ export class EventsService {
     return date;
   }
 
+  // Todas las categorías (las ocultas también, para mostrar bien sus eventos); el formulario ofrece solo las activas
   async findAllCategories() {
     return this.prisma.category.findMany({
-      select: { id: true, name: true },
-      orderBy: { name: 'asc' },
+      select: { id: true, name: true, color: true, emoji: true, activa: true },
+      orderBy: [{ orden: 'asc' }, { name: 'asc' }],
     });
   }
 

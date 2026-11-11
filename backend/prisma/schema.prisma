@@ -151,27 +151,34 @@ model OrganizerReview {
 model Category {
   id     String  @id @default(uuid())
   name   String  @unique
+  // Los administra un ADMIN desde el mantenedor de categorías
+  color  String  @default("#818cf8") // color de la categoría (badge, mapa y portada por defecto)
+  emoji  String  @default("✨") // emoji de la portada por defecto
+  activa Boolean @default(true) // oculta = no se ofrece para eventos nuevos (los existentes la conservan)
+  orden  Int     @default(0)
   events Event[]
 
   @@map("categories")
 }
 
 model Event {
-  id               String    @id @default(uuid())
-  title            String
-  description      String?
-  price            Float     @default(0)
-  date             DateTime
-  address          String
-  latitude         Float
-  longitude        Float
-  imageUrl         String?
+  id                String    @id @default(uuid())
+  title             String
+  description       String?
+  price             Float     @default(0)
+  date              DateTime
+  address           String
+  latitude          Float
+  longitude         Float
+  imageUrl          String?
   // Fecha en que la IA aprobó la imagen; null si no se pudo verificar (el admin la revisa)
-  imagenModeradaEn DateTime?
+  imagenModeradaEn  DateTime?
   // Portada diseñada con IA para eventos sin imagen: { paleta, patron, emoji, frase }
-  portadaIa        Json?
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+  portadaIa         Json?
+  // Lo que propone el organizador cuando elige la categoría "Otra" (ej. "Mascotas")
+  categoriaSugerida String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
   // Llaves foráneas y relaciones
   categoryId String

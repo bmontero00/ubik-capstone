@@ -3,6 +3,8 @@
 import React, { useState } from 'react';
 import { CalendarDays, MapPin, Hourglass, Ban } from 'lucide-react';
 import EventCover from './EventCover';
+import { categoryColor } from '../../utils/mapTiles';
+import { mezclar } from '../../utils/categorias';
 import type { PortadaIa } from '../../utils/portadas';
 import { EventStatus } from '../../services/auth';
 import { OfferInfo, formatEventDate, imageSrc } from '../../services/events';
@@ -27,14 +29,10 @@ export interface EventCardData extends OfferInfo {
   portadaIa?: PortadaIa | null; // portada diseñada con IA cuando no hay imagen
 }
 
-export const categoryBadge = (categoryName?: string) => {
-  switch (categoryName?.toLowerCase()) {
-    case 'vehículos': return 'bg-amber-100 text-amber-800 border-amber-200';
-    case 'diversión': return 'bg-pink-100 text-pink-800 border-pink-200';
-    case 'videojuegos': return 'bg-purple-100 text-purple-800 border-purple-200';
-    case 'deporte': return 'bg-emerald-100 text-emerald-800 border-emerald-200';
-    default: return 'bg-blue-100 text-blue-700 border-blue-200';
-  }
+// Badge de categoría con su color (definido por el admin)
+export const categoryBadgeStyle = (categoryName?: string): React.CSSProperties => {
+  const color = categoryColor(categoryName);
+  return { color: mezclar(color, '#ffffff', 0.55), background: `${color}26`, borderColor: `${color}66` };
 };
 
 // Aviso de entradas agotadas: se mantiene visible hasta que el evento se finaliza solo
@@ -75,7 +73,7 @@ export default function EventCard({ event, footerAction, onOpen }: {
       )}
       <div className="p-6 flex-1">
         <div className="flex justify-between items-center mb-3 gap-2">
-          <span className={`text-[10px] uppercase font-bold px-2 py-1 rounded border ${categoryBadge(event.categoryName)}`}>
+          <span className="text-[10px] uppercase font-bold px-2 py-1 rounded border" style={categoryBadgeStyle(event.categoryName)}>
             {event.categoryName || 'Categoría'}
           </span>
           {event.distanceKm !== undefined && (

@@ -1,3 +1,4 @@
+import { infoCategoria, mezclar } from './categorias';
 // Portadas para eventos sin imagen. Los nombres de paletas y patrones coinciden con backend/src/ia/portada.ts
 // (Claude elige entre ellos al diseñar una portada con IA).
 
@@ -6,6 +7,7 @@ export interface PortadaIa {
   patron: string;
   emoji: string;
   frase: string;
+  colores?: [string, string, string]; // solo en portadas por defecto de categorías nuevas
 }
 
 // [color principal, color secundario, fondo oscuro]
@@ -59,7 +61,22 @@ const POR_CATEGORIA: Record<string, Omit<PortadaIa, 'frase'>> = {
   videojuegos: { paleta: 'lavanda', patron: 'cuadricula', emoji: '🎮' },
 };
 
-export const portadaPorCategoria = (categoria?: string): PortadaIa => ({
-  ...(POR_CATEGORIA[categoria?.toLowerCase() ?? ''] ?? { paleta: 'noche', patron: 'puntos', emoji: '✨' }),
-  frase: '',
-});
+const PATRONES_DEFECTO = ['puntos', 'circulos', 'lineas', 'ondas', 'cuadricula'];
+
+export const portadaPorCategoria = (categoria?: string): PortadaIa => {
+  const info = infoCategoria(categoria);
+  const clasica = POR_CATEGORIA[categoria?.toLowerCase() ?? ''];
+  if (clasica) return { ...clasica, emoji: info?.emoji ?? clasica.emoji, frase: '' };
+  if (info?.color) {
+    // Categorías creadas en el mantenedor: tonos derivados de su color y un patrón estable según el nombre
+    const hash = [...info.name].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7);
+    return {
+      paleta: 'personalizada',
+      colores: [info.color, mezclar(info.color, '#ffffff', 0.25), mezclar(info.color, '#000000', 0.85)],
+      patron: PATRONES_DEFECTO[hash % PATRONES_DEFECTO.length],
+      emoji: info.emoji ?? '✨',
+      frase: '',
+    };
+  }
+  return { paleta: 'noche', patron: 'puntos', emoji: info?.emoji ?? '✨', frase: '' };
+};
