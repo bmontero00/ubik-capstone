@@ -3,8 +3,7 @@
 import React, { useState } from 'react';
 import { Sparkles, Loader2, Check, X, Lightbulb, RefreshCw, Trash2, Wand2 } from 'lucide-react';
 import EventCover from './EventCover';
-import { DatosEventoIa, disenarPortada, mejorarDescripcion, sugerirCategoria } from '../../services/ia';
-import type { Category } from '../../services/events';
+import { DatosEventoIa, disenarPortada, mejorarDescripcion } from '../../services/ia';
 import type { PortadaIa } from '../../utils/portadas';
 
 // Sugerencias para una descripción más completa (sin IA) y botón para mejorarla con IA.
@@ -77,63 +76,6 @@ export function DescriptionAssistant({ datos, onUse }: { datos: DatosEventoIa; o
           <p className="mt-2 text-[10px] text-slate-500">Revisa que todo sea correcto antes de publicar: puedes editarla después de usarla.</p>
         </div>
       )}
-    </div>
-  );
-}
-
-// Sugerencia de categoría con IA a partir del título y la descripción; el organizador confirma con "Usar"
-export function CategorySuggestion({ datos, categorias, onUse }: {
-  datos: { titulo: string; descripcion: string };
-  categorias: Category[];
-  onUse: (categoryId: string, sugerenciaNueva: string | null) => void;
-}) {
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [sugerida, setSugerida] = useState<{ categoryId: string; nombre: string; sugerenciaNueva: string | null } | null>(null);
-  const puede = datos.titulo.trim().length >= 3 && datos.descripcion.trim().length >= 10;
-  const emoji = sugerida && categorias.find((c) => c.id === sugerida.categoryId)?.emoji;
-
-  const sugerir = async () => {
-    setBusy(true);
-    setError(null);
-    try {
-      setSugerida(await sugerirCategoria(datos));
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <div className="mb-2">
-      {sugerida ? (
-        <div className="flex flex-wrap items-center gap-2 p-2.5 rounded-xl border border-violet-500/35 bg-violet-500/10 text-sm">
-          <Sparkles className="w-4 h-4 text-violet-300 shrink-0" />
-          <span className="flex-1 min-w-0 text-slate-200">
-            Te sugerimos <strong className="text-white">{emoji} {sugerida.nombre}</strong>
-            {sugerida.sugerenciaNueva && <span className="text-slate-400"> (faltaría una categoría como «{sugerida.sugerenciaNueva}»)</span>}
-          </span>
-          <button type="button" onClick={() => { onUse(sugerida.categoryId, sugerida.sugerenciaNueva); setSugerida(null); }} className="px-2.5 py-1 text-xs font-bold rounded-lg bg-violet-600 hover:bg-violet-500">
-            Usar
-          </button>
-          <button type="button" onClick={() => setSugerida(null)} aria-label="Descartar sugerencia" className="p-1 rounded-lg text-slate-400 hover:text-white">
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-      ) : (
-        <button
-          type="button"
-          onClick={sugerir}
-          disabled={!puede || busy}
-          title={puede ? 'Claude propone la categoría según el título y la descripción' : 'Escribe el título y la descripción primero'}
-          className="flex items-center gap-1.5 text-xs font-semibold text-violet-200 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed"
-        >
-          {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wand2 className="w-3.5 h-3.5" />}
-          {busy ? 'Buscando la categoría…' : '¿No sabes cuál elegir? Sugerir con IA'}
-        </button>
-      )}
-      {error && <p className="mt-1 text-xs text-rose-300">{error}</p>}
     </div>
   );
 }

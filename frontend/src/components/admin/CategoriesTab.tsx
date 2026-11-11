@@ -134,7 +134,7 @@ export default function CategoriesTab({ onChanged }: { onChanged: () => void }) 
             className="mt-1 w-full px-3 py-2 text-sm rounded-xl bg-slate-900 border border-slate-700 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 disabled:opacity-50" />
         </label>
         <label className="text-xs text-slate-400">
-          Emoji
+          Emoji de portada
           <input value={form.emoji} maxLength={8} onChange={(e) => setForm({ ...form, emoji: e.target.value })}
             className="mt-1 w-20 px-3 py-2 text-lg text-center rounded-xl bg-slate-900 border border-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/50" />
         </label>
@@ -206,7 +206,10 @@ export default function CategoriesTab({ onChanged }: { onChanged: () => void }) 
             </li>
           ))}
         </ul>
-        <p className="mt-3 text-[11px] text-slate-500">Ocultar una categoría no afecta a sus eventos: solo deja de ofrecerse al crear eventos nuevos.</p>
+        <p className="mt-3 text-[11px] text-slate-500">
+          Ocultar una categoría no afecta a sus eventos: solo deja de ofrecerse al crear eventos nuevos. El emoji se usa solo en la
+          portada por defecto de los eventos sin imagen.
+        </p>
       </section>
 
       <aside className="lg:col-span-2">

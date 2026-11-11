@@ -7,7 +7,8 @@ import {
   ImagePlus, Trash2, RefreshCw, Pencil, Eye, Sparkles, Copy, Percent, Hourglass, BadgePercent,
 } from 'lucide-react';
 import EventCard from './EventCard';
-import { AiCoverPicker, CategorySuggestion, DescriptionAssistant } from './AiEventHelpers';
+import { AiCoverPicker, DescriptionAssistant } from './AiEventHelpers';
+import CategoryPicker from './CategoryPicker';
 import { CATEGORIA_OTRA } from '../../utils/categorias';
 import { optimizarImagen, verificarImagen } from '../../services/ia';
 import {
@@ -371,35 +372,14 @@ export default function EventFormModal({ categories, event, initialLocation, dup
                     />
                   </Field>
                   <Field label="Categoría" error={err('categoryId')}>
-                    <CategorySuggestion
-                      datos={{ titulo: form.title, descripcion: form.description }}
+                    <CategoryPicker
                       categorias={categories}
-                      onUse={(id, sugerencia) => { set('categoryId', id); if (sugerencia) set('categoriaSugerida', sugerencia); }}
+                      value={form.categoryId}
+                      onChange={(id, sugerencia) => { set('categoryId', id); if (sugerencia) set('categoriaSugerida', sugerencia); }}
+                      datos={{ titulo: form.title, descripcion: form.description }}
+                      autoSugerir={!isEdit && !isDuplicate}
+                      categoriaActualId={event?.category.id}
                     />
-                    <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Categoría">
-                      {categories
-                        // Solo las disponibles (y la que ya tenía el evento, aunque se haya ocultado)
-                        .filter((c) => c.activa !== false || c.id === event?.category.id)
-                        .map((c) => {
-                          const selected = form.categoryId === c.id;
-                          return (
-                            <button
-                              key={c.id}
-                              type="button"
-                              role="radio"
-                              aria-checked={selected}
-                              onClick={() => set('categoryId', c.id)}
-                              className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border text-sm font-semibold transition-colors text-left ${
-                                selected ? 'border-indigo-500 bg-indigo-500/15 text-white' : 'border-slate-800 bg-slate-950 text-slate-300 hover:border-slate-600'
-                              }`}
-                            >
-                              <span aria-hidden className="text-base shrink-0">{c.emoji ?? '✨'}</span>
-                              <span className="flex-1 min-w-0 truncate">{c.name}</span>
-                              {selected && <Check className="w-4 h-4 text-indigo-300 shrink-0" />}
-                            </button>
-                          );
-                        })}
-                    </div>
                   </Field>
                   {category?.name === CATEGORIA_OTRA && (
                     <Field

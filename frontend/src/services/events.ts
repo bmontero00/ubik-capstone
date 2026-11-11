@@ -7,6 +7,7 @@ export interface Category {
   color?: string; // #rrggbb (lo define el admin)
   emoji?: string;
   activa?: boolean; // oculta = no se ofrece para eventos nuevos
+  eventos?: number; // cantidad de eventos (para mostrar primero las más usadas)
 }
 
 // Tipo de entrada de un evento (General, VIP, Expositor...)

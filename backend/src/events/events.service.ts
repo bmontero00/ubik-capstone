@@ -604,10 +604,12 @@ export class EventsService {
 
   // Todas las categorías (las ocultas también, para mostrar bien sus eventos); el formulario ofrece solo las activas
   async findAllCategories() {
-    return this.prisma.category.findMany({
-      select: { id: true, name: true, color: true, emoji: true, activa: true },
+    const categorias = await this.prisma.category.findMany({
+      select: { id: true, name: true, color: true, emoji: true, activa: true, _count: { select: { events: true } } },
       orderBy: [{ orden: 'asc' }, { name: 'asc' }],
     });
+    // "eventos": para mostrar primero las más usadas en el formulario
+    return categorias.map(({ _count, ...c }) => ({ ...c, eventos: _count.events }));
   }
 
   private calculateHaversine(lat1: number, lon1: number, lat2: number, lon2: number): number {

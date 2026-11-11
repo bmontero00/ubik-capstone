@@ -120,7 +120,7 @@ export default function Landing({ categories, explore, activeQuery, onSearch, on
                   className="px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors hover:brightness-125"
                   style={{ color: categoryColor(c.name), borderColor: `${categoryColor(c.name)}55`, background: `${categoryColor(c.name)}14` }}
                 >
-                  {c.emoji && <span aria-hidden className="mr-1">{c.emoji}</span>}{c.name}
+                  {c.name}
                 </button>
               ))}
             </div>
