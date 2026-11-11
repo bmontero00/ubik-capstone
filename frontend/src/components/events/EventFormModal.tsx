@@ -9,6 +9,7 @@ import {
 import EventCard from './EventCard';
 import { AiCoverPicker, DescriptionAssistant } from './AiEventHelpers';
 import CategoryPicker from './CategoryPicker';
+import { AgeBadge, AgeRestrictionField } from './AgeRestriction';
 import { CATEGORIA_OTRA } from '../../utils/categorias';
 import { optimizarImagen, verificarImagen } from '../../services/ia';
 import {
@@ -90,6 +91,8 @@ function initialState(event?: EventItem, location?: { lat: number; lng: number }
       currentImageUrl: source.imageUrl ?? null,
       removeImage: false,
       portadaIa: source.portadaIa ?? null,
+      restriccionEdad: !!source.edadMinima,
+      edadMinima: source.edadMinima ?? 18,
       solicitarCondicion: false,
       justificacionCondicion: '',
       porcentajeSolicitado: '',
@@ -118,6 +121,8 @@ function initialState(event?: EventItem, location?: { lat: number; lng: number }
     currentImageUrl: null,
     removeImage: false,
     portadaIa: null,
+    restriccionEdad: false,
+    edadMinima: 18,
     solicitarCondicion: false,
     justificacionCondicion: '',
     porcentajeSolicitado: '',
@@ -231,6 +236,8 @@ export default function EventFormModal({ categories, event, initialLocation, dup
       title: form.title.normalize('NFC').trim(),
       description: form.description.normalize('NFC').trim(),
       categoryId: form.categoryId,
+      // La restricción de edad solo se define al crear (también al duplicar, que crea un evento nuevo)
+      ...(!isEdit && form.restriccionEdad ? { edadMinima: form.edadMinima } : {}),
       ...(category?.name === CATEGORIA_OTRA && form.categoriaSugerida.trim()
         ? { categoriaSugerida: form.categoriaSugerida.normalize('NFC').trim() } : {}),
       date: toDateTime(form.date, form.time)!.toISOString(),
@@ -448,6 +455,13 @@ export default function EventFormModal({ categories, event, initialLocation, dup
 
               {step === TICKETS_STEP && (
                 <>
+                  <AgeRestrictionField
+                    activa={form.restriccionEdad}
+                    edad={form.edadMinima}
+                    bloqueada={isEdit}
+                    onToggle={(v) => set('restriccionEdad', v)}
+                    onEdad={(e) => set('edadMinima', e)}
+                  />
                   <Field label="Entradas">
                     <div className="grid grid-cols-2 gap-3">
                       <ChoiceCard
@@ -523,6 +537,11 @@ export default function EventFormModal({ categories, event, initialLocation, dup
                       ))}
                     </ul>
                   </SummaryRow>
+                  <SummaryRow label="Restricción de edad" onEdit={() => goTo(TICKETS_STEP)}>
+                    {form.restriccionEdad
+                      ? <>Solo mayores de {form.edadMinima} años <AgeBadge edad={form.edadMinima} className="ml-1" /> · no se podrá modificar después de publicar</>
+                      : 'Todo público'}
+                  </SummaryRow>
                   <SummaryRow label="Estacionamiento" onEdit={() => goTo(TICKETS_STEP)}>
                     {form.estacionamiento === 'NINGUNO'
                       ? 'Sin estacionamiento'
@@ -572,6 +591,7 @@ export default function EventFormModal({ categories, event, initialLocation, dup
                     categoryName: category?.name,
                     imagePreview: shownImage,
                     portadaIa: shownImage ? null : form.portadaIa,
+                    edadMinima: form.restriccionEdad ? form.edadMinima : null,
                     status: event?.status,
                     statusReason: event?.statusReason,
                   }}

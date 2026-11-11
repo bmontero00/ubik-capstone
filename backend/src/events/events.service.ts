@@ -112,6 +112,7 @@ export class EventsService {
         longitude: dto.longitude,
         categoryId: dto.categoryId,
         categoriaSugerida,
+        edadMinima: dto.edadMinima ?? null,
         price,
         aforo: dto.aforo,
         tiposEntrada: { create: dto.tiposEntrada.map((t, orden) => this.datosTipo(t, orden)) },
@@ -238,8 +239,12 @@ export class EventsService {
     const dateChanged = dto.date && new Date(dto.date).getTime() !== event.date.getTime();
     const {
       removeImage, date, tiposEntrada, aforo, estacionamiento, precioEstacionamiento, cuposEstacionamiento,
-      indicacionesEstacionamiento, portadaIa, categoriaSugerida, ...fields
+      indicacionesEstacionamiento, portadaIa, categoriaSugerida, edadMinima, ...fields
     } = dto;
+    // La restricción de edad queda fija al publicar: cambiarla afectaría a quienes ya compraron o lo planificaron
+    if (edadMinima !== undefined && (edadMinima ?? null) !== event.edadMinima) {
+      throw new BadRequestException('La restricción de edad no se puede modificar una vez publicado el evento');
+    }
     const imagen = await this.imagenRevisada(file);
     // Portada con IA: undefined no la cambia; null (o una inválida) la quita
     const portada = portadaIa === undefined ? undefined : normalizarPortada(portadaIa);

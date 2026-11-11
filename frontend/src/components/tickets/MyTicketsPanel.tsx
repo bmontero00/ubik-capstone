@@ -12,6 +12,7 @@ import { formatDate } from '../../utils/labels';
 import { categoryColor } from '../../utils/mapTiles';
 import ReceiptModal from './ReceiptModal';
 import EventCover from '../events/EventCover';
+import { AgeBadge } from '../events/AgeRestriction';
 import ReviewFormModal from '../resenas/ReviewFormModal';
 import StarRating from '../organizers/StarRating';
 import { EstadoResena, diasRestantes, fetchMisResenas } from '../../services/resenas';
@@ -227,6 +228,11 @@ function PurchaseCard({ compra, past, review, onReview, onOpenEvent }: {
           </div>
           <p className="text-xs text-slate-400 mt-1 flex items-center gap-1.5"><CalendarDays className="w-3.5 h-3.5" /> {formatEventDate(e.date)}</p>
           <p className="text-xs text-slate-400 mt-0.5 flex items-center gap-1.5"><MapPin className="w-3.5 h-3.5" /> {e.address}</p>
+          {e.edadMinima ? (
+            <p className="mt-1.5 flex items-center gap-1.5 text-xs text-rose-200">
+              <AgeBadge edad={e.edadMinima} /> Solo mayores de {e.edadMinima} años: lleva tu cédula de identidad
+            </p>
+          ) : null}
           {notice && (
             <p className={`mt-2 flex items-start gap-2 text-xs p-2.5 rounded-lg border ${notice.className}`}>
               <notice.icon className="w-4 h-4 shrink-0" />

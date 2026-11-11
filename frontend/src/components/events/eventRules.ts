@@ -52,6 +52,8 @@ export interface EventFormState {
   currentImageUrl: string | null; // imagen ya guardada (al editar)
   removeImage: boolean;
   portadaIa: PortadaIa | null; // portada diseñada con IA (se usa si no hay imagen)
+  restriccionEdad: boolean; // evento con edad mínima
+  edadMinima: number; // 14, 16 o 18 (se usa si restriccionEdad)
   // Condición especial de cargo por servicio (solo al crear un evento con valor)
   solicitarCondicion: boolean;
   justificacionCondicion: string;

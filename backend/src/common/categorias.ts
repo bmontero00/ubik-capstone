@@ -15,3 +15,6 @@ export const esEmojiValido = (valor: string) => {
   const v = valor.trim();
   return !!v && [...v].length <= 4 && !/[\p{L}\p{N}<>]/u.test(v);
 };
+
+// Restricción de edad de un evento: se elige al crearlo y no cambia después
+export const EDADES_MINIMAS = [14, 16, 18] as const;

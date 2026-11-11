@@ -51,6 +51,7 @@ export interface Compra {
     address: string;
     imageUrl: string | null;
     portadaIa?: PortadaIa | null;
+    edadMinima?: number | null;
     status: EventStatus;
     statusReason: string | null;
     price: number;
@@ -103,10 +104,11 @@ export interface TicketSelection {
 
 export const selectionCount = (s: TicketSelection) => s.tipos.reduce((n, t) => n + t.cantidad, 0);
 
-export function createCompra(eventoId: string, asistentes: AsistenteInput[], estacionamientos = 0): Promise<Compra> {
+// confirmaEdad: en eventos con restricción de edad, el comprador confirma que todos los asistentes la cumplen
+export function createCompra(eventoId: string, asistentes: AsistenteInput[], estacionamientos = 0, confirmaEdad = false): Promise<Compra> {
   return apiJson<Compra>('/compras', {
     method: 'POST',
-    body: JSON.stringify({ eventoId, asistentes, ...(estacionamientos > 0 && { estacionamientos }) }),
+    body: JSON.stringify({ eventoId, asistentes, ...(estacionamientos > 0 && { estacionamientos }), ...(confirmaEdad && { confirmaEdad }) }),
   });
 }
 

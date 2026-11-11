@@ -18,6 +18,7 @@ interface MapEvent {
   ofertaActiva?: boolean;
   variosPrecios?: boolean;
   agotado?: boolean;
+  edadMinima?: number | null;
   precioSinOferta?: number;
   porcentajeDescuento?: number;
   ofertaHasta?: string | null;
@@ -245,6 +246,7 @@ export default function Map({
                   {evt.category?.name}
                 </span>
                 <strong className="block mt-1.5 text-sm font-bold text-white leading-snug">{evt.title}</strong>
+                {evt.edadMinima ? <span className="block text-[11px] font-bold text-rose-300">Solo mayores de {evt.edadMinima} años</span> : null}
                 {evt.status && evt.status !== 'PUBLISHED' && (
                   <span className="block text-[11px] font-bold text-rose-300">{EVENT_STATUS_LABELS[evt.status].label}</span>
                 )}

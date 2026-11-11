@@ -29,6 +29,7 @@ const compraInclude = {
       address: true,
       imageUrl: true,
       portadaIa: true,
+      edadMinima: true,
       status: true,
       statusReason: true,
       price: true,
@@ -63,6 +64,12 @@ export class ComprasService {
     if (!event) throw new NotFoundException('Evento no encontrado');
     if (!ESTADOS_CON_VENTA.includes(event.status) || event.date.getTime() <= Date.now()) {
       throw new BadRequestException('Este evento no tiene entradas disponibles en este momento');
+    }
+    if (event.edadMinima && !dto.confirmaEdad) {
+      throw new BadRequestException({
+        message: `Este evento es para mayores de ${event.edadMinima} años: confirma que todos los asistentes cumplen la edad mínima`,
+        code: 'CONFIRMAR_EDAD',
+      });
     }
     if (event.estadoCondicion === 'PENDIENTE') {
       throw new BadRequestException({

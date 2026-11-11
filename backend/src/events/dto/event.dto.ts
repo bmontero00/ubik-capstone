@@ -6,7 +6,7 @@ import {
 } from 'class-validator';
 import { OFERTA_LIMITS, PORCENTAJE_CARGO_MAX } from '../../parametros/cargos';
 import { IsReason } from '../../common/reason.validator';
-import { SUGERENCIA_LIMITES } from '../../common/categorias';
+import { EDADES_MINIMAS, SUGERENCIA_LIMITES } from '../../common/categorias';
 import { TIPO_ENTRADA_LIMITS, errorDescripcionTipo, errorNombreTipo, normalizarNombreTipo } from '../tipos-entrada';
 
 // Límites compartidos con el formulario del frontend (frontend/src/components/events/eventRules.ts)
@@ -106,6 +106,11 @@ const portadaDesdeJson = () =>
       return 'invalida';
     }
   });
+
+
+// Edad mínima: llega como texto en el formulario ("18"); vacío o "null" = todo público
+const edadDesdeFormulario = () =>
+  Transform(({ value }) => (value === undefined ? undefined : value === null || value === '' || value === 'null' ? null : Number(value)));
 
 export class CreateEventDto {
   @trim()
@@ -221,6 +226,12 @@ export class CreateEventDto {
     message: `Indica en ${SUGERENCIA_LIMITES.min} a ${SUGERENCIA_LIMITES.max} caracteres qué categoría describiría tu evento`,
   })
   categoriaSugerida?: string;
+
+  // Restricción de edad (14, 16 o 18). Sin valor = todo público. No se puede cambiar después de publicar
+  @IsOptional()
+  @edadDesdeFormulario()
+  @IsIn(EDADES_MINIMAS, { message: 'La edad mínima debe ser 14, 16 o 18 años' })
+  edadMinima?: number | null;
 }
 
 export class UpdateEventDto {
@@ -328,6 +339,12 @@ export class UpdateEventDto {
     message: `Indica en ${SUGERENCIA_LIMITES.min} a ${SUGERENCIA_LIMITES.max} caracteres qué categoría describiría tu evento`,
   })
   categoriaSugerida?: string;
+
+  // Restricción de edad (14, 16 o 18). Sin valor = todo público. No se puede cambiar después de publicar
+  @IsOptional()
+  @edadDesdeFormulario()
+  @IsIn(EDADES_MINIMAS, { message: 'La edad mínima debe ser 14, 16 o 18 años' })
+  edadMinima?: number | null;
 }
 
 // Oferta: % de descuento sobre el precio de todos los tipos de entrada

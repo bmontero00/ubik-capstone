@@ -38,6 +38,7 @@ export interface EventItem {
   imageUrl?: string | null;
   imagenModeradaEn?: string | null; // null con imagen = la IA no pudo verificarla (la revisa un admin)
   categoriaSugerida?: string | null; // con la categoría "Otra"
+  edadMinima?: number | null; // 14, 16 o 18; null = todo público
   portadaIa?: PortadaIa | null; // portada diseñada con IA (eventos sin imagen)
   distanceKm?: number;
   category: Category;
@@ -177,6 +178,7 @@ export interface EventPayload {
   removeImage?: boolean;
   portadaIa?: PortadaIa | 'null'; // 'null' la quita al editar
   categoriaSugerida?: string; // solo con la categoría "Otra"
+  edadMinima?: number; // solo al crear: después no se puede cambiar
   sourceEventId?: string; // al duplicar: reutiliza la imagen del evento original
   // Solicitud de condición especial de cargo (solo al crear)
   solicitarCondicionEspecial?: boolean;

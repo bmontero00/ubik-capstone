@@ -5,6 +5,7 @@ import {
   X, Check, ChevronDown, Loader2, CalendarDays, MapPin, Timer, CreditCard, ShieldCheck, PartyPopper, UserRound,
   Copy, AlertTriangle, Ticket, ArrowLeft, Lock, FlaskConical, Info,
 } from 'lucide-react';
+import { AgeNotice } from '../events/AgeRestriction';
 import { ApiError } from '../../services/auth';
 import {
   Compra, PaymentConfig, TicketSelection, cancelCompra, createCompra, fetchPaymentConfig, payCompra, payWithWebpay,
@@ -25,6 +26,7 @@ export interface CheckoutEvent {
   date: string;
   address: string;
   imageUrl?: string | null;
+  edadMinima?: number | null; // restricción de edad: se confirma antes de comprar
   price: number; // lo que recibe el organizador
   precioFinal?: number; // lo que paga el público por entrada (incluye el cargo)
   cargoPorEntrada?: number;
@@ -180,8 +182,16 @@ export default function CheckoutModal({ event, selection, buyer, resume, notice,
     setOpen(pending === -1 ? -1 : pending);
   };
 
+  // Restricción de edad: el comprador confirma que todos los asistentes la cumplen
+  const [confirmaEdad, setConfirmaEdad] = useState(false);
+  const [edadPendiente, setEdadPendiente] = useState(false);
+
   const submitAttendees = async () => {
     setTouched(Array(count).fill(true));
+    if (event.edadMinima && !confirmaEdad) {
+      setEdadPendiente(true);
+      return;
+    }
     const firstInvalid = errors.findIndex((e) => Object.keys(e).length);
     if (firstInvalid !== -1) {
       setOpen(firstInvalid);
@@ -197,7 +207,7 @@ export default function CheckoutModal({ event, selection, buyer, resume, notice,
         rut: a.rut,
         telefono: toFullPhone(a.telefono),
         correo: a.correo.trim(),
-      })), selection?.estacionamientos ?? 0);
+      })), selection?.estacionamientos ?? 0, !!event.edadMinima && confirmaEdad);
       setCompra(created);
       setNow(Date.now());
       setStep(created.estado === 'CONFIRMADA' ? 'done' : 'payment');
@@ -303,6 +313,21 @@ export default function CheckoutModal({ event, selection, buyer, resume, notice,
             <div className="p-5 sm:p-6 order-2 lg:order-1">
               {step === 'attendees' && (
                 <>
+                  {event.edadMinima ? (
+                    <div className="mb-5">
+                      <AgeNotice edad={event.edadMinima} compact />
+                      <label className={`mt-2 flex items-start gap-2.5 p-3 rounded-xl border cursor-pointer text-sm ${edadPendiente && !confirmaEdad ? 'border-rose-500/60 bg-rose-500/10' : 'border-slate-800 bg-slate-950'}`}>
+                        <input
+                          type="checkbox"
+                          checked={confirmaEdad}
+                          onChange={(e) => { setConfirmaEdad(e.target.checked); setEdadPendiente(false); }}
+                          className="mt-0.5 w-4 h-4 accent-rose-500"
+                        />
+                        <span className="text-slate-200">Confirmo que todos los asistentes de esta compra tienen {event.edadMinima} años o más.</span>
+                      </label>
+                      {edadPendiente && !confirmaEdad && <p className="mt-1 text-xs text-rose-300">Confirma la edad de los asistentes para continuar.</p>}
+                    </div>
+                  ) : null}
                   <div className="flex flex-wrap items-end justify-between gap-2 mb-4">
                     <div>
                       <h3 className="text-base font-bold text-white">¿Quiénes asistirán?</h3>

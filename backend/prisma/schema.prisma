@@ -177,6 +177,8 @@ model Event {
   portadaIa         Json?
   // Lo que propone el organizador cuando elige la categoría "Otra" (ej. "Mascotas")
   categoriaSugerida String?
+  // Edad mínima para asistir (14, 16 o 18); null = todo público. No se puede cambiar una vez publicado
+  edadMinima        Int?
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 

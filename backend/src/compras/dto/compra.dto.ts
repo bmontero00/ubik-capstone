@@ -2,6 +2,7 @@ import { Transform, Type } from 'class-transformer';
 import {
   ArrayMaxSize, ArrayMinSize, IsArray, IsEmail, IsIn, IsInt, IsOptional, IsString, IsUUID, Length, Matches, Max,
   MaxLength, Min, Validate, ValidateNested,
+  IsBoolean,
 } from 'class-validator';
 import { IsValidRutConstraint } from '../../auth/dto/register.dto';
 
@@ -67,6 +68,11 @@ export class CreateCompraDto {
   @Min(0, { message: 'La cantidad de estacionamientos no es válida' })
   @Max(COMPRA_LIMITS.maxPorCompra, { message: 'Puedes agregar como máximo un estacionamiento por entrada' })
   estacionamientos?: number;
+
+  // Eventos con restricción de edad: confirma que todos los asistentes tienen la edad mínima
+  @IsOptional()
+  @IsBoolean()
+  confirmaEdad?: boolean;
 }
 
 // Mientras no exista pasarela de pago solo se acepta el pago simulado

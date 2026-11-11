@@ -13,6 +13,7 @@ const eventSelect = {
   price: true,
   imageUrl: true,
   portadaIa: true,
+  edadMinima: true,
   status: true,
   statusReason: true,
   latitude: true,

@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { CalendarDays, MapPin, Hourglass, Ban } from 'lucide-react';
 import EventCover from './EventCover';
+import { AgeBadge } from './AgeRestriction';
 import { categoryColor } from '../../utils/mapTiles';
 import { mezclar } from '../../utils/categorias';
 import type { PortadaIa } from '../../utils/portadas';
@@ -27,6 +28,7 @@ export interface EventCardData extends OfferInfo {
   ventaPausada?: boolean; // condición especial en revisión: la venta se libera pronto
   agotado?: boolean; // todos los tipos de entrada sin cupo
   portadaIa?: PortadaIa | null; // portada diseñada con IA cuando no hay imagen
+  edadMinima?: number | null; // restricción de edad (ej. 18)
 }
 
 // Badge de categoría con su color (definido por el admin)
@@ -73,8 +75,11 @@ export default function EventCard({ event, footerAction, onOpen }: {
       )}
       <div className="p-6 flex-1">
         <div className="flex justify-between items-center mb-3 gap-2">
-          <span className="text-[10px] uppercase font-bold px-2 py-1 rounded border" style={categoryBadgeStyle(event.categoryName)}>
-            {event.categoryName || 'Categoría'}
+          <span className="flex items-center gap-1.5">
+            <span className="text-[10px] uppercase font-bold px-2 py-1 rounded border" style={categoryBadgeStyle(event.categoryName)}>
+              {event.categoryName || 'Categoría'}
+            </span>
+            <AgeBadge edad={event.edadMinima} />
           </span>
           {event.distanceKm !== undefined && (
             <span className="text-xs text-indigo-400 text-right">

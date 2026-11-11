@@ -18,6 +18,7 @@ import { OfferBadge, OfferPrice } from './OfferBadge';
 import { SoldOutBadge } from './EventCard';
 import EventReviewCard from '../resenas/EventReviewCard';
 import EventCover from './EventCover';
+import { AgeBadge, AgeNotice } from './AgeRestriction';
 
 const LocationPicker = dynamic(() => import('./LocationPicker'), {
   ssr: false,
@@ -126,6 +127,7 @@ export default function EventDetailModal({
                 {event.category?.name}
               </span>
               {event.status !== 'PUBLISHED' && <StatusPill {...EVENT_STATUS_LABELS[event.status]} />}
+              <AgeBadge edad={event.edadMinima} />
               {event.agotado && <SoldOutBadge />}
             </div>
           )}
@@ -191,6 +193,8 @@ export default function EventDetailModal({
                 )}
               </InfoTile>
             </div>
+
+            {event.edadMinima ? <div className="mt-4"><AgeNotice edad={event.edadMinima} /></div> : null}
 
             {tickets && (event.status === 'PUBLISHED' || event.status === 'POSTPONED') && (
               <div className="mt-4">
