@@ -17,6 +17,9 @@ export interface AuthUser {
   rejectionReason: string | null;
   organizationName: string | null;
   approvalNoticePending: boolean; // primer ingreso tras la aprobación de la solicitud
+  fotoPerfil?: string | null; // foto o logo (ruta en /uploads)
+  telefono?: string | null; // asistente: para "Usar mis datos" al comprar
+  rut?: string | null;
 }
 
 export interface AuthResponse {
@@ -179,6 +182,11 @@ export function getToken(): string | null {
 export function saveSession(data: AuthResponse) {
   localStorage.setItem(TOKEN_KEY, data.accessToken);
   localStorage.setItem(USER_KEY, JSON.stringify(data.user));
+}
+
+// Tras cambiar la contraseña llega un token nuevo (los anteriores dejan de servir)
+export function saveToken(token: string) {
+  localStorage.setItem(TOKEN_KEY, token);
 }
 
 export function updateStoredUser(user: AuthUser) {

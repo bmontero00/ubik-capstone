@@ -52,12 +52,13 @@ export class RegisterDto {
 
   // --- Datos de verificación, obligatorios solo para organizadores ---
 
-  @ValidateIf(isOrganizer)
+  // Asistentes: opcionales (para completar sus entradas al comprar); organizadores: obligatorios
+  @ValidateIf((dto: RegisterDto) => isOrganizer(dto) || !!dto.rut)
   @IsString()
   @Validate(IsValidRutConstraint)
   rut?: string;
 
-  @ValidateIf(isOrganizer)
+  @ValidateIf((dto: RegisterDto) => isOrganizer(dto) || !!dto.phone)
   @IsString()
   @Matches(/^(\+?56)?\s?9\s?\d{4}\s?\d{4}$/, {
     message: 'El teléfono debe ser un celular chileno (ej: +56 9 1234 5678)',

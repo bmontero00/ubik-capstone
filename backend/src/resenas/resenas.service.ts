@@ -17,7 +17,7 @@ const resenaPublica = {
   fechaCreacion: true,
   fechaEdicion: true,
   autorId: true,
-  autor: { select: { name: true } },
+  autor: { select: { name: true, fotoPerfil: true } },
   evento: { select: { id: true, title: true, date: true } },
 } satisfies Prisma.ResenaSelect;
 
@@ -48,6 +48,7 @@ export class ResenasService {
     return {
       id: r.id,
       autor: nombrePublico(r.autor.name),
+      autorFoto: r.autor.fotoPerfil,
       estrellas: r.estrellas,
       comentario: r.comentario,
       fecha: r.fechaCreacion,

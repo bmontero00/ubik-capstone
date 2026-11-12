@@ -19,11 +19,12 @@ import { Compra, TicketSelection, compraValida, fetchCompra, fetchMisCompras, se
 import { CalendarPlus, Compass, LayoutList, CheckCircle2, X, ArrowRight, Ticket, Search, MapPin } from 'lucide-react';
 import {
   ApiError, AuthResponse, AuthUser, SuspendedInfo, canPublishEvents, clearSession,
-  fetchCurrentUser, isAccountActive, loadStoredUser, markApprovalNoticeSeen, saveSession, updateStoredUser,
+  fetchCurrentUser, isAccountActive, loadStoredUser, markApprovalNoticeSeen, saveSession, saveToken, updateStoredUser,
 } from '../services/auth';
 import { Category, EventItem, fetchCategories as fetchCategoryList, publicPrice } from '../services/events';
 import { registrarCategorias } from '../utils/categorias';
 import SectorSearch from '../components/map/SectorSearch';
+import AccountModal from '../components/account/AccountModal';
 import type { SectorMapa } from '../components/Map';
 import { Ubicacion, contornoComuna } from '../services/ubicaciones';
 import { useUserLocation } from '../utils/location';
@@ -103,6 +104,7 @@ export default function HomePage() {
   // Compra en curso: cantidad elegida en el detalle, o una compra pendiente que se retoma
   const [checkout, setCheckout] = useState<{ event: CheckoutEvent; selection?: TicketSelection; resume?: Compra; notice?: string } | null>(null);
   const [myEventsKey, setMyEventsKey] = useState(0);
+  const [accountOpen, setAccountOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
   // Ubicación del usuario (con permiso). Sin permiso o fuera de Santiago, el centro es Santiago centro
@@ -537,7 +539,14 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-950 text-slate-100 font-sans">
-      <Navbar user={user} onOpenAuth={() => openAuth()} onLogout={handleLogout} />
+      <Navbar user={user} onOpenAuth={() => openAuth()} onLogout={handleLogout} onOpenAccount={() => setAccountOpen(true)} />
+      {accountOpen && user && (
+        <AccountModal
+          onClose={() => setAccountOpen(false)}
+          onUpdated={refreshUser}
+          onTokenChanged={(token) => saveToken(token)}
+        />
+      )}
 
       <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
         {!user ? (
@@ -715,7 +724,7 @@ export default function HomePage() {
           selection={checkout.selection}
           resume={checkout.resume}
           notice={checkout.notice}
-          buyer={{ name: user.name, email: user.email }}
+          buyer={{ name: user.name, email: user.email, rut: user.rut, telefono: user.telefono }}
           onClose={() => setCheckout(null)}
           onChanged={loadCompras}
           onViewTickets={() => {

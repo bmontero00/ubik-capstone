@@ -51,7 +51,7 @@ export class ModeracionImagenService {
 
   constructor(private readonly ia: IaService) {}
 
-  async revisar(contenido: Buffer, mediaType: 'image/jpeg' | 'image/png'): Promise<ResultadoImagen> {
+  async revisar(contenido: Buffer, mediaType: 'image/jpeg' | 'image/png' | 'image/webp'): Promise<ResultadoImagen> {
     const hash = createHash('sha256').update(contenido).digest('hex');
     const enCache = this.cache.get(hash);
     if (enCache && enCache.hasta > Date.now()) return enCache.resultado;

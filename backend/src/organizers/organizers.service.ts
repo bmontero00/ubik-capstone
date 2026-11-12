@@ -47,6 +47,7 @@ export class OrganizersService {
         role: true,
         status: true,
         createdAt: true,
+        fotoPerfil: true,
         organizerProfile: {
           select: { status: true, organizationName: true, eventDescription: true, socialUrl: true, reviewedAt: true },
         },
@@ -100,6 +101,7 @@ export class OrganizersService {
       id: user.id,
       nombre: profile.organizationName || user.name,
       responsable: profile.organizationName ? user.name : null,
+      logo: user.fotoPerfil,
       descripcion: profile.eventDescription,
       redSocial: /^https?:\/\//i.test(profile.socialUrl ?? '') ? profile.socialUrl : null,
       verificadoDesde: profile.reviewedAt ?? user.createdAt,

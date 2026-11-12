@@ -20,6 +20,7 @@ export const ETIQUETAS_ESTRELLAS: Record<number, string> = {
 export interface Resena {
   id: string;
   autor: string; // nombre e inicial del apellido
+  autorFoto?: string | null;
   estrellas: number;
   comentario: string;
   fecha: string;

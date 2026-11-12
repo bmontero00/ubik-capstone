@@ -14,6 +14,7 @@ import { OfferBadge, OfferPrice } from '../events/OfferBadge';
 import ReviewItem from '../resenas/ReviewItem';
 import OrganizerReviews from '../resenas/OrganizerReviews';
 import AiReviewSummary from '../resenas/AiReviewSummary';
+import Avatar from '../account/Avatar';
 import EventCover from '../events/EventCover';
 
 interface OrganizerProfileModalProps {
@@ -23,9 +24,6 @@ interface OrganizerProfileModalProps {
   back?: { label: string; onBack: () => void }; // ej. volver al evento desde el que se abrió
   initialView?: 'profile' | 'reviews'; // ej. el organizador abre directo sus reseñas para responderlas
 }
-
-const initials = (name: string) =>
-  name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]!.toUpperCase()).join('');
 
 // Color estable del avatar a partir del nombre
 const avatarColor = (name: string) => {
@@ -128,13 +126,7 @@ export default function OrganizerProfileModal({ organizerId, onClose, onOpenEven
           <div className="px-5 sm:px-8 pb-8">
             {/* Identidad */}
             <div className="-mt-12 flex flex-col sm:flex-row sm:items-end gap-4">
-              <div
-                className="w-24 h-24 rounded-3xl flex items-center justify-center text-3xl font-extrabold text-white ring-4 ring-slate-900 shadow-xl shrink-0"
-                style={{ background: avatarColor(profile.nombre) }}
-                aria-hidden
-              >
-                {initials(profile.nombre)}
-              </div>
+              <Avatar nombre={profile.nombre} foto={profile.logo} tipo="logo" size={96} className="ring-4 ring-slate-900 shadow-xl" />
               <div className="flex-1 min-w-0">
                 <h2 className="text-2xl sm:text-3xl font-extrabold text-white leading-tight break-words flex flex-wrap items-center gap-2">
                   {profile.nombre}

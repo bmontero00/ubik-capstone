@@ -18,6 +18,7 @@ import { OfferBadge, OfferPrice } from './OfferBadge';
 import { SoldOutBadge } from './EventCard';
 import EventReviewCard from '../resenas/EventReviewCard';
 import EventCover from './EventCover';
+import Avatar from '../account/Avatar';
 import { AgeBadge, AgeNotice } from './AgeRestriction';
 
 const LocationPicker = dynamic(() => import('./LocationPicker'), {
@@ -148,6 +149,7 @@ export default function EventDetailModal({
                   title="Ver el perfil del organizador"
                   className="group inline-flex items-center gap-1.5 px-2 py-0.5 -my-0.5 rounded-lg font-semibold text-slate-100 hover:bg-slate-800 transition-colors"
                 >
+                  {detail?.organizer.logo && <Avatar nombre={organizerName(event)} foto={detail.organizer.logo} tipo="logo" size={24} />}
                   <span className="underline decoration-slate-600 underline-offset-4 group-hover:decoration-indigo-400">{organizerName(event)}</span>
                   <BadgeCheck className="w-4 h-4 text-emerald-400" aria-label="Organizador verificado" />
                   <span className="text-xs text-indigo-300 font-medium">Ver perfil</span>

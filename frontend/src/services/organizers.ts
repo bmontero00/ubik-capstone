@@ -21,6 +21,7 @@ export interface OrganizerProfile {
   id: string;
   nombre: string;
   responsable: string | null;
+  logo: string | null; // logo de la organización (o null: se muestran las iniciales)
   descripcion: string;
   redSocial: string | null;
   verificadoDesde: string;

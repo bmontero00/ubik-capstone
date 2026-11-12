@@ -49,6 +49,7 @@ export interface EventItem {
     email?: string;
     organizerProfile?: { organizationName: string | null } | null;
     perfilPublico?: boolean; // solo en el detalle: si tiene perfil público para enlazar
+    logo?: string | null; // solo en el detalle: logo del organizador verificado
   };
   status: EventStatus;
   statusReason?: string | null;

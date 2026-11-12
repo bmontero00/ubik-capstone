@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { Loader2, Reply, BadgeCheck, Pencil, Trash2, Ticket } from 'lucide-react';
 import StarRating from '../organizers/StarRating';
+import Avatar from '../account/Avatar';
 import { RESENA, Resena, fechaResena, quitarRespuesta, responderResena } from '../../services/resenas';
 
 interface ReviewItemProps {
@@ -53,9 +54,7 @@ export default function ReviewItem({ resena, organizador, canReply, onOpenEvent,
     <li className="p-4 rounded-2xl bg-slate-950 border border-slate-800">
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-2.5 min-w-0">
-          <span className="w-9 h-9 rounded-full bg-slate-800 flex items-center justify-center text-sm font-bold text-slate-200 shrink-0" aria-hidden>
-            {resena.autor[0]?.toUpperCase()}
-          </span>
+          <Avatar nombre={resena.autor} foto={resena.autorFoto} size={36} />
           <div className="min-w-0">
             <p className="text-sm font-semibold text-slate-100 flex items-center gap-1.5">
               {resena.autor}

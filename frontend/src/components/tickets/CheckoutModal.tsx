@@ -36,7 +36,7 @@ export interface CheckoutEvent {
 interface CheckoutModalProps {
   event: CheckoutEvent;
   selection?: TicketSelection; // entradas elegidas en el detalle (compra nueva)
-  buyer: { name: string; email: string };
+  buyer: { name: string; email: string; rut?: string | null; telefono?: string | null };
   resume?: Compra; // compra pendiente que se retoma ("Mis entradas" o al volver de Webpay), o ya pagada
   notice?: string; // aviso al volver de Webpay (ej. pago rechazado)
   onClose: () => void;
@@ -169,7 +169,14 @@ export default function CheckoutModal({ event, selection, buyer, resume, notice,
 
   const fillWithMyData = (i: number) => {
     const { nombre, apellido } = splitName(buyer.name);
-    setAttendees((prev) => prev.map((a, j) => (j === i ? { ...a, nombre: a.nombre || nombre, apellido: a.apellido || apellido, correo: a.correo || buyer.email } : a)));
+    setAttendees((prev) => prev.map((a, j) => (j === i ? {
+      ...a,
+      nombre: a.nombre || nombre,
+      apellido: a.apellido || apellido,
+      correo: a.correo || buyer.email,
+      rut: a.rut || (buyer.rut ? formatRut(buyer.rut) : ''),
+      telefono: a.telefono || (buyer.telefono ? formatLocalPhone(buyer.telefono.replace(/^\+?56/, '')) : ''),
+    } : a)));
   };
 
   const copyContact = (i: number) =>

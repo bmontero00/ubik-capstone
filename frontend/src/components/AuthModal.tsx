@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import {
   X, Lock, Mail, User as UserIcon, Loader2, Ticket, CalendarPlus, ArrowLeft, ShieldCheck,
-  Phone, IdCard, Building2, Link2, Eye, EyeOff, Check, Hourglass, Info, Ban, CircleX, RotateCcw, FilePlus,
+  Phone, IdCard, Building2, Link2, Eye, EyeOff, Check, Hourglass, Info, Ban, CircleX, RotateCcw, FilePlus, ImagePlus,
 } from 'lucide-react';
 import {
   ApiError, AuthResponse, RegisterPayload, RejectedInfo, SuspendedInfo,
@@ -13,6 +13,7 @@ import { formatRut, isValidRut } from '../utils/rut';
 import { PHONE_PREFIX, formatLocalPhone, isValidLocalPhone, toFullPhone } from '../utils/phone';
 import { formatDate } from '../utils/labels';
 import PasswordRecovery from './PasswordRecovery';
+import { esFotoValida, subirFoto } from '../services/cuenta';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -67,6 +68,10 @@ export default function AuthModal({
   if (!isOpen) return null;
 
   const isOrganizer = view === 'register' && accountType === 'ORGANIZER';
+  const isAttendeeRegister = view === 'register' && accountType === 'ATTENDEE';
+  // Logo opcional del organizador: se sube apenas se crea la cuenta (se puede cambiar en Mi cuenta)
+  const [logo, setLogo] = useState<File | null>(null);
+  const [logoError, setLogoError] = useState<string | null>(null);
   const isReapply = view === 'register' && reapplyMode !== null;
 
   const setField = <K extends keyof FormState>(key: K, value: FormState[K]) =>
@@ -118,6 +123,11 @@ export default function AuthModal({
     if (!isReapply) {
       if (!/^\S+@\S+\.\S+$/.test(form.email)) errors.email = 'Ingresa un correo válido';
       if (form.password.length < 6) errors.password = 'Mínimo 6 caracteres';
+    }
+
+    if (isAttendeeRegister) {
+      if (form.rut && !isValidRut(form.rut)) errors.rut = 'RUT inválido, revisa el dígito verificador';
+      if (form.phone && !isValidLocalPhone(form.phone)) errors.phone = 'Ingresa los 9 dígitos de tu celular, comenzando con 9';
     }
 
     if (isOrganizer) {
@@ -173,8 +183,13 @@ export default function AuthModal({
         password: form.password,
         accountType,
         ...(accountType === 'ORGANIZER' ? organizerFields() : {}),
+        // Asistente: RUT y celular opcionales, para completar sus entradas al comprar
+        ...(accountType === 'ATTENDEE' && form.rut ? { rut: form.rut } : {}),
+        ...(accountType === 'ATTENDEE' && form.phone ? { phone: toFullPhone(form.phone) } : {}),
       };
-      onSuccess(await registerUser(payload));
+      const registro = await registerUser(payload);
+      onSuccess(registro);
+      if (accountType === 'ORGANIZER' && logo) await subirFoto(logo, registro.accessToken).catch(() => {});
       // Al organizador le explicamos qué pasa con su solicitud antes de cerrar
       if (accountType === 'ORGANIZER') setView('submitted');
       else onClose();
@@ -515,6 +530,51 @@ export default function AuthModal({
                   view === 'register' ? 'Mínimo 6 caracteres' : undefined,
                 )}
 
+              {isAttendeeRegister && (
+                <div className="pt-2 border-t border-slate-800 space-y-3">
+                  <div className="mt-3">
+                    <p className="text-xs font-bold text-slate-300 uppercase tracking-wider">Datos para tus compras (opcional)</p>
+                    <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
+                      Si los dejas, completamos tus entradas más rápido al comprar. Puedes omitirlos ahora y agregarlos
+                      después en Mi cuenta. No se muestran públicamente.
+                    </p>
+                  </div>
+                  <div className="grid sm:grid-cols-2 gap-4">
+                    {renderField('rut', 'RUT', <IdCard className={iconClass} />,
+                      <input
+                        id="auth-rut"
+                        type="text"
+                        inputMode="text"
+                        value={form.rut}
+                        onChange={(e) => setField('rut', formatRut(e.target.value))}
+                        onBlur={() => markTouched('rut')}
+                        placeholder="12.345.678-5"
+                        className={inputClass('rut')}
+                      />,
+                    )}
+                    {renderField('phone', 'Celular', <Phone className={iconClass} />,
+                      <>
+                        <span className="absolute left-9 top-2.5 text-sm text-slate-300 select-none pointer-events-none" aria-hidden>
+                          {PHONE_PREFIX}
+                        </span>
+                        <input
+                          id="auth-phone"
+                          type="tel"
+                          inputMode="numeric"
+                          autoComplete="tel-national"
+                          aria-label={`Celular, prefijo ${PHONE_PREFIX}`}
+                          value={form.phone}
+                          onChange={(e) => setField('phone', formatLocalPhone(e.target.value))}
+                          onBlur={() => markTouched('phone')}
+                          placeholder="9 1234 5678"
+                          className={inputClass('phone').replace('pl-10', 'pl-[4.25rem]')}
+                        />
+                      </>,
+                    )}
+                  </div>
+                </div>
+              )}
+
               {view === 'login' && (
                 <div className="-mt-2 text-right">
                   <button type="button" onClick={() => goTo('recover')} className="text-xs text-emerald-400 hover:underline font-semibold">
@@ -583,6 +643,41 @@ export default function AuthModal({
                     />,
                     'Si organizas a título personal, déjalo en blanco',
                   )}
+
+                  <div>
+                    <span className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Logo (opcional)</span>
+                    <div className="flex items-center gap-3 p-3 rounded-xl bg-slate-950 border border-slate-800">
+                      {logo ? (
+                        <span className="w-14 h-14 rounded-[22%] bg-white p-1.5 flex items-center justify-center shrink-0 overflow-hidden">
+                          <img src={URL.createObjectURL(logo)} alt="Vista previa del logo" className="max-w-full max-h-full object-contain" />
+                        </span>
+                      ) : (
+                        <span className="w-14 h-14 rounded-[22%] border border-dashed border-slate-600 flex items-center justify-center shrink-0 text-slate-500">
+                          <ImagePlus className="w-5 h-5" />
+                        </span>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <label className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg bg-slate-800 hover:bg-slate-700 cursor-pointer">
+                          {logo ? 'Cambiar logo' : 'Elegir logo'}
+                          <input
+                            type="file"
+                            accept="image/jpeg,image/png,image/webp"
+                            className="sr-only"
+                            onChange={(e) => {
+                              const f = e.target.files?.[0];
+                              if (!f) return;
+                              if (!esFotoValida(f)) { setLogoError('Usa una imagen JPG, PNG o WebP de hasta 5 MB'); return; }
+                              setLogoError(null);
+                              setLogo(f);
+                            }}
+                          />
+                        </label>
+                        {logo && <button type="button" onClick={() => setLogo(null)} className="ml-2 text-xs text-slate-400 hover:text-white">Quitar</button>}
+                        <p className="text-[11px] text-slate-500 mt-1">Se muestra completo, sin recortar. Ideal: PNG con fondo transparente.</p>
+                        {logoError && <p className="text-[11px] text-rose-400 mt-1">{logoError}</p>}
+                      </div>
+                    </div>
+                  </div>
 
                   <div>
                     <label htmlFor="auth-eventDescription" className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">

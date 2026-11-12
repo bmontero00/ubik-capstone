@@ -9,6 +9,7 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import { OrganizerStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { normalizarCelular } from '../cuenta/cuenta.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { ReapplyDto } from './dto/reapply.dto';
@@ -27,6 +28,9 @@ const userSelect = {
   status: true,
   statusReason: true,
   statusChangedAt: true,
+  fotoPerfil: true,
+  telefono: true,
+  rut: true,
   organizerProfile: {
     select: { status: true, rejectionReason: true, organizationName: true, approvalSeenAt: true },
   },
@@ -81,6 +85,9 @@ export class AuthService {
         password: hashedPassword,
         name: dto.name,
         role: isOrganizer ? 'ORGANIZER' : 'ATTENDEE',
+        // Datos opcionales del asistente para completar sus entradas
+        ...(!isOrganizer && dto.rut && { rut: normalizeRut(dto.rut) }),
+        ...(!isOrganizer && dto.phone && { telefono: normalizarCelular(dto.phone) }),
         organizerProfile: rut
           ? {
               create: {

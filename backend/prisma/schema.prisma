@@ -14,13 +14,19 @@ enum Role {
 }
 
 model User {
-  id        String   @id @default(uuid())
-  email     String   @unique
-  password  String
-  name      String
-  role      Role     @default(ATTENDEE)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id       String @id @default(uuid())
+  email    String @unique
+  password String
+  name     String
+  role     Role   @default(ATTENDEE)
+
+  // Mi cuenta: foto de perfil (logo en organizadores) y datos opcionales del asistente para completar
+  // sus entradas al comprar (los del organizador están en su perfil)
+  fotoPerfil String? // ruta en /uploads (webp procesado)
+  telefono   String? // celular chileno "+56912345678"
+  rut        String? // normalizado "12345678-5"
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   // Estado de la cuenta, lo administra un ADMIN (motivo obligatorio si no es ACTIVE)
   status               AccountStatus          @default(ACTIVE)

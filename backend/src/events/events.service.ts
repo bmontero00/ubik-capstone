@@ -35,7 +35,7 @@ const tiposInclude = { tiposEntrada: { orderBy: { orden: 'asc' } } } satisfies P
 const publicInclude = {
   ...tiposInclude,
   category: { select: { id: true, name: true } },
-  organizer: { select: { id: true, name: true, organizerProfile: { select: { organizationName: true } } } },
+  organizer: { select: { id: true, name: true, fotoPerfil: true, organizerProfile: { select: { organizationName: true } } } },
 } satisfies Prisma.EventInclude;
 
 const eventInclude = {
@@ -163,6 +163,7 @@ export class EventsService {
         ...publicInclude,
         organizer: {
           select: {
+            fotoPerfil: true,
             id: true,
             name: true,
             role: true,
@@ -192,6 +193,7 @@ export class EventsService {
         id: organizer.id,
         name: organizer.role === 'ADMIN' ? 'Equipo UBIK' : organizer.name,
         organizerProfile: organizer.organizerProfile && { organizationName: organizer.organizerProfile.organizationName },
+        logo: perfilPublico ? organizer.fotoPerfil : null, // el logo solo de organizadores verificados
         perfilPublico,
       },
       canManage,
