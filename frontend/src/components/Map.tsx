@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, Circle, useMap, useMapEvents } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Circle, GeoJSON, useMap, useMapEvents } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import { LocateFixed, Loader2, Plus, Minus, Crosshair } from 'lucide-react';
@@ -43,6 +43,42 @@ interface MapProps {
   onLocate?: () => void;
   onSelectLocationForNewEvent?: (lat: number, lng: number) => void;
   onOpenEvent?: (id: string) => void; // botón "Ver más" del popup
+  // Sector elegido en el buscador "¿Dónde?": centro de la búsqueda, con su contorno si es una comuna
+  sector?: SectorMapa | null;
+}
+
+export interface SectorMapa {
+  nombre: string;
+  lat: number;
+  lng: number;
+  bbox?: [number, number, number, number]; // [oeste, sur, este, norte]
+  contorno?: GeoJSON.GeoJsonObject;
+}
+
+// Pin del sector buscado
+const sectorIcon = L.divIcon({
+  className: '',
+  iconSize: [30, 38],
+  iconAnchor: [15, 36],
+  popupAnchor: [0, -32],
+  html: `<svg width="30" height="38" viewBox="0 0 30 38" xmlns="http://www.w3.org/2000/svg" style="filter:drop-shadow(0 3px 4px rgba(0,0,0,.55))">
+      <path d="M15 1C7.3 1 1.5 6.8 1.5 14.1 1.5 24.2 15 37 15 37s13.5-12.8 13.5-22.9C28.5 6.8 22.7 1 15 1z" fill="#6366f1" stroke="#e0e7ff" stroke-width="2"/>
+      <circle cx="15" cy="14" r="5.5" fill="#e0e7ff"/>
+    </svg>`,
+});
+
+// Encuadra el sector: el contorno de la comuna completo o, si no hay, el área del lugar
+function FitSector({ sector }: { sector: SectorMapa }) {
+  const map = useMap();
+  const bbox = sector.bbox;
+  useEffect(() => {
+    if (!bbox) return;
+    const [oeste, sur, este, norte] = bbox;
+    // Lugares muy chicos (una plaza) no se acercan de más
+    map.flyToBounds([[sur, oeste], [norte, este]], { padding: [32, 32], maxZoom: 15, duration: 0.8 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bbox?.join(','), map]);
+  return null;
 }
 
 // Pin con el color de la categoría del evento
@@ -105,7 +141,7 @@ function SyncView({ lat, lng, radiusKm, located }: { lat: number; lng: number; r
 
 // Acercar, alejar y volver a la ubicación, con los colores del sitio. El botón de volver se
 // destaca cuando el usuario se alejó del punto de referencia recorriendo el mapa.
-function MapControls({ lat, lng, located }: { lat: number; lng: number; located: boolean }) {
+function MapControls({ lat, lng, located, sectorNombre }: { lat: number; lng: number; located: boolean; sectorNombre?: string }) {
   const map = useMap();
   const ref = useRef<HTMLDivElement>(null);
   const [away, setAway] = useState(false);
@@ -143,8 +179,8 @@ function MapControls({ lat, lng, located }: { lat: number; lng: number; located:
       <button
         type="button"
         onClick={recenter}
-        aria-label={located ? 'Volver a mi ubicación' : 'Volver al punto de referencia'}
-        title={located ? 'Volver a mi ubicación' : 'Volver a Santiago centro'}
+        aria-label={sectorNombre ? `Volver a ${sectorNombre}` : located ? 'Volver a mi ubicación' : 'Volver al punto de referencia'}
+        title={sectorNombre ? `Volver a ${sectorNombre}` : located ? 'Volver a mi ubicación' : 'Volver a Santiago centro'}
         className={`w-9 h-9 flex items-center justify-center rounded-xl border shadow-lg backdrop-blur transition-colors ${
           away
             ? 'bg-gradient-to-br from-emerald-400 to-cyan-400 border-transparent text-slate-950 hover:from-emerald-300 hover:to-cyan-300'
@@ -171,7 +207,7 @@ function MapContextMenu({ onRightClick }: { onRightClick: (lat: number, lng: num
 }
 
 export default function Map({
-  events, centerLat, centerLng, radiusKm, userLocation, locating, onLocate, onSelectLocationForNewEvent, onOpenEvent,
+  events, centerLat, centerLng, radiusKm, userLocation, locating, onLocate, onSelectLocationForNewEvent, onOpenEvent, sector,
 }: MapProps) {
   const [contextMenu, setContextMenu] = useState<{ lat: number; lng: number; x: number; y: number } | null>(null);
   const icons = useMemo(() => new globalThis.Map<string, L.DivIcon>(), []);
@@ -203,8 +239,28 @@ export default function Map({
       <MapContainer center={[centerLat, centerLng]} zoom={START_ZOOM} zoomSnap={0.5} zoomControl={false} scrollWheelZoom className="w-full h-full z-0 bg-slate-950">
         <TileLayer url={DARK_TILES.url} attribution={DARK_TILES.attribution} className={DARK_TILES.className} maxZoom={DARK_TILES.maxZoom} />
 
-        <SyncView lat={centerLat} lng={centerLng} radiusKm={radiusKm} located={!!userLocation} />
-        <MapControls lat={centerLat} lng={centerLng} located={!!userLocation} />
+        <SyncView lat={centerLat} lng={centerLng} radiusKm={radiusKm} located={!!userLocation && !sector} />
+        <MapControls lat={centerLat} lng={centerLng} located={!!userLocation && !sector} sectorNombre={sector?.nombre} />
+
+        {sector && (
+          <>
+            <FitSector sector={sector} />
+            {sector.contorno && (
+              <GeoJSON
+                key={sector.nombre}
+                data={sector.contorno}
+                interactive={false}
+                style={{ color: '#a5b4fc', weight: 2, opacity: 0.9, fillColor: '#6366f1', fillOpacity: 0.06, dashArray: '4 4' }}
+              />
+            )}
+            <Marker position={[sector.lat, sector.lng]} icon={sectorIcon} zIndexOffset={900}>
+              <Popup>
+                <strong className="block text-sm text-white">{sector.nombre}</strong>
+                <span className="text-xs text-slate-400">Buscamos eventos a {radiusKm} km de este punto.</span>
+              </Popup>
+            </Marker>
+          </>
+        )}
 
         <Circle
           center={[centerLat, centerLng]}

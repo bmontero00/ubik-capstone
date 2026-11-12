@@ -10,8 +10,9 @@ import { PagosModule } from './pagos/pagos.module';
 import { CorreoModule } from './correo/correo.module';
 import { ResenasModule } from './resenas/resenas.module';
 import { IaModule } from './ia/ia.module';
+import { UbicacionesModule } from './ubicaciones/ubicaciones.module';
 
 @Module({
-  imports: [AuthModule, EventsModule, PrismaModule, AdminModule, OrganizersModule, ComprasModule, ParametrosModule, PagosModule, CorreoModule, IaModule, ResenasModule],
+  imports: [AuthModule, EventsModule, PrismaModule, AdminModule, OrganizersModule, ComprasModule, ParametrosModule, PagosModule, CorreoModule, IaModule, ResenasModule, UbicacionesModule],
 })
 export class AppModule {}

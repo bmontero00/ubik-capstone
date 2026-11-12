@@ -16,13 +16,16 @@ import MyTicketsPanel from '../components/tickets/MyTicketsPanel';
 import Landing from '../components/landing/Landing';
 import Footer from '../components/Footer';
 import { Compra, TicketSelection, compraValida, fetchCompra, fetchMisCompras, selectionCount } from '../services/compras';
-import { CalendarPlus, Compass, LayoutList, CheckCircle2, X, ArrowRight, Ticket } from 'lucide-react';
+import { CalendarPlus, Compass, LayoutList, CheckCircle2, X, ArrowRight, Ticket, Search, MapPin } from 'lucide-react';
 import {
   ApiError, AuthResponse, AuthUser, SuspendedInfo, canPublishEvents, clearSession,
   fetchCurrentUser, isAccountActive, loadStoredUser, markApprovalNoticeSeen, saveSession, updateStoredUser,
 } from '../services/auth';
 import { Category, EventItem, fetchCategories as fetchCategoryList, publicPrice } from '../services/events';
 import { registrarCategorias } from '../utils/categorias';
+import SectorSearch from '../components/map/SectorSearch';
+import type { SectorMapa } from '../components/Map';
+import { Ubicacion, contornoComuna } from '../services/ubicaciones';
 import { useUserLocation } from '../utils/location';
 import LocationNotice, { RequestLocationOnMount } from '../components/LocationNotice';
 import dynamic from 'next/dynamic';
@@ -39,6 +42,22 @@ const InteractiveMap = dynamic(() => import('../components/Map'), {
     </div>
   ) 
 });
+
+const SECTOR_KEY = 'ubik_sector';
+const leerSector = (): SectorMapa | null => {
+  try {
+    const raw = sessionStorage.getItem(SECTOR_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+};
+const guardarSector = (sector: SectorMapa | null) => {
+  try {
+    if (sector) sessionStorage.setItem(SECTOR_KEY, JSON.stringify(sector));
+    else sessionStorage.removeItem(SECTOR_KEY);
+  } catch {}
+};
 
 export default function HomePage() {
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -81,7 +100,32 @@ export default function HomePage() {
 
   // Ubicación del usuario (con permiso). Sin permiso o fuera de Santiago, el centro es Santiago centro
   const location = useUserLocation();
-  const { lat: centerLat, lng: centerLng } = location.center;
+  // Sector elegido en "¿Dónde?": reemplaza a la ubicación o a Santiago centro como centro de la búsqueda
+  const [sector, setSector] = useState<SectorMapa | null>(null);
+  const { lat: centerLat, lng: centerLng } = sector ?? location.center;
+  const origen = sector?.nombre ?? (location.coords ? null : 'Santiago centro'); // null = tu ubicación
+
+  const elegirSector = async (u: Ubicacion) => {
+    const nuevo: SectorMapa = { nombre: u.nombre, lat: u.lat, lng: u.lng, bbox: u.bbox };
+    setSector(nuevo);
+    guardarSector(nuevo);
+    // Comunas: se dibuja su contorno y se encuadra completa
+    if (u.tipo === 'comuna') {
+      const c = await contornoComuna(u.nombre);
+      if (c) {
+        setSector((actual) => {
+          if (actual?.nombre !== u.nombre) return actual;
+          const conContorno = { ...actual, contorno: c.geojson, bbox: c.bbox };
+          guardarSector(conContorno);
+          return conContorno;
+        });
+      }
+    }
+  };
+  const quitarSector = () => {
+    setSector(null);
+    guardarSector(null);
+  };
 
   useEffect(() => {
     setIsClient(true);
@@ -91,6 +135,7 @@ export default function HomePage() {
       refreshUser(); // Trae el estado actualizado (ej. si un admin aprobó la solicitud)
     }
     fetchCategories();
+    setSector(leerSector()); // el último sector elegido en esta sesión
     const params = new URLSearchParams(window.location.search);
     const shared = params.get('evento');
     if (shared) setDetail({ id: shared });
@@ -335,17 +380,21 @@ export default function HomePage() {
       {/* Con sesión se pide la ubicación al mostrar el mapa; sin sesión, solo si la persona la pide */}
       {user && <RequestLocationOnMount status={location.status} request={location.request} />}
       <LocationNotice status={location.status} accuracy={location.coords?.accuracy} onRetry={location.request} />
-      <section className="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 mb-8 shadow-xl backdrop-blur-sm flex flex-col lg:flex-row gap-6 items-center">
-        <div className="relative w-full lg:w-1/2">
+      <section className="relative z-10 bg-slate-900/80 border border-slate-800 rounded-2xl p-6 mb-8 shadow-xl backdrop-blur-sm">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-center">
+        <div className="relative w-full">
+          <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
           <input
             type="text"
-            placeholder="Buscar por título, categoría (ej: Deporte, Vehículos)..."
+            aria-label="Buscar eventos por título o categoría"
+            placeholder="¿Qué? Título o categoría (ej: Deporte)"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full pl-10 pr-4 py-3 bg-slate-950 border border-slate-700 rounded-xl text-white focus:outline-none focus:border-indigo-500"
           />
         </div>
-        <div className="w-full lg:w-1/2 flex items-center gap-4 bg-slate-950 px-4 py-3 rounded-xl border border-slate-700">
+        <SectorSearch onSelect={elegirSector} />
+        <div className="w-full flex items-center gap-4 bg-slate-950 px-4 py-3 rounded-xl border border-slate-700">
           <input
             type="range"
             min="1"
@@ -355,10 +404,24 @@ export default function HomePage() {
             className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-indigo-500"
           />
           <span className="font-semibold text-indigo-300 min-w-[50px] text-right">{radius} km</span>
-          <span className="hidden sm:inline text-[11px] text-slate-500 whitespace-nowrap">
-            {location.coords ? 'desde tu ubicación' : 'desde Santiago centro'}
+          <span className="hidden sm:inline lg:hidden xl:inline text-[11px] text-slate-500 whitespace-nowrap max-w-[9rem] truncate" title={`desde ${origen ?? 'tu ubicación'}`}>
+            desde {origen ?? 'tu ubicación'}
           </span>
         </div>
+        </div>
+        {sector && (
+          <div className="mt-4 flex flex-wrap items-center gap-2 text-sm">
+            <span className="inline-flex items-center gap-2 pl-3 pr-1.5 py-1.5 rounded-full bg-indigo-500/15 border border-indigo-500/40 text-indigo-100">
+              <MapPin className="w-4 h-4 text-indigo-300" /> Eventos cerca de <strong className="text-white">{sector.nombre}</strong>
+              <button type="button" onClick={quitarSector} aria-label={`Dejar de buscar cerca de ${sector.nombre}`} className="p-1 rounded-full hover:bg-indigo-500/30">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </span>
+            <button type="button" onClick={quitarSector} className="text-xs font-semibold text-slate-400 hover:text-white">
+              {location.coords ? 'Volver a tu ubicación' : 'Volver a Santiago centro'}
+            </button>
+          </div>
+        )}
       </section>
 
       <section className="w-full h-[450px] bg-slate-800 rounded-2xl border border-slate-700 relative overflow-hidden shadow-2xl z-0">
@@ -369,7 +432,8 @@ export default function HomePage() {
           radiusKm={radius}
           userLocation={location.coords}
           locating={location.status === 'locating'}
-          onLocate={location.request}
+          onLocate={() => { quitarSector(); location.request(); }}
+          sector={sector}
           onSelectLocationForNewEvent={canPublish ? handleSelectLocationForNewEvent : undefined}
           onOpenEvent={openDetailById}
         />
@@ -395,7 +459,7 @@ export default function HomePage() {
               {filteredEvents.map((evt) => (
                 <EventCard
                   key={evt.id}
-                  event={{ ...evt, price: publicPrice(evt), categoryName: evt.category?.name, distanceFrom: location.coords ? undefined : 'Santiago centro' }}
+                  event={{ ...evt, price: publicPrice(evt), categoryName: evt.category?.name, distanceFrom: origen ?? undefined }}
                   onOpen={() => openDetail(evt)}
                   footerAction={
                     <button
