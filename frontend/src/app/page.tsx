@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Navbar from '../components/Navbar';
 import AuthModal from '../components/AuthModal';
 import OrganizerStatusBanner from '../components/OrganizerStatusBanner';
@@ -43,6 +43,10 @@ const InteractiveMap = dynamic(() => import('../components/Map'), {
   ) 
 });
 
+// Opciones de radio de búsqueda; "Ciudad" trae todo lo que está a una distancia razonable de Santiago
+const RADIOS = [2, 5, 10, 20];
+const RADIO_CIUDAD = 60;
+
 const SECTOR_KEY = 'ubik_sector';
 const leerSector = (): SectorMapa | null => {
   try {
@@ -69,7 +73,10 @@ export default function HomePage() {
   const [pendingPurchase, setPendingPurchase] = useState<{ event: EventItem; selection: TicketSelection } | null>(null);
   // Si la cuenta se suspende con la sesión abierta, se cierra y se muestra el aviso
   const [suspendedNotice, setSuspendedNotice] = useState<SuspendedInfo | null>(null);
-  const [radius, setRadius] = useState<number>(15);
+  const [radius, setRadius] = useState<number>(10);
+  // Hasta que el usuario elige un radio, se ajusta al contexto: 5 km con ubicación real o sector, 10 km desde Santiago centro
+  const radioElegido = useRef(false);
+  const elegirRadio = (r: number) => { radioElegido.current = true; setRadius(r); };
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [events, setEvents] = useState<EventItem[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -123,8 +130,18 @@ export default function HomePage() {
     }
   };
   const quitarSector = () => {
+    // El radio de una zona del mapa se calculó para esa vista: al volver, se usa el del contexto
+    if (sector?.zona) radioElegido.current = false;
     setSector(null);
     guardarSector(null);
+  };
+  // "Buscar en esta zona": el centro del mapa pasa a ser el punto de búsqueda y el radio cubre lo que se ve
+  const buscarEnZona = (lat: number, lng: number, radioVisibleKm: number) => {
+    const zona: SectorMapa = { nombre: 'la zona del mapa', lat, lng, zona: true };
+    setSector(zona);
+    guardarSector(zona);
+    radioElegido.current = true;
+    setRadius(RADIOS.find((r) => r >= radioVisibleKm * 0.9) ?? RADIO_CIUDAD);
   };
 
   useEffect(() => {
@@ -214,7 +231,7 @@ export default function HomePage() {
     setError(null);
     try {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
-      const res = await fetch(`${apiUrl}/events?lat=${centerLat}&lng=${centerLng}&radius=${radius}`);
+      const res = await fetch(`${apiUrl}/events?lat=${centerLat}&lng=${centerLng}&radius=${RADIO_CIUDAD}`);
       if (!res.ok) throw new Error(`Error ${res.status}`);
       const data: EventItem[] = await res.json();
       setEvents(data);
@@ -227,7 +244,11 @@ export default function HomePage() {
 
   useEffect(() => {
     fetchEvents();
-  }, [radius, isClient, centerLat, centerLng]);
+  }, [isClient, centerLat, centerLng]);
+
+  useEffect(() => {
+    if (!radioElegido.current) setRadius(sector || location.coords ? 5 : 10);
+  }, [sector, location.coords]);
 
   const handleLogout = () => {
     clearSession();
@@ -354,10 +375,19 @@ export default function HomePage() {
     return () => clearTimeout(id);
   }, [toast]);
 
-  const filteredEvents = events.filter((evt) => 
-    evt.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
+  // Eventos que calzan con "¿Qué?" (en toda la ciudad) y los que además están dentro del radio
+  const conTexto = events.filter((evt) =>
+    evt.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
     evt.category?.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
+  const dentroDe = (r: number) => (evt: EventItem) => r >= RADIO_CIUDAD || (evt.distanceKm ?? 0) <= r;
+  const filteredEvents = conTexto.filter(dentroDe(radius));
+  // Sin resultados: el radio más chico que sí tiene eventos (sin otra consulta al backend)
+  const ampliarA = filteredEvents.length === 0
+    ? [...RADIOS, RADIO_CIUDAD].find((r) => r > radius && conTexto.some(dentroDe(r)))
+    : undefined;
+  const cantidadEn = (r: number) => conTexto.filter(dentroDe(r)).length;
+  const textoRadio = (r: number) => (r >= RADIO_CIUDAD ? 'toda la ciudad' : `${r} km`);
 
 
   const getFirstName = (fullName?: string, email?: string) => {
@@ -394,34 +424,52 @@ export default function HomePage() {
           />
         </div>
         <SectorSearch onSelect={elegirSector} />
-        <div className="w-full flex items-center gap-4 bg-slate-950 px-4 py-3 rounded-xl border border-slate-700">
-          <input
-            type="range"
-            min="1"
-            max="30"
-            value={radius}
-            onChange={(e) => setRadius(Number(e.target.value))}
-            className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-indigo-500"
-          />
-          <span className="font-semibold text-indigo-300 min-w-[50px] text-right">{radius} km</span>
-          <span className="hidden sm:inline lg:hidden xl:inline text-[11px] text-slate-500 whitespace-nowrap max-w-[9rem] truncate" title={`desde ${origen ?? 'tu ubicación'}`}>
-            desde {origen ?? 'tu ubicación'}
-          </span>
+        <div className="w-full" role="radiogroup" aria-label="Radio de búsqueda">
+          <div className="flex rounded-xl border border-slate-700 bg-slate-950 p-1 gap-1">
+            {[...RADIOS, RADIO_CIUDAD].map((r) => (
+              <button
+                key={r}
+                type="button"
+                role="radio"
+                aria-checked={radius === r}
+                onClick={() => elegirRadio(r)}
+                title={`${cantidadEn(r)} ${cantidadEn(r) === 1 ? 'evento' : 'eventos'} en ${textoRadio(r)}`}
+                className={`flex-1 py-2 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors ${
+                  radius === r ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                }`}
+              >
+                {r >= RADIO_CIUDAD ? 'Ciudad' : `${r} km`}
+              </button>
+            ))}
+          </div>
         </div>
         </div>
-        {sector && (
-          <div className="mt-4 flex flex-wrap items-center gap-2 text-sm">
+
+        {/* Resumen: cuántos eventos hay y desde dónde se busca */}
+        <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2 text-sm" aria-live="polite">
+          {sector ? (
             <span className="inline-flex items-center gap-2 pl-3 pr-1.5 py-1.5 rounded-full bg-indigo-500/15 border border-indigo-500/40 text-indigo-100">
-              <MapPin className="w-4 h-4 text-indigo-300" /> Eventos cerca de <strong className="text-white">{sector.nombre}</strong>
+              <MapPin className="w-4 h-4 text-indigo-300" /> Cerca de <strong className="text-white">{sector.nombre}</strong>
               <button type="button" onClick={quitarSector} aria-label={`Dejar de buscar cerca de ${sector.nombre}`} className="p-1 rounded-full hover:bg-indigo-500/30">
                 <X className="w-3.5 h-3.5" />
               </button>
             </span>
+          ) : null}
+          <span className="text-slate-300">
+            <strong className="text-white">{filteredEvents.length}</strong> {filteredEvents.length === 1 ? 'evento' : 'eventos'}
+            {radius >= RADIO_CIUDAD ? ' en toda la ciudad' : <> a {radius} km de {origen ?? 'tu ubicación'}</>}
+          </span>
+          {ampliarA !== undefined && !isLoading && (
+            <button type="button" onClick={() => elegirRadio(ampliarA)} className="text-xs font-bold text-indigo-300 hover:text-indigo-200 underline underline-offset-2">
+              Ampliar a {textoRadio(ampliarA)} ({cantidadEn(ampliarA)} {cantidadEn(ampliarA) === 1 ? 'evento' : 'eventos'})
+            </button>
+          )}
+          {sector && (
             <button type="button" onClick={quitarSector} className="text-xs font-semibold text-slate-400 hover:text-white">
               {location.coords ? 'Volver a tu ubicación' : 'Volver a Santiago centro'}
             </button>
-          </div>
-        )}
+          )}
+        </div>
       </section>
 
       <section className="w-full h-[450px] bg-slate-800 rounded-2xl border border-slate-700 relative overflow-hidden shadow-2xl z-0">
@@ -429,11 +477,13 @@ export default function HomePage() {
           events={filteredEvents}
           centerLat={centerLat}
           centerLng={centerLng}
-          radiusKm={radius}
+          radiusKm={radius >= RADIO_CIUDAD ? 0 : radius}
           userLocation={location.coords}
           locating={location.status === 'locating'}
           onLocate={() => { quitarSector(); location.request(); }}
           sector={sector}
+          onBuscarZona={buscarEnZona}
+          onQuitarSector={quitarSector}
           onSelectLocationForNewEvent={canPublish ? handleSelectLocationForNewEvent : undefined}
           onOpenEvent={openDetailById}
         />
@@ -452,7 +502,14 @@ export default function HomePage() {
             <div className="bg-red-950/40 border border-red-800 text-red-300 p-4 rounded-xl">{error}</div>
           ) : filteredEvents.length === 0 ? (
             <div className="text-center py-12 bg-slate-900/40 rounded-2xl border border-slate-800 text-slate-400">
-              No hay coincidencias para tu búsqueda en este radio.
+              {ampliarA !== undefined
+                ? <>No hay eventos a {radius} km de {origen ?? 'tu ubicación'}.</>
+                : 'No hay coincidencias para tu búsqueda en este radio.'}
+              {ampliarA !== undefined && (
+                <button type="button" onClick={() => elegirRadio(ampliarA)} className="block mx-auto mt-3 px-4 py-2 text-sm font-bold rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white">
+                  Ampliar a {textoRadio(ampliarA)} ({cantidadEn(ampliarA)} {cantidadEn(ampliarA) === 1 ? 'evento' : 'eventos'})
+                </button>
+              )}
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

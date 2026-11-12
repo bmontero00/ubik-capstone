@@ -4,7 +4,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Circle, GeoJSON, useMap, useMapEvents } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
-import { LocateFixed, Loader2, Plus, Minus, Crosshair } from 'lucide-react';
+import { LocateFixed, Loader2, Plus, Minus, Crosshair, Search } from 'lucide-react';
 import { DARK_TILES, categoryColor } from '../utils/mapTiles';
 import { formatEventDate, formatPrice, imageSrc } from '../services/events';
 import { EVENT_STATUS_LABELS } from '../utils/labels';
@@ -45,6 +45,10 @@ interface MapProps {
   onOpenEvent?: (id: string) => void; // botón "Ver más" del popup
   // Sector elegido en el buscador "¿Dónde?": centro de la búsqueda, con su contorno si es una comuna
   sector?: SectorMapa | null;
+  // "Buscar en esta zona": el usuario movió el mapa y quiere buscar en lo que está viendo
+  onBuscarZona?: (lat: number, lng: number, radioVisibleKm: number) => void;
+  // Con un sector o zona activa, el botón de recentrar vuelve a la ubicación (o Santiago centro) como foco
+  onQuitarSector?: () => void;
 }
 
 export interface SectorMapa {
@@ -53,6 +57,7 @@ export interface SectorMapa {
   lng: number;
   bbox?: [number, number, number, number]; // [oeste, sur, este, norte]
   contorno?: GeoJSON.GeoJsonObject;
+  zona?: boolean; // elegido con "Buscar en esta zona": el mapa no se mueve al aplicarlo
 }
 
 // Pin del sector buscado
@@ -66,6 +71,72 @@ const sectorIcon = L.divIcon({
       <circle cx="15" cy="14" r="5.5" fill="#e0e7ff"/>
     </svg>`,
 });
+
+// Muestra "Buscar en esta zona" cuando el usuario arrastra o hace zoom y el centro del mapa se aleja
+// del punto de búsqueda. Los movimientos que hace el propio sitio (volar a un sector) no cuentan.
+function BuscarEnZona({ lat, lng, radiusKm, onBuscar }: {
+  lat: number; lng: number; radiusKm: number;
+  onBuscar: (lat: number, lng: number, radioVisibleKm: number) => void;
+}) {
+  const map = useMap();
+  const delUsuario = useRef(false);
+  const [visible, setVisible] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (ref.current) L.DomEvent.disableClickPropagation(ref.current);
+  });
+  // Al cambiar el punto de búsqueda (sector, ubicación) se esconde
+  useEffect(() => { setVisible(false); }, [lat, lng]);
+
+  // Rueda del mouse, arrastre, pellizco o botones de zoom: interacción del usuario
+  useEffect(() => {
+    const container = map.getContainer();
+    const marcar = () => { delUsuario.current = true; };
+    container.addEventListener('wheel', marcar, { passive: true });
+    container.addEventListener('touchstart', marcar, { passive: true });
+    container.addEventListener('zoom-usuario', marcar);
+    return () => {
+      container.removeEventListener('wheel', marcar);
+      container.removeEventListener('touchstart', marcar);
+      container.removeEventListener('zoom-usuario', marcar);
+    };
+  }, [map]);
+
+  useMapEvents({
+    dragstart() { delUsuario.current = true; },
+    moveend() {
+      if (!delUsuario.current) return;
+      delUsuario.current = false;
+      const centro = map.getCenter();
+      const lejos = centro.distanceTo([lat, lng]) / 1000; // km
+      // Se ofrece si el centro se movió más de un tercio del radio (o 1,5 km con toda la ciudad)
+      setVisible(lejos > Math.max(0.5, radiusKm ? radiusKm / 3 : 1.5));
+    },
+  });
+
+  if (!visible) return null;
+  const buscar = () => {
+    const centro = map.getCenter();
+    const b = map.getBounds();
+    // Radio que cubre lo que se ve: la mitad del lado más corto de la vista
+    const alto = b.getNorthWest().distanceTo(b.getSouthWest()) / 1000;
+    const ancho = b.getNorthWest().distanceTo(b.getNorthEast()) / 1000;
+    setVisible(false);
+    onBuscar(centro.lat, centro.lng, Math.min(alto, ancho) / 2);
+  };
+  return (
+    <div ref={ref} className="absolute top-3 left-1/2 -translate-x-1/2 z-[400]">
+      <button
+        type="button"
+        onClick={buscar}
+        className="flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold text-slate-950 bg-gradient-to-r from-emerald-400 to-cyan-400 hover:from-emerald-300 hover:to-cyan-300 shadow-lg shadow-black/40"
+      >
+        <Search className="w-4 h-4" /> Buscar en esta zona
+      </button>
+    </div>
+  );
+}
 
 // Encuadra el sector: el contorno de la comuna completo o, si no hay, el área del lugar
 function FitSector({ sector }: { sector: SectorMapa }) {
@@ -111,17 +182,20 @@ const LOCATED_ZOOM = 14; // con la ubicación real del usuario se acerca un poco
 
 // Mantiene la vista del mapa al día: se abre cerca del punto de referencia, se acerca a la
 // ubicación cuando el usuario la entrega y muestra el radio completo cuando el usuario lo cambia
-function SyncView({ lat, lng, radiusKm, located }: { lat: number; lng: number; radiusKm: number; located: boolean }) {
+function SyncView({ lat, lng, radiusKm, located, quieta = false }: { lat: number; lng: number; radiusKm: number; located: boolean; quieta?: boolean }) {
   const map = useMap();
   const previous = useRef<{ lat: number; lng: number; radiusKm: number } | null>(null);
 
   useEffect(() => {
     const prev = previous.current;
     previous.current = { lat, lng, radiusKm };
+    // "Buscar en esta zona": el centro nuevo es lo que el usuario ya está mirando
+    if (prev && quieta && (prev.lat !== lat || prev.lng !== lng)) return;
     if (!prev) {
       map.setView([lat, lng], located ? LOCATED_ZOOM : START_ZOOM, { animate: false });
     } else if (prev.radiusKm !== radiusKm) {
-      map.flyToBounds(L.latLng(lat, lng).toBounds(radiusKm * 2000), { padding: [24, 24], duration: 0.8 });
+      // Radio 0 = toda la ciudad: se muestra el Gran Santiago completo
+      map.flyToBounds(L.latLng(lat, lng).toBounds((radiusKm || 22) * 2000), { padding: [24, 24], duration: 0.8 });
     } else if (prev.lat !== lat || prev.lng !== lng) {
       map.flyTo([lat, lng], located ? LOCATED_ZOOM : START_ZOOM, { duration: 0.8 });
     }
@@ -141,7 +215,12 @@ function SyncView({ lat, lng, radiusKm, located }: { lat: number; lng: number; r
 
 // Acercar, alejar y volver a la ubicación, con los colores del sitio. El botón de volver se
 // destaca cuando el usuario se alejó del punto de referencia recorriendo el mapa.
-function MapControls({ lat, lng, located, sectorNombre }: { lat: number; lng: number; located: boolean; sectorNombre?: string }) {
+function MapControls({ lat, lng, located, conSector, ubicacionReal, onQuitarSector }: {
+  lat: number; lng: number; located: boolean;
+  conSector: boolean; // hay un sector o zona como foco de búsqueda
+  ubicacionReal: boolean; // el usuario entregó su ubicación
+  onQuitarSector?: () => void;
+}) {
   const map = useMap();
   const ref = useRef<HTMLDivElement>(null);
   const [away, setAway] = useState(false);
@@ -163,26 +242,31 @@ function MapControls({ lat, lng, located, sectorNombre }: { lat: number; lng: nu
     },
   });
 
-  const recenter = () => map.flyTo([lat, lng], located ? LOCATED_ZOOM : START_ZOOM, { duration: 0.8 });
+  // Con sector o zona: se deja de buscar ahí y el foco vuelve a la ubicación (el mapa vuela solo al nuevo centro)
+  const recenter = () => {
+    if (conSector && onQuitarSector) return onQuitarSector();
+    map.flyTo([lat, lng], located ? LOCATED_ZOOM : START_ZOOM, { duration: 0.8 });
+  };
+  const etiqueta = ubicacionReal ? 'Volver a mi ubicación' : 'Volver a Santiago centro';
   const button = 'w-9 h-9 flex items-center justify-center text-slate-200 hover:text-white hover:bg-slate-800 transition-colors';
 
   return (
     <div ref={ref} className="absolute top-3 left-3 z-[400] flex flex-col gap-2">
       <div className="flex flex-col rounded-xl overflow-hidden bg-slate-900/90 border border-slate-700 shadow-lg backdrop-blur divide-y divide-slate-700">
-        <button type="button" onClick={() => map.zoomIn()} aria-label="Acercar" title="Acercar" className={button}>
+        <button type="button" onClick={() => { map.getContainer().dispatchEvent(new Event('zoom-usuario')); map.zoomIn(); }} aria-label="Acercar" title="Acercar" className={button}>
           <Plus className="w-4 h-4" />
         </button>
-        <button type="button" onClick={() => map.zoomOut()} aria-label="Alejar" title="Alejar" className={button}>
+        <button type="button" onClick={() => { map.getContainer().dispatchEvent(new Event('zoom-usuario')); map.zoomOut(); }} aria-label="Alejar" title="Alejar" className={button}>
           <Minus className="w-4 h-4" />
         </button>
       </div>
       <button
         type="button"
         onClick={recenter}
-        aria-label={sectorNombre ? `Volver a ${sectorNombre}` : located ? 'Volver a mi ubicación' : 'Volver al punto de referencia'}
-        title={sectorNombre ? `Volver a ${sectorNombre}` : located ? 'Volver a mi ubicación' : 'Volver a Santiago centro'}
+        aria-label={etiqueta}
+        title={conSector ? `${etiqueta} y buscar desde ahí` : etiqueta}
         className={`w-9 h-9 flex items-center justify-center rounded-xl border shadow-lg backdrop-blur transition-colors ${
-          away
+          away || conSector
             ? 'bg-gradient-to-br from-emerald-400 to-cyan-400 border-transparent text-slate-950 hover:from-emerald-300 hover:to-cyan-300'
             : 'bg-slate-900/90 border-slate-700 text-emerald-400 hover:bg-slate-800'
         }`}
@@ -207,7 +291,8 @@ function MapContextMenu({ onRightClick }: { onRightClick: (lat: number, lng: num
 }
 
 export default function Map({
-  events, centerLat, centerLng, radiusKm, userLocation, locating, onLocate, onSelectLocationForNewEvent, onOpenEvent, sector,
+  events, centerLat, centerLng, radiusKm, userLocation, locating, onLocate, onSelectLocationForNewEvent, onOpenEvent, sector, onBuscarZona,
+  onQuitarSector,
 }: MapProps) {
   const [contextMenu, setContextMenu] = useState<{ lat: number; lng: number; x: number; y: number } | null>(null);
   const icons = useMemo(() => new globalThis.Map<string, L.DivIcon>(), []);
@@ -239,8 +324,16 @@ export default function Map({
       <MapContainer center={[centerLat, centerLng]} zoom={START_ZOOM} zoomSnap={0.5} zoomControl={false} scrollWheelZoom className="w-full h-full z-0 bg-slate-950">
         <TileLayer url={DARK_TILES.url} attribution={DARK_TILES.attribution} className={DARK_TILES.className} maxZoom={DARK_TILES.maxZoom} />
 
-        <SyncView lat={centerLat} lng={centerLng} radiusKm={radiusKm} located={!!userLocation && !sector} />
-        <MapControls lat={centerLat} lng={centerLng} located={!!userLocation && !sector} sectorNombre={sector?.nombre} />
+        <SyncView lat={centerLat} lng={centerLng} radiusKm={radiusKm} located={!!userLocation && !sector} quieta={!!sector?.zona} />
+        {onBuscarZona && <BuscarEnZona lat={centerLat} lng={centerLng} radiusKm={radiusKm} onBuscar={onBuscarZona} />}
+        <MapControls
+          lat={centerLat}
+          lng={centerLng}
+          located={!!userLocation && !sector}
+          conSector={!!sector}
+          ubicacionReal={!!userLocation}
+          onQuitarSector={onQuitarSector}
+        />
 
         {sector && (
           <>
@@ -256,17 +349,19 @@ export default function Map({
             <Marker position={[sector.lat, sector.lng]} icon={sectorIcon} zIndexOffset={900}>
               <Popup>
                 <strong className="block text-sm text-white">{sector.nombre}</strong>
-                <span className="text-xs text-slate-400">Buscamos eventos a {radiusKm} km de este punto.</span>
+                <span className="text-xs text-slate-400">{radiusKm > 0 ? `Buscamos eventos a ${radiusKm} km de este punto.` : 'Mostramos los eventos de toda la ciudad.'}</span>
               </Popup>
             </Marker>
           </>
         )}
 
-        <Circle
-          center={[centerLat, centerLng]}
-          radius={radiusKm * 1000}
-          pathOptions={{ color: '#6366f1', weight: 1.5, fillColor: '#6366f1', fillOpacity: 0.08, dashArray: '6 6' }}
-        />
+        {radiusKm > 0 && (
+          <Circle
+            center={[centerLat, centerLng]}
+            radius={radiusKm * 1000}
+            pathOptions={{ color: '#6366f1', weight: 1.5, fillColor: '#6366f1', fillOpacity: 0.08, dashArray: '6 6' }}
+          />
+        )}
 
         {userLocation && (
           <>
