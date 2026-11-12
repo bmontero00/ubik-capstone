@@ -13,6 +13,7 @@ import { formatRut, isValidRut } from '../utils/rut';
 import { PHONE_PREFIX, formatLocalPhone, isValidLocalPhone, toFullPhone } from '../utils/phone';
 import { formatDate } from '../utils/labels';
 import PasswordRecovery from './PasswordRecovery';
+import UbikLogo from './UbikLogo';
 import { esFotoValida, subirFoto } from '../services/cuenta';
 
 interface AuthModalProps {
@@ -420,9 +421,12 @@ export default function AuthModal({
               </button>
             )}
 
+            {view === 'login' && (
+              <UbikLogo size={44} className="mx-auto mb-3 rounded-xl shadow-lg shadow-emerald-500/10 ring-1 ring-slate-700/60" />
+            )}
             <h2 className="text-2xl font-bold text-center tracking-tight mb-2">
               {view === 'login'
-                ? 'Bienvenido a UBIK'
+                ? <>Bienvenido a <span className="bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">UBIK</span></>
                 : isReapply
                   ? 'Nueva solicitud de organizador'
                   : isOrganizer
@@ -740,7 +744,7 @@ export default function AuthModal({
               >
                 {loading && <Loader2 className="w-4 h-4 animate-spin" />}
                 {view === 'login'
-                  ? 'Ingresar a la plataforma'
+                  ? 'Iniciar sesión'
                   : isReapply
                     ? 'Enviar nueva solicitud'
                     : isOrganizer
