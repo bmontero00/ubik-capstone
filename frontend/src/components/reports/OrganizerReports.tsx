@@ -95,9 +95,9 @@ export default function OrganizerReports() {
 
   const exportarEventos = () => {
     descargarCsv(`ubik-ventas-${filtro.desde}-a-${filtro.hasta}.csv`,
-      ['Evento', 'Fecha', 'Estado', 'Categoría', 'Aforo', 'Entradas vendidas', 'Ocupación %', 'Ingresos netos', 'Tipo más vendido', 'Calificación', 'Reseñas'],
+      ['Evento', 'Fecha', 'Estado', 'Categoría', 'Aforo', 'Entradas vendidas', 'Ocupación %', 'Ingresaron', 'Asistencia %', 'Ingresos netos', 'Tipo más vendido', 'Calificación', 'Reseñas'],
       ordenados.map((e) => [e.titulo, fechaEvento(e.fecha), EVENT_STATUS_LABELS[e.estado as keyof typeof EVENT_STATUS_LABELS]?.label ?? e.estado, e.categoria,
-        e.aforo, e.vendidas, e.ocupacion, e.ingresosNetos, e.tipoMasVendido, e.calificacion, e.resenas]));
+        e.aforo, e.vendidas, e.ocupacion, e.asistencia === null ? null : e.ingresados, e.asistencia, e.ingresosNetos, e.tipoMasVendido, e.calificacion, e.resenas]));
   };
 
   const columna = (col: keyof FilaEvento, label: string, alinear = 'text-left') => (
@@ -151,7 +151,9 @@ export default function OrganizerReports() {
               ayuda={`Lo que recibes. Cargo por servicio de UBIK aparte: ${formatPrice(resumen.cargoServicio)}`} />
             <Kpi icon={Ticket} label="Entradas" valor={resumen.entradas.toLocaleString('es-CL')} variacion={resumen.variacion.entradas} ayuda={`${resumen.compras} ${resumen.compras === 1 ? 'compra' : 'compras'}`} />
             <Kpi icon={Receipt} label="Ticket promedio" valor={formatPrice(resumen.ticketPromedio)} variacion={resumen.variacion.ticketPromedio} ayuda="Lo que paga en promedio cada compra" />
-            <Kpi icon={Gauge} label="Ocupación" valor={resumen.ocupacion === null ? '—' : `${resumen.ocupacion.toLocaleString('es-CL')}%`} ayuda="Vendidas sobre el aforo de los eventos del período" />
+            <Kpi icon={Gauge} label="Ocupación" valor={resumen.ocupacion === null ? '—' : `${resumen.ocupacion.toLocaleString('es-CL')}%`} ayuda={resumen.asistencia === null
+              ? 'Vendidas sobre el aforo de los eventos del período'
+              : `Vendidas sobre el aforo. Asistencia: ${resumen.asistencia.toLocaleString('es-CL')}% en ${resumen.eventosConAcceso} ${resumen.eventosConAcceso === 1 ? 'evento validado' : 'eventos validados'} en el acceso`} />
             <Kpi icon={CalendarCheck2} label="Eventos realizados" valor={String(resumen.eventosRealizados)} ayuda={`De ${resumen.eventosEnPeriodo} con fecha en el período`} />
             <Kpi icon={Star} label="Calificación" valor={resumen.calificacion === null ? '—' : resumen.calificacion.toLocaleString('es-CL')} ayuda={resumen.resenas ? `${resumen.resenas} ${resumen.resenas === 1 ? 'reseña' : 'reseñas'} en el período` : 'Sin reseñas en el período'} />
           </div>
@@ -242,13 +244,14 @@ export default function OrganizerReports() {
               <p className="px-5 pb-8 text-center text-sm text-slate-500">No tienes eventos en este período.</p>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full text-sm min-w-[760px]">
+                <table className="w-full text-sm min-w-[860px]">
                   <thead className="text-xs text-slate-400 bg-slate-950/60">
                     <tr>
                       {columna('titulo', 'Evento')}
                       {columna('fecha', 'Fecha')}
                       {columna('vendidas', 'Vendidas', 'text-right')}
                       {columna('ocupacion', 'Ocupación', 'text-right')}
+                      {columna('asistencia', 'Asistencia', 'text-right')}
                       {columna('ingresosNetos', 'Ingresos netos', 'text-right')}
                       <th scope="col" className="px-3 py-2.5 text-left font-semibold">Más vendido</th>
                       {columna('calificacion', 'Calificación', 'text-right')}
@@ -265,6 +268,9 @@ export default function OrganizerReports() {
                         <td className="px-3 py-3 text-slate-300 whitespace-nowrap">{fechaEvento(e.fecha)}</td>
                         <td className="px-3 py-3 text-right tabular-nums text-slate-200">{e.vendidas.toLocaleString('es-CL')}{e.aforo ? <span className="text-slate-500"> / {e.aforo.toLocaleString('es-CL')}</span> : null}</td>
                         <td className="px-3 py-3 text-right tabular-nums">{e.ocupacion === null ? <span className="text-slate-500">—</span> : `${e.ocupacion.toLocaleString('es-CL')}%`}</td>
+                        <td className="px-3 py-3 text-right tabular-nums" title={e.asistencia === null ? 'Sin entradas validadas en el acceso' : `${e.ingresados} de ${e.vendidas} ingresaron`}>
+                          {e.asistencia === null ? <span className="text-slate-500">—</span> : `${e.asistencia.toLocaleString('es-CL')}%`}
+                        </td>
                         <td className="px-3 py-3 text-right tabular-nums text-slate-200">{e.gratis ? <span className="text-emerald-300">Gratis</span> : formatPrice(e.ingresosNetos)}</td>
                         <td className="px-3 py-3 text-slate-300">{e.tipoMasVendido ?? '—'}</td>
                         <td className="px-3 py-3 text-right tabular-nums">{e.calificacion === null ? <span className="text-slate-500">—</span> : <span className="inline-flex items-center gap-1"><Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />{e.calificacion.toLocaleString('es-CL')}</span>}</td>

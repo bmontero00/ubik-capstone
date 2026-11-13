@@ -1,13 +1,14 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { X, Loader2, Download, Search, ShieldCheck, BadgePercent, Car, Clock, Users, ChartColumn } from 'lucide-react';
-import { DetalleEvento, ListaAcceso, descargarCsv, fetchDetalleEvento, fetchListaAcceso } from '../../services/reportes';
+import { X, Loader2, Download, Search, ShieldCheck, BadgePercent, Car, Clock, Users, ChartColumn, DoorOpen, ScanLine, CircleCheck, CircleDashed } from 'lucide-react';
+import { AsistenciaEvento, DetalleEvento, ListaAcceso, descargarCsv, fetchDetalleEvento, fetchListaAcceso } from '../../services/reportes';
 import { formatEventDate, formatPrice } from '../../services/events';
 import { formatRut } from '../../utils/rut';
-import { AreaChart, ProgressBars } from './charts';
+import { AreaChart, BarChart, ProgressBars } from './charts';
 
 const fechaHora = (f: string) => new Date(f).toLocaleString('es-CL', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+const hora = (f: string) => new Date(f).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit', hour12: false });
 const normalizar = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
 // Detalle de un evento: ventas por tipo, curva hasta el evento, oferta y estacionamientos; y su lista de acceso
@@ -84,6 +85,15 @@ function Detalle({ d }: { d: DetalleEvento }) {
         <Dato label="Ticket promedio" valor={formatPrice(d.totales.ticketPromedio)} sub={`${d.totales.compras} compras`} />
       </div>
 
+      {d.asistencia ? (
+        <Asistencia a={d.asistencia} />
+      ) : d.diasParaEvento === 0 ? (
+        <p className="flex items-start gap-2 text-xs text-slate-400 p-3 rounded-xl bg-slate-950/60 border border-slate-800">
+          <ScanLine className="w-4 h-4 shrink-0 text-slate-500 mt-px" />
+          No se validaron entradas en el acceso de este evento, así que no hay datos de asistencia. En tus próximos eventos, valida con la app o con tu equipo de acceso para ver quiénes llegaron y a qué hora.
+        </p>
+      ) : null}
+
       <section>
         <h3 className="text-sm font-bold text-white mb-3">Ventas por tipo de entrada</h3>
         <ProgressBars filas={d.porTipo.map((t) => ({
@@ -143,17 +153,93 @@ function Detalle({ d }: { d: DetalleEvento }) {
   );
 }
 
+// Asistencia según las entradas validadas en el acceso: cuántos llegaron, de qué tipo, por qué acceso y a qué hora
+function Asistencia({ a }: { a: AsistenciaEvento }) {
+  const totalPorAcceso = a.porAcceso.reduce((n, x) => n + x.ingresos, 0);
+  const etiquetaTramo = (desde: string) => {
+    const fin = new Date(new Date(desde).getTime() + a.tramoMinutos * 60_000).toISOString();
+    return `${hora(desde)}–${hora(fin)}`;
+  };
+  return (
+    <section className="space-y-4 p-4 rounded-2xl bg-emerald-500/5 border border-emerald-500/20">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h3 className="text-sm font-bold text-white flex items-center gap-1.5"><ScanLine className="w-4 h-4 text-emerald-300" /> Asistencia</h3>
+        <p className="text-[11px] text-slate-400">Según las entradas validadas en el acceso · primer ingreso {hora(a.primerIngreso)}, último {hora(a.ultimoIngreso)}</p>
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <Dato label="Ingresaron" valor={a.ingresados.toLocaleString('es-CL')} sub={`de ${a.vendidas.toLocaleString('es-CL')} entradas`} />
+        <Dato label="No llegaron" valor={a.porIngresar.toLocaleString('es-CL')} sub="o aún no ingresan" />
+        <Dato label="Asistencia" valor={a.porcentaje === null ? '—' : `${a.porcentaje.toLocaleString('es-CL')}%`} />
+        <Dato label="Hora peak" valor={hora(a.pico.desde)} sub={`${a.pico.ingresos} ingresos en ${a.tramoMinutos === 60 ? 'esa hora' : '15 min'}`} />
+      </div>
+
+      <div>
+        <h4 className="text-xs font-bold text-slate-300 mb-2">Llegadas {a.tramoMinutos === 60 ? 'por hora' : 'cada 15 minutos'}</h4>
+        <BarChart
+          datos={a.llegadas.map((l) => ({ clave: l.desde, valor: l.ingresos }))}
+          formato={(v) => `${v} ${v === 1 ? 'ingreso' : 'ingresos'}`}
+          etiquetaX={(k) => hora(k)}
+          alto={170}
+          descripcion={`Ingresos al evento ${a.tramoMinutos === 60 ? 'por hora' : 'cada 15 minutos'}; peak a las ${hora(a.pico.desde)}`}
+        />
+        <details className="mt-1">
+          <summary className="text-[11px] text-slate-500 cursor-pointer hover:text-slate-300">Ver como tabla</summary>
+          <table className="mt-2 text-xs w-full max-w-xs">
+            <tbody>
+              {a.llegadas.map((l) => (
+                <tr key={l.desde} className="border-t border-slate-800"><td className="py-1 text-slate-400">{etiquetaTramo(l.desde)}</td><td className="py-1 text-right text-white tabular-nums">{l.ingresos}</td></tr>
+              ))}
+            </tbody>
+          </table>
+        </details>
+      </div>
+
+      <div className="grid sm:grid-cols-2 gap-5">
+        <div>
+          <h4 className="text-xs font-bold text-slate-300 mb-2">Por tipo de entrada</h4>
+          <ProgressBars filas={a.porTipo.map((t) => ({
+            etiqueta: t.nombre,
+            valor: t.ingresados,
+            total: t.vendidas,
+            detalle: `${t.ingresados} / ${t.vendidas} · ${t.vendidas ? Math.round((t.ingresados / t.vendidas) * 100) : 0}%`,
+          }))} />
+          {a.estacionamiento && (
+            <p className="mt-3 text-xs text-slate-300 flex items-center gap-1.5">
+              <Car className="w-3.5 h-3.5 text-sky-300" /> Estacionamiento: <strong className="text-white">{a.estacionamiento.ingresados}</strong> de {a.estacionamiento.vendidos} vehículos ingresaron
+            </p>
+          )}
+        </div>
+        <div>
+          <h4 className="text-xs font-bold text-slate-300 mb-2 flex items-center gap-1.5"><DoorOpen className="w-3.5 h-3.5" /> Por acceso</h4>
+          <ProgressBars filas={a.porAcceso.map((x) => ({
+            etiqueta: x.nombre,
+            valor: x.ingresos,
+            total: totalPorAcceso,
+            detalle: `${x.ingresos} · ${totalPorAcceso ? Math.round((x.ingresos / totalPorAcceso) * 100) : 0}%`,
+          }))} />
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function Acceso({ lista }: { lista: ListaAcceso }) {
   const [q, setQ] = useState('');
+  const [filtro, setFiltro] = useState<'todos' | 'ingresaron' | 'pendientes'>('todos');
+  const conIngresos = lista.ingresados > 0;
   const visibles = useMemo(() => {
     const t = normalizar(q.trim()).replace(/[.\-\s]/g, '');
-    if (!t) return lista.asistentes;
-    return lista.asistentes.filter((a) => normalizar(`${a.nombre}${a.apellido}`).replace(/\s/g, '').includes(t) || a.rut.replace(/[.\-]/g, '').toLowerCase().includes(t) || a.codigo.toLowerCase().includes(t));
-  }, [q, lista]);
+    const porEstado = lista.asistentes.filter((a) => filtro === 'todos' || (filtro === 'ingresaron' ? !!a.ingresoEn : !a.ingresoEn));
+    if (!t) return porEstado;
+    return porEstado.filter((a) => normalizar(`${a.nombre}${a.apellido}`).replace(/\s/g, '').includes(t) || a.rut.replace(/[.\-]/g, '').toLowerCase().includes(t) || a.codigo.toLowerCase().includes(t));
+  }, [q, lista, filtro]);
 
   const exportar = () => descargarCsv(`ubik-lista-acceso-${normalizar(lista.evento.titulo).replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}.csv`,
-    ['Apellido', 'Nombre', 'RUT', 'Tipo de entrada', 'Código de entrada', 'Compra', 'Fecha de compra'],
-    lista.asistentes.map((a) => [a.apellido, a.nombre, formatRut(a.rut), a.tipo, a.codigo, a.compra, fechaHora(a.fechaCompra)]));
+    ['Apellido', 'Nombre', 'RUT', 'Tipo de entrada', 'Código de entrada', 'Compra', 'Fecha de compra', 'Ingresó', 'Hora de ingreso', 'Validado por'],
+    lista.asistentes.map((a) => [
+      a.apellido, a.nombre, formatRut(a.rut), a.tipo, a.codigo, a.compra, fechaHora(a.fechaCompra),
+      a.ingresoEn ? 'Sí' : 'No', a.ingresoEn ? fechaHora(a.ingresoEn) : '', a.validadoPor ?? '',
+    ]));
 
   return (
     <div>
@@ -170,18 +256,31 @@ function Acceso({ lista }: { lista: ListaAcceso }) {
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar por nombre, RUT o código" aria-label="Buscar asistente"
             className="w-full pl-9 pr-3 py-2 text-sm rounded-xl bg-slate-950 border border-slate-700 text-white placeholder:text-slate-600 focus:outline-none focus:border-indigo-500" />
         </div>
-        <span className="text-sm text-slate-300"><strong className="text-white">{lista.total}</strong> {lista.total === 1 ? 'asistente' : 'asistentes'}</span>
+        <span className="text-sm text-slate-300">
+          <strong className="text-white">{lista.total}</strong> {lista.total === 1 ? 'asistente' : 'asistentes'}
+          {conIngresos && <> · <strong className="text-emerald-300">{lista.ingresados}</strong> ingresaron</>}
+        </span>
         <button type="button" onClick={exportar} disabled={!lista.total} className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-40">
           <Download className="w-3.5 h-3.5" /> Exportar CSV
         </button>
       </div>
+      {conIngresos && (
+        <div className="flex gap-1.5 mb-3" role="group" aria-label="Filtrar por ingreso">
+          {([['todos', 'Todos', lista.total], ['ingresaron', 'Ingresaron', lista.ingresados], ['pendientes', 'No han ingresado', lista.total - lista.ingresados]] as const).map(([id, label, n]) => (
+            <button key={id} type="button" onClick={() => setFiltro(id)} aria-pressed={filtro === id}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-lg border ${filtro === id ? 'bg-indigo-500/20 border-indigo-400 text-white' : 'bg-slate-950 border-slate-700 text-slate-300 hover:border-slate-500'}`}>
+              {label} <span className="text-slate-400 tabular-nums">{n}</span>
+            </button>
+          ))}
+        </div>
+      )}
       {lista.total === 0 ? (
         <p className="py-10 text-center text-sm text-slate-500">Aún no hay entradas vendidas ni confirmadas.</p>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-slate-800">
-          <table className="w-full text-sm min-w-[560px]">
+          <table className="w-full text-sm min-w-[680px]">
             <thead className="text-xs text-slate-400 bg-slate-950/60">
-              <tr><th className="text-left px-3 py-2">Asistente</th><th className="text-left px-3 py-2">RUT</th><th className="text-left px-3 py-2">Tipo</th><th className="text-left px-3 py-2">Código</th></tr>
+              <tr><th className="text-left px-3 py-2">Asistente</th><th className="text-left px-3 py-2">RUT</th><th className="text-left px-3 py-2">Tipo</th><th className="text-left px-3 py-2">Código</th><th className="text-left px-3 py-2">Ingreso</th></tr>
             </thead>
             <tbody>
               {visibles.map((a) => (
@@ -190,11 +289,21 @@ function Acceso({ lista }: { lista: ListaAcceso }) {
                   <td className="px-3 py-2 text-slate-200 tabular-nums">{formatRut(a.rut)}</td>
                   <td className="px-3 py-2 text-slate-300">{a.tipo}</td>
                   <td className="px-3 py-2 font-mono text-xs text-slate-400">{a.codigo}</td>
+                  <td className="px-3 py-2 text-xs">
+                    {a.ingresoEn ? (
+                      <span className="flex items-start gap-1.5 text-emerald-200">
+                        <CircleCheck className="w-3.5 h-3.5 shrink-0 mt-px" />
+                        <span>{fechaHora(a.ingresoEn)}{a.validadoPor && <span className="block text-[10px] text-slate-500">{a.validadoPor}</span>}</span>
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-1.5 text-slate-500"><CircleDashed className="w-3.5 h-3.5" /> Pendiente</span>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
-          {visibles.length === 0 && <p className="py-6 text-center text-sm text-slate-500">Nadie coincide con «{q}».</p>}
+          {visibles.length === 0 && <p className="py-6 text-center text-sm text-slate-500">{q ? `Nadie coincide con «${q}».` : 'No hay asistentes en este filtro.'}</p>}
         </div>
       )}
     </div>
