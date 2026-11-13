@@ -314,7 +314,7 @@ export default function CheckoutModal({ event, selection, buyer, resume, notice,
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto ubik-scroll">
           <div className="grid lg:grid-cols-[1fr_320px]">
             {/* Contenido del paso */}
             <div className="p-5 sm:p-6 order-2 lg:order-1">

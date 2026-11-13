@@ -248,7 +248,7 @@ export default function AuthModal({
       aria-modal="true"
     >
       <div
-        className={`relative w-full ${isWide ? 'max-w-xl' : 'max-w-md'} max-h-[92vh] overflow-y-auto bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl text-white transition-[max-width]`}
+        className={`relative w-full ${isWide ? 'max-w-xl' : 'max-w-md'} max-h-[92vh] overflow-y-auto ubik-scroll bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl text-white transition-[max-width]`}
       >
         <button
           onClick={onClose}

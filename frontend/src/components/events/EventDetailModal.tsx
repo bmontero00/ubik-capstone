@@ -106,7 +106,7 @@ export default function EventDetailModal({
       aria-modal="true"
       aria-label={event?.title ?? 'Detalle del evento'}
     >
-      <div className="relative w-full sm:max-w-3xl max-h-[94vh] overflow-y-auto bg-slate-900 border border-slate-800 rounded-t-3xl sm:rounded-3xl shadow-2xl">
+      <div className="relative w-full sm:max-w-3xl max-h-[94vh] overflow-y-auto ubik-scroll bg-slate-900 border border-slate-800 rounded-t-3xl sm:rounded-3xl shadow-2xl">
         {/* Portada */}
         <div className="relative h-48 sm:h-64 shrink-0 overflow-hidden">
           {src ? (

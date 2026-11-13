@@ -30,7 +30,7 @@ export default function EventReport({ eventoId, onClose }: { eventoId: string; o
 
   return (
     <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-sm p-0 sm:p-4" onMouseDown={(e) => e.target === e.currentTarget && onClose()} role="dialog" aria-modal="true" aria-labelledby="reporte-evento-titulo">
-      <div className="relative w-full sm:max-w-4xl max-h-[94vh] overflow-y-auto bg-slate-900 border border-slate-800 rounded-t-3xl sm:rounded-3xl shadow-2xl">
+      <div className="relative w-full sm:max-w-4xl max-h-[94vh] overflow-y-auto ubik-scroll bg-slate-900 border border-slate-800 rounded-t-3xl sm:rounded-3xl shadow-2xl">
         <div className="sticky top-0 z-10 bg-slate-900/95 backdrop-blur px-5 sm:px-7 pt-5 border-b border-slate-800">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">

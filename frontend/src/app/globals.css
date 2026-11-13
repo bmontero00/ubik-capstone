@@ -36,9 +36,13 @@ html .leaflet-container {
 }
 
 /* Barra de desplazamiento con la estética de UBIK (carruseles y listas horizontales) */
-.ubik-scroll {
-  scrollbar-width: thin;
-  scrollbar-color: #10b981 transparent;
+/* Firefox no admite degradados: color plano de la marca. En Chrome/Edge/Safari se usan los estilos
+   ::-webkit-scrollbar de abajo (si se declara scrollbar-color, Chrome los ignora). */
+@supports not selector(::-webkit-scrollbar) {
+  .ubik-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: #10b981 transparent;
+  }
 }
 .ubik-scroll::-webkit-scrollbar {
   height: 6px;
@@ -51,6 +55,16 @@ html .leaflet-container {
 .ubik-scroll::-webkit-scrollbar-thumb {
   background: linear-gradient(90deg, #34d399, #22d3ee);
   border-radius: 9999px;
+}
+/* En scroll vertical (modales) el degradado va de arriba hacia abajo y la barra no toca las esquinas redondeadas */
+.ubik-scroll::-webkit-scrollbar-thumb:vertical {
+  background: linear-gradient(180deg, #34d399, #22d3ee);
+}
+.ubik-scroll::-webkit-scrollbar-track:vertical {
+  margin: 20px 0;
+}
+.ubik-scroll::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, #6ee7b7, #67e8f9);
 }
 .ubik-scroll::-webkit-scrollbar-button {
   display: none;

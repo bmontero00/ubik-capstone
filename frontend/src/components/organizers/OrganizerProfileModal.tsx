@@ -84,7 +84,7 @@ export default function OrganizerProfileModal({ organizerId, onClose, onOpenEven
       aria-modal="true"
       aria-label={profile ? `Perfil de ${profile.nombre}` : 'Perfil del organizador'}
     >
-      <div ref={scroller} className="relative w-full sm:max-w-3xl max-h-[94vh] overflow-y-auto bg-slate-900 border border-slate-800 rounded-t-3xl sm:rounded-3xl shadow-2xl">
+      <div ref={scroller} className="relative w-full sm:max-w-3xl max-h-[94vh] overflow-y-auto ubik-scroll bg-slate-900 border border-slate-800 rounded-t-3xl sm:rounded-3xl shadow-2xl">
         {/* Portada */}
         <div
           className="h-28 sm:h-32"

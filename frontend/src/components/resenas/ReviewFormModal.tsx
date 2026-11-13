@@ -76,7 +76,7 @@ export default function ReviewFormModal({ evento, resena, cierre, onClose, onSav
       aria-modal="true"
       aria-labelledby="review-form-title"
     >
-      <form onSubmit={guardar} className="relative w-full sm:max-w-lg max-h-[94vh] overflow-y-auto bg-slate-900 border border-slate-800 rounded-t-3xl sm:rounded-3xl shadow-2xl p-5 sm:p-7">
+      <form onSubmit={guardar} className="relative w-full sm:max-w-lg max-h-[94vh] overflow-y-auto ubik-scroll bg-slate-900 border border-slate-800 rounded-t-3xl sm:rounded-3xl shadow-2xl p-5 sm:p-7">
         <button type="button" onClick={onClose} disabled={busy} aria-label="Cerrar" className="absolute top-4 right-4 w-9 h-9 flex items-center justify-center rounded-full bg-slate-800 hover:bg-slate-700 text-white">
           <X className="w-5 h-5" />
         </button>
