@@ -290,7 +290,7 @@ export default function OrganizerReports() {
   );
 }
 
-function Kpi({ icon: Icon, label, valor, variacion, ayuda }: { icon: React.ElementType; label: string; valor: string; variacion?: number | null; ayuda: string }) {
+export function Kpi({ icon: Icon, label, valor, variacion, ayuda }: { icon: React.ElementType; label: string; valor: string; variacion?: number | null; ayuda: string }) {
   const sube = (variacion ?? 0) > 0;
   return (
     <div className="p-4 rounded-2xl bg-slate-900/80 border border-slate-800" title={ayuda}>

@@ -84,7 +84,7 @@ export default function AdminDashboard({ explore, onEventsChanged, onOpenEvent, 
   return (
     <div>
       <nav
-        className="mb-6 flex gap-1 overflow-x-auto bg-slate-900/80 border border-slate-800 rounded-2xl p-1.5"
+        className="mb-6 flex gap-1 overflow-x-auto ubik-scroll bg-slate-900/80 border border-slate-800 rounded-2xl p-1.5"
         role="tablist"
         aria-label="Secciones de administración"
       >

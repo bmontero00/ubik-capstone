@@ -117,3 +117,43 @@ export function descargarCsv(nombre: string, columnas: string[], filas: (string 
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
+
+// --- Reportes de la plataforma (solo administradores) ---
+export interface ResumenPlataforma {
+  ventas: number; // lo que pagó el público
+  cargoServicio: number; // lo que recibe UBIK
+  paraOrganizadores: number;
+  entradas: number;
+  compras: number;
+  compradores: number;
+  ticketPromedio: number;
+  eventosEnPeriodo: number;
+  eventosCancelados: number;
+  eventosPublicados: number;
+  organizadoresConVentas: number;
+  nuevosAsistentes: number;
+  nuevosOrganizadores: number;
+  asistencia: number | null;
+  eventosConAcceso: number;
+  calificacion: number | null;
+  resenas: number;
+  variacion: { ventas: number | null; cargoServicio: number | null; entradas: number | null };
+}
+
+export interface SeriePlataforma {
+  agrupacion: 'dia' | 'semana';
+  puntos: { fecha: string; ventas: number; cargo: number; entradas: number }[];
+}
+
+export interface FilaDesglose { id: string; nombre: string; eventos: number; ventas: number; cargo: number; entradas: number }
+
+export interface DesglosePlataforma {
+  organizadores: (FilaDesglose & { calificacion: number | null; resenas: number })[];
+  categorias: FilaDesglose[];
+  eventos: { id: string; titulo: string; fecha: string; estado: string; categoria: string; organizador: string; entradas: number; ventas: number; cargo: number }[];
+}
+
+const periodoQuery = (f: Pick<FiltroReporte, 'desde' | 'hasta'>) => `desde=${f.desde}&hasta=${f.hasta}`;
+export const fetchResumenPlataforma = (f: Pick<FiltroReporte, 'desde' | 'hasta'>) => apiJson<ResumenPlataforma>(`/reportes/plataforma/resumen?${periodoQuery(f)}`);
+export const fetchVentasPlataforma = (f: Pick<FiltroReporte, 'desde' | 'hasta'>) => apiJson<SeriePlataforma>(`/reportes/plataforma/ventas?${periodoQuery(f)}`);
+export const fetchDesglosePlataforma = (f: Pick<FiltroReporte, 'desde' | 'hasta'>) => apiJson<DesglosePlataforma>(`/reportes/plataforma/desglose?${periodoQuery(f)}`);

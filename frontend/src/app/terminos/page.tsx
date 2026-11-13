@@ -34,9 +34,27 @@ export default function TerminosPage() {
           ],
         },
         {
-          title: 'Cambios y cancelaciones',
+          title: 'Restricción de edad',
           paragraphs: [
-            'Si un evento se posterga, tus entradas siguen siendo válidas para la nueva fecha. Si se cancela, el organizador informará en la bitácora del evento cómo se gestionarán las devoluciones.',
+            'Algunos eventos son solo para mayores de 14, 16 o 18 años. La edad mínima la define el organizador al publicar el evento, se muestra en su detalle y no se puede cambiar después de publicado.',
+            'Al comprar o confirmar entradas declaras que cada titular cumple la edad mínima del evento. En el acceso se puede pedir la cédula de identidad para comprobarla.',
+            'Si el titular no cumple la edad mínima, no podrá ingresar al evento y la entrada no tendrá devolución. El control de la edad en el acceso es responsabilidad del organizador.',
+          ],
+        },
+        {
+          title: 'Uso de la entrada en el acceso',
+          paragraphs: [
+            'Cada entrada tiene un código único (y su código QR) que vale para un solo ingreso: una vez validado en el acceso, no se puede volver a usar.',
+            'No compartas ni publiques tu código. Si otra persona lo presenta antes que tú, UBIK no puede garantizar tu ingreso con esa misma entrada.',
+            'El ingreso lo valida el organizador o su equipo de acceso, que puede revisar que la entrada corresponda al tipo y al acceso indicados.',
+          ],
+        },
+        {
+          title: 'Devoluciones, cambios y cancelaciones',
+          paragraphs: [
+            'Las entradas no tienen cambio ni devolución, ni por arrepentimiento ni por no asistir al evento, salvo que el evento sea cancelado.',
+            'Si un evento se posterga, tus entradas siguen siendo válidas para la nueva fecha. Si se cancela, se devolverá lo pagado por las entradas, y el organizador informará en la bitácora del evento cómo y en qué plazo.',
+            'Esto no limita los derechos que te otorga la Ley N° 19.496 sobre Protección de los Derechos de los Consumidores.',
           ],
         },
         {

@@ -3,6 +3,7 @@ import { CurrentUser, JwtAuthGuard, Roles, RolesGuard } from '../auth/auth.guard
 import type { AuthenticatedUser } from '../auth/auth.guards';
 import { Limitador } from '../common/limitador';
 import { Periodo, ReportesService } from './reportes.service';
+import { ReportesPlataformaService } from './reportes-plataforma.service';
 import { inicioDelDiaEnChile } from '../common/fecha-chile';
 
 const DIA = 86_400_000;
@@ -28,7 +29,29 @@ function periodo(desde?: string, hasta?: string, eventoId?: string): Periodo {
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('ORGANIZER', 'ADMIN')
 export class ReportesController {
-  constructor(private readonly reportes: ReportesService) {}
+  constructor(
+    private readonly reportes: ReportesService,
+    private readonly plataforma: ReportesPlataformaService,
+  ) {}
+
+  // Reportes de toda la plataforma: solo administradores
+  @Get('plataforma/resumen')
+  @Roles('ADMIN')
+  plataformaResumen(@Query('desde') desde?: string, @Query('hasta') hasta?: string) {
+    return this.plataforma.resumen(periodo(desde, hasta));
+  }
+
+  @Get('plataforma/ventas')
+  @Roles('ADMIN')
+  plataformaVentas(@Query('desde') desde?: string, @Query('hasta') hasta?: string) {
+    return this.plataforma.ventas(periodo(desde, hasta));
+  }
+
+  @Get('plataforma/desglose')
+  @Roles('ADMIN')
+  plataformaDesglose(@Query('desde') desde?: string, @Query('hasta') hasta?: string) {
+    return this.plataforma.desglose(periodo(desde, hasta));
+  }
 
   @Get('resumen')
   resumen(@CurrentUser() user: AuthenticatedUser, @Query('desde') desde?: string, @Query('hasta') hasta?: string, @Query('eventoId') eventoId?: string) {
