@@ -16,7 +16,7 @@ import MyTicketsPanel from '../components/tickets/MyTicketsPanel';
 import Landing from '../components/landing/Landing';
 import Footer from '../components/Footer';
 import { Compra, TicketSelection, compraValida, fetchCompra, fetchMisCompras, selectionCount } from '../services/compras';
-import { CalendarPlus, Compass, LayoutList, CheckCircle2, X, ArrowRight, Ticket, Search, MapPin } from 'lucide-react';
+import { CalendarPlus, Compass, LayoutList, CheckCircle2, X, ArrowRight, Ticket, Search, MapPin, ChartColumn } from 'lucide-react';
 import {
   ApiError, AuthResponse, AuthUser, SuspendedInfo, canPublishEvents, clearSession,
   fetchCurrentUser, isAccountActive, loadStoredUser, markApprovalNoticeSeen, saveSession, saveToken, updateStoredUser,
@@ -25,6 +25,7 @@ import { Category, EventItem, fetchCategories as fetchCategoryList, publicPrice 
 import { registrarCategorias } from '../utils/categorias';
 import SectorSearch from '../components/map/SectorSearch';
 import AccountModal from '../components/account/AccountModal';
+import OrganizerReports from '../components/reports/OrganizerReports';
 import type { SectorMapa } from '../components/Map';
 import { Ubicacion, contornoComuna } from '../services/ubicaciones';
 import { useUserLocation } from '../utils/location';
@@ -96,7 +97,7 @@ export default function HomePage() {
     view?: 'profile' | 'reviews'; // abrir directo en las reseñas
   } | null>(null);
   // Vista del organizador: explorar el catálogo o administrar sus eventos
-  const [organizerView, setOrganizerView] = useState<'explore' | 'mine'>('explore');
+  const [organizerView, setOrganizerView] = useState<'explore' | 'mine' | 'reportes'>('explore');
   // Vista del asistente: explorar o sus entradas
   const [attendeeView, setAttendeeView] = useState<'explore' | 'tickets'>('explore');
   const [compras, setCompras] = useState<Compra[]>([]);
@@ -604,6 +605,7 @@ export default function HomePage() {
                   {([
                     { id: 'explore', label: 'Explorar', icon: Compass },
                     { id: 'mine', label: 'Mis eventos', icon: LayoutList },
+                    { id: 'reportes', label: 'Reportes', icon: ChartColumn },
                   ] as const).map(({ id, label, icon: Icon }) => (
                     <button
                       key={id}
@@ -628,6 +630,8 @@ export default function HomePage() {
                     )}
                     {exploreContent}
                   </>
+                ) : organizerView === 'reportes' ? (
+                  <OrganizerReports />
                 ) : (
                   <MyEventsPanel
                     canManage={canPublish}
