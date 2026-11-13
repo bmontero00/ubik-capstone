@@ -9,6 +9,8 @@ import { DARK_TILES, categoryColor } from '../utils/mapTiles';
 import { formatEventDate, formatPrice, imageSrc } from '../services/events';
 import { EVENT_STATUS_LABELS } from '../utils/labels';
 import { OfferBadge, OfferPrice } from './events/OfferBadge';
+import EventCover from './events/EventCover';
+import type { PortadaIa } from '../utils/portadas';
 
 interface MapEvent {
   id: string;
@@ -19,6 +21,7 @@ interface MapEvent {
   variosPrecios?: boolean;
   agotado?: boolean;
   edadMinima?: number | null;
+  portadaIa?: PortadaIa | null; // portada del evento sin imagen
   precioSinOferta?: number;
   porcentajeDescuento?: number;
   ofertaHasta?: string | null;
@@ -386,8 +389,13 @@ export default function Map({
           <Marker key={evt.id} position={[evt.latitude, evt.longitude]} icon={iconFor(evt)}>
             <Popup>
               <div className="w-[220px]">
-                {imageSrc(evt.imageUrl) && (
+                {imageSrc(evt.imageUrl) ? (
                   <img src={imageSrc(evt.imageUrl)!} alt="" className="w-full h-24 object-cover rounded-xl mb-2.5" onError={(e) => (e.currentTarget.style.display = 'none')} />
+                ) : (
+                  // Sin imagen: la misma portada de la tarjeta (diseñada con IA o la de su categoría)
+                  <div className="relative w-full h-24 rounded-xl overflow-hidden mb-2.5">
+                    <EventCover portada={evt.portadaIa} categoria={evt.category?.name} size="thumb" />
+                  </div>
                 )}
                 {evt.ofertaActiva && <OfferBadge event={evt} className="mb-1.5 mr-1.5" />}
                 <span

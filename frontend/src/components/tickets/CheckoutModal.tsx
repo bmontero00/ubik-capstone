@@ -13,9 +13,10 @@ import {
 import { Rows, webpayRows } from './ReceiptModal';
 import PriceBreakdown, { itemsFromCompra, itemsFromSelection } from './PriceBreakdown';
 import { formatEventDate, formatPrice, imageSrc } from '../../services/events';
+import EventCover from '../events/EventCover';
+import type { PortadaIa } from '../../utils/portadas';
 import { formatRut } from '../../utils/rut';
 import { PHONE_PREFIX, formatLocalPhone, formatPhoneDisplay, toFullPhone } from '../../utils/phone';
-import { categoryColor } from '../../utils/mapTiles';
 import {
   AttendeeErrors, AttendeeForm, backendRutKey, emptyAttendee, rutKey, validateAttendee,
 } from './ticketRules';
@@ -26,6 +27,7 @@ export interface CheckoutEvent {
   date: string;
   address: string;
   imageUrl?: string | null;
+  portadaIa?: PortadaIa | null; // portada del evento sin imagen (IA o la de su categoría)
   edadMinima?: number | null; // restricción de edad: se confirma antes de comprar
   price: number; // lo que recibe el organizador
   precioFinal?: number; // lo que paga el público por entrada (incluye el cargo)
@@ -443,8 +445,16 @@ export default function CheckoutModal({ event, selection, buyer, resume, notice,
             {/* Resumen del pedido */}
             <aside className="order-1 lg:order-2 p-5 sm:p-6 lg:border-l border-b lg:border-b-0 border-slate-800 bg-slate-950/40">
               <div className="flex lg:block gap-3">
-                <div className="w-20 h-20 lg:w-full lg:h-36 rounded-xl overflow-hidden shrink-0" style={{ background: `linear-gradient(135deg, ${categoryColor(event.category?.name)}55, #0f172a)` }}>
-                  {src && <img src={src} alt="" className="w-full h-full object-cover" />}
+                <div className="relative w-20 h-20 lg:w-full lg:h-36 rounded-xl overflow-hidden shrink-0 bg-slate-900">
+                  {src ? (
+                    <img src={src} alt="" className="w-full h-full object-cover" />
+                  ) : (
+                    // Misma portada que en la tarjeta del evento: solo el ícono en miniatura, con la frase en pantalla ancha
+                    <>
+                      <span className="lg:hidden"><EventCover portada={event.portadaIa} categoria={event.category?.name} size="thumb" /></span>
+                      <span className="hidden lg:block"><EventCover portada={event.portadaIa} categoria={event.category?.name} size="card" /></span>
+                    </>
+                  )}
                 </div>
                 <div className="min-w-0 lg:mt-3">
                   <p className="font-bold text-white leading-snug break-words">{event.title}</p>
