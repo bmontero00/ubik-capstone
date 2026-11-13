@@ -29,23 +29,24 @@ model User {
   updatedAt  DateTime @updatedAt
 
   // Estado de la cuenta, lo administra un ADMIN (motivo obligatorio si no es ACTIVE)
-  status               AccountStatus          @default(ACTIVE)
-  statusReason         String?
-  statusChangedAt      DateTime?
-  statusChangedById    String?
-  statusChangedBy      User?                  @relation("StatusChangedBy", fields: [statusChangedById], references: [id])
-  statusChangedUsers   User[]                 @relation("StatusChangedBy")
-  eventStatusChanges   Event[]                @relation("EventStatusChangedBy")
-  entradasBitacora     BitacoraEvento[]       @relation("AutorBitacora")
-  compras              Compra[]
+  status                    AccountStatus          @default(ACTIVE)
+  statusReason              String?
+  statusChangedAt           DateTime?
+  statusChangedById         String?
+  statusChangedBy           User?                  @relation("StatusChangedBy", fields: [statusChangedById], references: [id])
+  statusChangedUsers        User[]                 @relation("StatusChangedBy")
+  eventStatusChanges        Event[]                @relation("EventStatusChangedBy")
+  entradasBitacora          BitacoraEvento[]       @relation("AutorBitacora")
+  compras                   Compra[]
   // Ingresos que validó en la puerta de sus eventos (organizador)
-  entradasValidadas    Entrada[]              @relation("EntradaValidadaPor")
-  validaciones         Validacion[]
-  accesosCreados       AccesoValidador[]
-  parametrosEditados   ParametroPlataforma[]  @relation("ParametroEditadoPor")
-  historialParametros  HistorialParametro[]
-  historialCargos      HistorialCargoEvento[]
-  condicionesRevisadas Event[]                @relation("CondicionRevisadaPor")
+  entradasValidadas         Entrada[]              @relation("EntradaValidadaPor")
+  validaciones              Validacion[]
+  accesosCreados            AccesoValidador[]
+  organizacionesVerificadas Organizacion[]         @relation("OrganizacionVerificadaPor")
+  parametrosEditados        ParametroPlataforma[]  @relation("ParametroEditadoPor")
+  historialParametros       HistorialParametro[]
+  historialCargos           HistorialCargoEvento[]
+  condicionesRevisadas      Event[]                @relation("CondicionRevisadaPor")
 
   // Recuperación de contraseña por correo. Al cambiar la contraseña se registra la fecha y las
   // sesiones abiertas antes de ese momento dejan de ser válidas.
@@ -116,7 +117,10 @@ model OrganizerProfile {
   user             User              @relation("ProfileOwner", fields: [userId], references: [id], onDelete: Cascade)
   rut              String            @unique
   phone            String
+  // Nombre público de la organización (copia del nombre de su organización; null = organiza a título personal)
   organizationName String?
+  organizacionId   String?
+  organizacion     Organizacion?     @relation(fields: [organizacionId], references: [id], onDelete: SetNull)
   eventDescription String
   socialUrl        String?
   status           OrganizerStatus   @default(PENDING)
@@ -565,4 +569,31 @@ model ResumenResenas {
   fechaGeneracion DateTime @default(now())
 
   @@map("resumenes_resenas")
+}
+
+// Organización (empresa, institución, junta de vecinos, colectivo con RUT) a la que pertenecen uno o
+// más organizadores. El RUT es único: no puede haber dos "Duoc". La verifica un administrador de UBIK
+// y solo entonces se muestra su insignia de verificada.
+model Organizacion {
+  id                String             @id @default(uuid())
+  nombre            String
+  nombreNormalizado String // sin tildes, mayúsculas ni sufijos legales, para detectar nombres parecidos
+  rut               String?            @unique // obligatorio en las nuevas; null solo en las migradas antes de exigirlo
+  estado            EstadoOrganizacion @default(PENDIENTE)
+  motivoRechazo     String?
+  verificadaEn      DateTime?
+  verificadaPorId   String?
+  verificadaPor     User?              @relation("OrganizacionVerificadaPor", fields: [verificadaPorId], references: [id], onDelete: SetNull)
+  fechaCreacion     DateTime           @default(now())
+
+  miembros OrganizerProfile[]
+
+  @@index([nombreNormalizado])
+  @@map("organizaciones")
+}
+
+enum EstadoOrganizacion {
+  PENDIENTE
+  VERIFICADA
+  RECHAZADA
 }

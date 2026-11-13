@@ -36,6 +36,8 @@ export interface RegisterPayload {
   // Solo organizadores
   rut?: string;
   phone?: string;
+  tipoOrganizador?: TipoOrganizador;
+  rutOrganizacion?: string;
   organizationName?: string;
   eventDescription?: string;
   socialUrl?: string;
@@ -62,6 +64,7 @@ export interface RejectedInfo {
     rut: string;
     phone: string;
     organizationName: string | null;
+    rutOrganizacion: string | null;
     eventDescription: string;
     socialUrl: string | null;
   };
@@ -73,9 +76,28 @@ export interface ReapplyPayload {
   rut: string;
   phone: string;
   eventDescription: string;
+  tipoOrganizador: TipoOrganizador;
+  rutOrganizacion?: string;
   organizationName?: string;
   socialUrl?: string;
   acceptsTerms: boolean;
+}
+
+// Organiza a título personal o en representación de una organización (identificada por su RUT)
+export type TipoOrganizador = 'PERSONAL' | 'ORGANIZACION';
+
+export interface OrganizacionEncontrada {
+  existe: boolean;
+  nombre?: string;
+  verificada?: boolean;
+  rechazada?: boolean;
+}
+
+// Al registrarse: ¿el RUT de la organización ya está en UBIK? (para sumarse a ella en vez de crear otra)
+export async function buscarOrganizacion(rut: string): Promise<OrganizacionEncontrada> {
+  const res = await fetch(`${API_URL}/organizaciones/buscar?rut=${encodeURIComponent(rut)}`);
+  if (!res.ok) return { existe: false };
+  return res.json();
 }
 
 // Error de la API con el código y los datos extra que manda el backend

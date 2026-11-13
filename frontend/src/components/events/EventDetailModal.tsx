@@ -6,7 +6,7 @@ import {
   X, CalendarDays, MapPin, Ticket, Navigation, Share2, Check, Loader2, BadgeCheck, CalendarClock, Ban, ShieldAlert, Lock,
 } from 'lucide-react';
 import {
-  EventDetail, EventItem, eventShareUrl, fetchEventDetail, formatEventDate, formatPrice, imageSrc, offerEndsLabel, organizerName,
+  EventDetail, EventItem, eventShareUrl, fetchEventDetail, formatEventDate, formatPrice, imageSrc, offerEndsLabel, organizacionVerificada, organizerName,
   publicPrice, relativeTime,
 } from '../../services/events';
 import { EVENT_STATUS_LABELS, StatusPill } from '../../utils/labels';
@@ -152,12 +152,14 @@ export default function EventDetailModal({
                   {detail?.organizer.logo && <Avatar nombre={organizerName(event)} foto={detail.organizer.logo} tipo="logo" size={24} />}
                   <span className="underline decoration-slate-600 underline-offset-4 group-hover:decoration-indigo-400">{organizerName(event)}</span>
                   <BadgeCheck className="w-4 h-4 text-emerald-400" aria-label="Organizador verificado" />
+                  {organizacionVerificada(event) && <OrganizacionVerificadaPill />}
                   <span className="text-xs text-indigo-300 font-medium">Ver perfil</span>
                 </button>
               ) : (
                 <>
                   <span className="font-semibold text-slate-200">{organizerName(event)}</span>
                   {detail?.organizer.perfilPublico && <BadgeCheck className="w-4 h-4 text-emerald-400" aria-label="Organizador verificado" />}
+                  {organizacionVerificada(event) && <OrganizacionVerificadaPill />}
                 </>
               )}
             </p>
@@ -285,5 +287,14 @@ function InfoTile({ icon: Icon, label, children }: { icon: React.ElementType; la
       </p>
       <div className="text-sm text-slate-100 font-medium">{children}</div>
     </div>
+  );
+}
+
+// Distinta del check del organizador: indica que UBIK comprobó el RUT de la organización
+function OrganizacionVerificadaPill() {
+  return (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-[10px] font-bold text-emerald-200" title="UBIK verificó el RUT de esta organización">
+      Organización verificada
+    </span>
   );
 }

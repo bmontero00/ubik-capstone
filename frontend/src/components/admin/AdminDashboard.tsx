@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { LayoutDashboard, ShieldCheck, Users, CalendarCog, ChartColumn, Compass, Percent, Tags } from 'lucide-react';
+import { LayoutDashboard, ShieldCheck, Users, CalendarCog, ChartColumn, Compass, Percent, Tags, Building2 } from 'lucide-react';
 import CategoriesTab from './CategoriesTab';
 import { EventStatus, apiJson } from '../../services/auth';
 import AdminPanel from '../AdminPanel';
@@ -10,8 +10,9 @@ import UsersTab, { FlaggedStatusFilter, UserGroup, UserRoleFilter } from './User
 import EventsTab from './EventsTab';
 import ReportsTab from './ReportsTab';
 import CargosTab from './CargosTab';
+import OrganizationsTab from './OrganizationsTab';
 
-export type AdminTab = 'overview' | 'requests' | 'users' | 'events' | 'categories' | 'cargos' | 'reports' | 'explore';
+export type AdminTab = 'overview' | 'requests' | 'organizations' | 'users' | 'events' | 'categories' | 'cargos' | 'reports' | 'explore';
 
 // Filtro con el que se abre una pestaña desde una tarjeta del resumen
 export type AdminFilter =
@@ -21,6 +22,7 @@ export type AdminFilter =
 const TABS: { id: AdminTab; label: string; icon: React.ElementType }[] = [
   { id: 'overview', label: 'Resumen', icon: LayoutDashboard },
   { id: 'requests', label: 'Solicitudes', icon: ShieldCheck },
+  { id: 'organizations', label: 'Organizaciones', icon: Building2 },
   { id: 'users', label: 'Gestión de usuarios', icon: Users },
   { id: 'events', label: 'Gestión de eventos', icon: CalendarCog },
   { id: 'categories', label: 'Categorías', icon: Tags },
@@ -115,6 +117,7 @@ export default function AdminDashboard({ explore, onEventsChanged, onOpenEvent, 
 
       {tab === 'overview' && <OverviewTab overview={overview} onNavigate={selectTab} />}
       {tab === 'requests' && <AdminPanel />}
+      {tab === 'organizations' && <OrganizationsTab />}
       {tab === 'users' && (
         <UsersTab
           key={filter.visit}

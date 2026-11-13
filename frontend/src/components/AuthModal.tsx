@@ -1,12 +1,12 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   X, Lock, Mail, User as UserIcon, Loader2, Ticket, CalendarPlus, ArrowLeft, ShieldCheck,
-  Phone, IdCard, Building2, Link2, Eye, EyeOff, Check, Hourglass, Info, Ban, CircleX, RotateCcw, FilePlus, ImagePlus,
+  Phone, IdCard, Building2, Link2, Eye, EyeOff, Check, Hourglass, Info, Ban, CircleX, RotateCcw, FilePlus, ImagePlus, UserRound,
 } from 'lucide-react';
 import {
-  ApiError, AuthResponse, RegisterPayload, RejectedInfo, SuspendedInfo,
+  ApiError, AuthResponse, OrganizacionEncontrada, RegisterPayload, RejectedInfo, SuspendedInfo, TipoOrganizador, buscarOrganizacion,
   loginUser, reapplyOrganizer, registerUser,
 } from '../services/auth';
 import { formatRut, isValidRut } from '../utils/rut';
@@ -41,6 +41,8 @@ const emptyForm = {
   rut: '',
   phone: '',
   organizationName: '',
+  tipoOrganizador: '' as '' | TipoOrganizador,
+  rutOrganizacion: '',
   eventDescription: '',
   socialUrl: '',
   acceptsTerms: false,
@@ -107,6 +109,8 @@ export default function AuthModal({
             rut: formatRut(app.rut),
             phone: formatLocalPhone(app.phone),
             organizationName: app.organizationName ?? '',
+            tipoOrganizador: app.rutOrganizacion || app.organizationName ? 'ORGANIZACION' : 'PERSONAL',
+            rutOrganizacion: app.rutOrganizacion ? formatRut(app.rutOrganizacion) : '',
             eventDescription: app.eventDescription,
             socialUrl: app.socialUrl ?? '',
           }
@@ -132,6 +136,12 @@ export default function AuthModal({
     }
 
     if (isOrganizer) {
+      if (!form.tipoOrganizador) errors.tipoOrganizador = 'Elige si organizas a título personal o por una organización';
+      if (form.tipoOrganizador === 'ORGANIZACION') {
+        if (!isValidRut(form.rutOrganizacion)) errors.rutOrganizacion = 'RUT de la organización inválido, revisa el dígito verificador';
+        else if (orgEncontrada?.rechazada) errors.rutOrganizacion = 'Esa organización no fue aprobada en UBIK. Escríbenos si crees que es un error.';
+        if (!orgEncontrada?.existe && form.organizationName.trim().length < 2) errors.organizationName = 'Escribe el nombre de la organización';
+      }
       if (!isValidRut(form.rut)) errors.rut = 'RUT inválido, revisa el dígito verificador';
       if (!isValidLocalPhone(form.phone)) errors.phone = 'Ingresa los 9 dígitos de tu celular, comenzando con 9';
       if (form.eventDescription.trim().length < MIN_DESCRIPTION) {
@@ -145,6 +155,17 @@ export default function AuthModal({
     return errors;
   };
 
+  // RUT de la organización: si ya está en UBIK, la persona se suma a ella (no se crea otra)
+  const [orgEncontrada, setOrgEncontrada] = useState<OrganizacionEncontrada | null>(null);
+  const rutOrgValido = form.tipoOrganizador === 'ORGANIZACION' && isValidRut(form.rutOrganizacion) ? form.rutOrganizacion : null;
+  useEffect(() => {
+    setOrgEncontrada(null);
+    if (!rutOrgValido) return;
+    let vigente = true;
+    const t = setTimeout(() => buscarOrganizacion(rutOrgValido).then((r) => vigente && setOrgEncontrada(r)).catch(() => {}), 350);
+    return () => { vigente = false; clearTimeout(t); };
+  }, [rutOrgValido]);
+
   const errors = validate();
   const visibleError = (key: keyof FormState) => ((touched[key] || submitAttempted) ? errors[key] : undefined);
 
@@ -152,7 +173,12 @@ export default function AuthModal({
     rut: form.rut,
     phone: toFullPhone(form.phone),
     eventDescription: form.eventDescription.trim(),
-    organizationName: form.organizationName.trim() || undefined,
+    tipoOrganizador: (form.tipoOrganizador || 'PERSONAL') as TipoOrganizador,
+    ...(form.tipoOrganizador === 'ORGANIZACION' && {
+      rutOrganizacion: form.rutOrganizacion,
+      // Si el RUT ya está registrado, el nombre lo pone la organización existente
+      organizationName: orgEncontrada?.existe ? undefined : form.organizationName.trim(),
+    }),
     socialUrl: form.socialUrl.trim() || undefined,
     acceptsTerms: form.acceptsTerms,
   });
@@ -636,17 +662,67 @@ export default function AuthModal({
                     )}
                   </div>
 
-                  {renderField('organizationName', 'Organización o colectivo (opcional)', <Building2 className={iconClass} />,
-                    <input
-                      id="auth-organizationName"
-                      type="text"
-                      autoComplete="organization"
-                      value={form.organizationName}
-                      onChange={(e) => setField('organizationName', e.target.value)}
-                      placeholder="Ej. Junta de Vecinos Barrio Yungay"
-                      className={inputClass('organizationName')}
-                    />,
-                    'Si organizas a título personal, déjalo en blanco',
+                  <fieldset>
+                    <legend className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">¿Cómo organizas tus eventos?</legend>
+                    <div className="grid sm:grid-cols-2 gap-2" role="radiogroup">
+                      {([
+                        ['PERSONAL', 'A título personal', 'En tus eventos aparecerá tu nombre', UserRound],
+                        ['ORGANIZACION', 'Represento a una organización', 'Empresa, institución, junta de vecinos o colectivo con RUT', Building2],
+                      ] as const).map(([id, titulo, ayuda, Icono]) => {
+                        const activo = form.tipoOrganizador === id;
+                        return (
+                          <button key={id} type="button" role="radio" aria-checked={activo} onClick={() => { setField('tipoOrganizador', id); markTouched('tipoOrganizador'); }}
+                            className={`flex items-start gap-2.5 p-3 rounded-xl border text-left transition-colors ${activo ? 'bg-emerald-500/10 border-emerald-500/60' : 'bg-slate-950 border-slate-800 hover:border-slate-600'}`}>
+                            <Icono className={`w-4 h-4 mt-0.5 shrink-0 ${activo ? 'text-emerald-300' : 'text-slate-500'}`} />
+                            <span>
+                              <span className="block text-sm font-semibold text-white">{titulo}</span>
+                              <span className="block text-[11px] text-slate-400">{ayuda}</span>
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {visibleError('tipoOrganizador') && <p className="text-[11px] text-rose-300 mt-1">{visibleError('tipoOrganizador')}</p>}
+                  </fieldset>
+
+                  {form.tipoOrganizador === 'ORGANIZACION' && (
+                    <div className="space-y-4 p-3 rounded-xl border border-slate-800 bg-slate-950/40">
+                      {renderField('rutOrganizacion', 'RUT de la organización', <IdCard className={iconClass} />,
+                        <input
+                          id="auth-rutOrganizacion"
+                          type="text"
+                          value={form.rutOrganizacion}
+                          onChange={(e) => setField('rutOrganizacion', formatRut(e.target.value))}
+                          onBlur={() => markTouched('rutOrganizacion')}
+                          placeholder="76.123.456-7"
+                          className={inputClass('rutOrganizacion')}
+                        />,
+                        'Lo usamos para verificar la organización y evitar que alguien se haga pasar por ella',
+                      )}
+                      {orgEncontrada?.existe && !orgEncontrada.rechazada ? (
+                        <p className="flex items-start gap-2 text-xs p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/25 text-emerald-100">
+                          <Building2 className="w-4 h-4 shrink-0 mt-px text-emerald-300" />
+                          <span>
+                            <strong className="text-white">{orgEncontrada.nombre}</strong> ya está en UBIK{orgEncontrada.verificada ? ' y está verificada' : ''}.
+                            Te sumarás a ella como organizador: un administrador confirmará que perteneces a la organización.
+                          </span>
+                        </p>
+                      ) : (
+                        renderField('organizationName', 'Nombre de la organización', <Building2 className={iconClass} />,
+                          <input
+                            id="auth-organizationName"
+                            type="text"
+                            autoComplete="organization"
+                            value={form.organizationName}
+                            onChange={(e) => setField('organizationName', e.target.value)}
+                            onBlur={() => markTouched('organizationName')}
+                            placeholder="Ej. Junta de Vecinos Barrio Yungay"
+                            className={inputClass('organizationName')}
+                          />,
+                          'Tal como aparece en el SII. Un administrador de UBIK la verificará.',
+                        )
+                      )}
+                    </div>
                   )}
 
                   <div>

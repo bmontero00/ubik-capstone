@@ -35,7 +35,7 @@ const tiposInclude = { tiposEntrada: { orderBy: { orden: 'asc' } } } satisfies P
 const publicInclude = {
   ...tiposInclude,
   category: { select: { id: true, name: true } },
-  organizer: { select: { id: true, name: true, fotoPerfil: true, organizerProfile: { select: { organizationName: true } } } },
+  organizer: { select: { id: true, name: true, fotoPerfil: true, organizerProfile: { select: { organizationName: true, organizacion: { select: { estado: true } } } } } },
 } satisfies Prisma.EventInclude;
 
 const eventInclude = {
@@ -168,7 +168,7 @@ export class EventsService {
             name: true,
             role: true,
             status: true,
-            organizerProfile: { select: { organizationName: true, status: true } },
+            organizerProfile: { select: { organizationName: true, status: true, organizacion: { select: { estado: true } } } },
           },
         },
         bitacora: { include: bitacoraInclude, orderBy: { fechaCreacion: 'desc' } },
@@ -192,7 +192,7 @@ export class EventsService {
       organizer: {
         id: organizer.id,
         name: organizer.role === 'ADMIN' ? 'Equipo UBIK' : organizer.name,
-        organizerProfile: organizer.organizerProfile && { organizationName: organizer.organizerProfile.organizationName },
+        organizerProfile: organizer.organizerProfile && { organizationName: organizer.organizerProfile.organizationName, organizacion: organizer.organizerProfile.organizacion },
         logo: perfilPublico ? organizer.fotoPerfil : null, // el logo solo de organizadores verificados
         perfilPublico,
       },

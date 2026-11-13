@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { ShieldCheck, Check, X, Loader2, Link2, Phone, IdCard, Building2, Inbox } from 'lucide-react';
+import { ShieldCheck, Check, X, Loader2, Link2, Phone, IdCard, Building2, Inbox, BadgeCheck, TriangleAlert, Users } from 'lucide-react';
 import { authFetch, OrganizerStatus } from '../services/auth';
 import { formatRut } from '../utils/rut';
 import { formatPhoneDisplay } from '../utils/phone';
@@ -21,7 +21,23 @@ interface OrganizerRequest {
   reviewedAt: string | null;
   user: { id: string; name: string; email: string };
   reviewedBy?: { id: string; name: string } | null;
+  organizacion: null | {
+    id: string;
+    nombre: string;
+    rut: string | null;
+    estado: 'PENDIENTE' | 'VERIFICADA' | 'RECHAZADA';
+    miembrosAprobados: number;
+    parecidas: { id: string; nombre: string; rut: string | null; estado: string; coincidencia: 'igual' | 'parecido' }[];
+  };
 }
+
+// Qué hacer con la organización al aprobar la solicitud
+type OpcionOrganizacion = 'VERIFICAR' | 'MANTENER' | 'QUITAR';
+
+// Opción sugerida: una organización nueva con RUT se verifica junto con su primera solicitud;
+// si ya está verificada, la persona simplemente se suma
+const opcionSugerida = (r: OrganizerRequest): OpcionOrganizacion =>
+  !r.organizacion || r.organizacion.estado === 'VERIFICADA' ? 'MANTENER' : r.organizacion.rut ? 'VERIFICAR' : 'MANTENER';
 
 type ReviewAction = 'approve' | 'reject';
 
@@ -59,8 +75,11 @@ export default function AdminPanel() {
   const [reason, setReason] = useState('');
   const [reasonTouched, setReasonTouched] = useState(false);
   const [submitAttempted, setSubmitAttempted] = useState(false);
+  const [opcionOrg, setOpcionOrg] = useState<OpcionOrganizacion>('MANTENER');
 
   const startReview = (id: string, action: ReviewAction) => {
+    const solicitud = requests.find((x) => x.id === id);
+    setOpcionOrg(solicitud ? opcionSugerida(solicitud) : 'MANTENER');
     setReviewing({ id, action });
     setReason('');
     setReasonTouched(false);
@@ -98,7 +117,10 @@ export default function AdminPanel() {
       const res = await authFetch(`/admin/organizers/${id}/${action}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ reason: reason.normalize('NFC').trim() }),
+        body: JSON.stringify({
+          reason: reason.normalize('NFC').trim(),
+          ...(action === 'approve' && requests.find((x) => x.id === id)?.organizacion ? { organizacion: opcionOrg } : {}),
+        }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -164,8 +186,8 @@ export default function AdminPanel() {
                   <div className="grid sm:grid-cols-2 gap-x-6 gap-y-1.5 text-xs text-slate-300 mb-3">
                     <span className="flex items-center gap-2"><IdCard className="w-3.5 h-3.5 text-slate-500" /> {formatRut(r.rut)}</span>
                     <span className="flex items-center gap-2"><Phone className="w-3.5 h-3.5 text-slate-500" /> {formatPhoneDisplay(r.phone)}</span>
-                    {r.organizationName && (
-                      <span className="flex items-center gap-2"><Building2 className="w-3.5 h-3.5 text-slate-500" /> {r.organizationName}</span>
+                    {!r.organizacion && (
+                      <span className="flex items-center gap-2 text-slate-400"><Building2 className="w-3.5 h-3.5 text-slate-500" /> {r.organizationName ?? 'A título personal'}</span>
                     )}
                     {r.socialUrl && (
                       <a href={r.socialUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-indigo-300 hover:underline truncate">
@@ -173,6 +195,7 @@ export default function AdminPanel() {
                       </a>
                     )}
                   </div>
+                  {r.organizacion && <OrganizacionSolicitud org={r.organizacion} />}
                   <p className="text-xs text-slate-400 bg-slate-900 border border-slate-800 rounded-lg p-3 leading-relaxed">
                     {r.eventDescription}
                   </p>
@@ -211,6 +234,25 @@ export default function AdminPanel() {
 
               {reviewing?.id === r.id && (
                 <div className="mt-4 pt-4 border-t border-slate-800">
+                  {reviewing.action === 'approve' && r.organizacion && (
+                    <fieldset className="mb-3">
+                      <legend className="text-xs font-semibold text-slate-300 mb-1.5">Organización: {r.organizacion.nombre}</legend>
+                      <div className="flex flex-col gap-1.5">
+                        {([
+                          ...(r.organizacion.estado !== 'VERIFICADA'
+                            ? [['VERIFICAR', r.organizacion.rut ? 'Aprobar y verificar la organización' : 'Verificar la organización (primero agrega su RUT en Organizaciones)', !r.organizacion.rut] as const]
+                            : []),
+                          ['MANTENER', r.organizacion.estado === 'VERIFICADA' ? `Aprobar y sumarlo a ${r.organizacion.nombre}` : 'Aprobar y dejar la organización pendiente de verificación', false] as const,
+                          ['QUITAR', 'Aprobar solo a título personal (no pertenece a la organización)', false] as const,
+                        ]).map(([id, texto, deshabilitada]) => (
+                          <label key={id} className={`flex items-center gap-2 text-xs ${deshabilitada ? 'text-slate-500' : 'text-slate-200'}`}>
+                            <input type="radio" name={`org-${r.id}`} checked={opcionOrg === id} disabled={deshabilitada} onChange={() => setOpcionOrg(id)} className="accent-emerald-500" />
+                            {texto}
+                          </label>
+                        ))}
+                      </div>
+                    </fieldset>
+                  )}
                   <ReasonField
                     label={REVIEW_COPY[reviewing.action].label}
                     value={reason}
@@ -249,5 +291,42 @@ export default function AdminPanel() {
         </ul>
       )}
     </section>
+  );
+}
+
+// Organización que declara la solicitud, con alertas si su nombre se parece al de otra
+function OrganizacionSolicitud({ org }: { org: NonNullable<OrganizerRequest['organizacion']> }) {
+  const estado = org.estado === 'VERIFICADA'
+    ? { texto: 'Verificada', clase: 'bg-emerald-500/15 text-emerald-200 border-emerald-500/30' }
+    : org.estado === 'RECHAZADA'
+      ? { texto: 'Rechazada', clase: 'bg-rose-500/15 text-rose-200 border-rose-500/30' }
+      : { texto: 'Por verificar', clase: 'bg-amber-500/15 text-amber-200 border-amber-500/30' };
+  return (
+    <div className="mb-3 p-3 rounded-lg bg-slate-900 border border-slate-800 text-xs space-y-2">
+      <p className="flex flex-wrap items-center gap-2 text-slate-200">
+        <Building2 className="w-3.5 h-3.5 text-slate-500" />
+        <strong className="text-white">{org.nombre}</strong>
+        <span className={`px-2 py-0.5 rounded-full border text-[10px] font-bold ${estado.clase}`}>
+          {org.estado === 'VERIFICADA' && <BadgeCheck className="inline w-3 h-3 mr-0.5 -mt-px" />}{estado.texto}
+        </span>
+        <span className="text-slate-400">RUT {org.rut ? formatRut(org.rut) : 'sin registrar'}</span>
+      </p>
+      {org.estado === 'VERIFICADA' ? (
+        <p className="flex items-center gap-1.5 text-slate-400"><Users className="w-3.5 h-3.5" /> Se suma a una organización con {org.miembrosAprobados} {org.miembrosAprobados === 1 ? 'organizador aprobado' : 'organizadores aprobados'}: confirma que pertenece a ella.</p>
+      ) : (
+        <p className="text-slate-400">Organización nueva: revisa el RUT en el SII antes de verificarla.</p>
+      )}
+      {org.parecidas.length > 0 && (
+        <div className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-100">
+          <p className="flex items-center gap-1.5 font-semibold"><TriangleAlert className="w-3.5 h-3.5" /> Nombre {org.parecidas.some((x) => x.coincidencia === 'igual') ? 'igual' : 'parecido'} a otras organizaciones</p>
+          <ul className="mt-1 space-y-0.5">
+            {org.parecidas.map((x) => (
+              <li key={x.id}>· {x.nombre} — RUT {x.rut ? formatRut(x.rut) : 'sin registrar'} ({x.estado === 'VERIFICADA' ? 'verificada' : 'por verificar'})</li>
+            ))}
+          </ul>
+          <p className="mt-1 text-amber-200/80">Puede ser un duplicado o un intento de suplantación. Si son la misma, fusiónalas en la pestaña Organizaciones.</p>
+        </div>
+      )}
+    </div>
   );
 }

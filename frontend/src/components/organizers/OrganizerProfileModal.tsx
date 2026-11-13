@@ -181,6 +181,11 @@ export default function OrganizerProfileModal({ organizerId, onClose, onOpenEven
             <>
             <p className="mt-3 text-xs text-slate-400 flex flex-wrap gap-x-3 gap-y-1">
               <span className="text-emerald-300/90">Verificado por UBIK desde {monthYear(profile.verificadoDesde)}</span>
+              {profile.organizacionVerificada && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-[10px] font-bold text-emerald-200" title="UBIK verificó el RUT de esta organización">
+                  Organización verificada
+                </span>
+              )}
               {profile.responsable && <span>Responsable: {profile.responsable}</span>}
             </p>
 

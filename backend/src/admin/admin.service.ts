@@ -1,6 +1,7 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { AccountStatus, EventStatus, OrganizerStatus, Prisma, Role } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { OrganizacionesService } from '../organizaciones/organizaciones.service';
 import { cambioEstado } from '../events/bitacora';
 import { conPrecios } from '../parametros/cargos';
 
@@ -50,7 +51,10 @@ const IS_REJECTED: Prisma.UserWhereInput = { role: 'ORGANIZER', organizerProfile
 
 @Injectable()
 export class AdminService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly organizaciones: OrganizacionesService,
+  ) {}
 
   // --- Resumen ---
 
@@ -76,24 +80,59 @@ export class AdminService {
 
   // --- Solicitudes de organizadores ---
 
-  listOrganizerRequests(status?: OrganizerStatus) {
-    return this.prisma.organizerProfile.findMany({
+  // Cada solicitud trae su organización (si representa a una) y las organizaciones con nombre
+  // igual o parecido, para que el administrador detecte duplicados o suplantaciones
+  async listOrganizerRequests(status?: OrganizerStatus) {
+    const solicitudes = await this.prisma.organizerProfile.findMany({
       where: status ? { status } : undefined,
       include: {
         user: { select: { id: true, name: true, email: true, createdAt: true } },
         reviewedBy: { select: { id: true, name: true } },
+        organizacion: {
+          select: {
+            id: true, nombre: true, nombreNormalizado: true, rut: true, estado: true,
+            _count: { select: { miembros: { where: { status: 'APPROVED' } } } },
+          },
+        },
       },
       orderBy: { createdAt: 'asc' }, // Las más antiguas primero
     });
+    return Promise.all(solicitudes.map(async ({ organizacion, ...s }) => ({
+      ...s,
+      organizacion: organizacion
+        ? {
+            id: organizacion.id,
+            nombre: organizacion.nombre,
+            rut: organizacion.rut,
+            estado: organizacion.estado,
+            miembrosAprobados: organizacion._count.miembros,
+            parecidas: await this.organizaciones.parecidas(organizacion),
+          }
+        : null,
+    })));
   }
 
   // reason ya viene validado por IsReason (obligatorio, 10 a 500 caracteres)
-  async reviewOrganizer(profileId: string, adminId: string, approve: boolean, reason: string) {
+  async reviewOrganizer(profileId: string, adminId: string, approve: boolean, reason: string, organizacion: 'VERIFICAR' | 'MANTENER' | 'QUITAR' = 'MANTENER') {
     const profile = await this.prisma.organizerProfile.findUnique({
       where: { id: profileId },
-      include: { user: { select: { name: true } } },
+      include: { user: { select: { name: true } }, organizacion: { select: { id: true, estado: true, rut: true } } },
     });
     if (!profile) throw new NotFoundException('Solicitud no encontrada');
+
+    // Organización de la solicitud aprobada: se verifica, se mantiene o se quita (queda a título personal)
+    if (approve && profile.organizacion) {
+      if (organizacion === 'VERIFICAR' && profile.organizacion.estado !== 'VERIFICADA') {
+        if (!profile.organizacion.rut) throw new BadRequestException('La organización no tiene RUT: agrégalo en la pestaña Organizaciones antes de verificarla');
+        await this.organizaciones.verificar(profile.organizacion.id, adminId, {});
+      } else if (organizacion === 'QUITAR') {
+        await this.prisma.organizerProfile.update({ where: { id: profileId }, data: { organizacionId: null, organizationName: null } });
+        await this.prisma.organizacion.deleteMany({ where: { id: profile.organizacion.id, estado: 'PENDIENTE', miembros: { none: {} } } });
+      }
+    }
+    const organizationName = approve
+      ? (await this.prisma.organizerProfile.findUnique({ where: { id: profileId }, select: { organizationName: true } }))?.organizationName ?? null
+      : profile.organizationName;
 
     const decision: OrganizerStatus = approve ? 'APPROVED' : 'REJECTED';
     const reviewedAt = new Date();
@@ -123,7 +162,7 @@ export class AdminService {
           applicantName: profile.user.name,
           rut: profile.rut,
           phone: profile.phone,
-          organizationName: profile.organizationName,
+          organizationName,
           eventDescription: profile.eventDescription,
           socialUrl: profile.socialUrl,
         },

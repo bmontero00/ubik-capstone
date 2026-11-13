@@ -25,6 +25,8 @@ export interface OrganizerProfile {
   descripcion: string;
   redSocial: string | null;
   verificadoDesde: string;
+  organizacionVerificada: boolean;
+  organizacionVerificadaEn: string | null;
   miembroDesde: string;
   estadisticas: {
     eventosPublicados: number;

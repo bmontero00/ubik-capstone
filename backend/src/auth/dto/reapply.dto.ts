@@ -1,4 +1,4 @@
-import { Equals, IsNotEmpty, IsOptional, IsString, IsUrl, Matches, MaxLength, MinLength, Validate } from 'class-validator';
+import { Equals, IsIn, IsNotEmpty, IsOptional, IsString, IsUrl, Matches, MaxLength, MinLength, Validate, ValidateIf } from 'class-validator';
 import { IsValidRutConstraint } from './register.dto';
 
 // Nueva solicitud de un organizador rechazado. reapplyToken lo entrega el login
@@ -22,6 +22,18 @@ export class ReapplyDto {
   })
   phone: string;
 
+
+  // Organiza a título personal o en representación de una organización (con su RUT)
+  @ValidateIf(() => true)
+  @IsIn(['PERSONAL', 'ORGANIZACION'], { message: 'Indica si organizas a título personal o por una organización' })
+  tipoOrganizador?: 'PERSONAL' | 'ORGANIZACION';
+
+  @ValidateIf((dto: ReapplyDto) => dto.tipoOrganizador === 'ORGANIZACION')
+  @IsString({ message: 'Ingresa el RUT de la organización' })
+  @Validate(IsValidRutConstraint, { message: 'El RUT de la organización no es válido' })
+  rutOrganizacion?: string;
+
+  // Nombre de la organización (solo se usa si su RUT aún no está registrado en UBIK)
   @IsOptional()
   @IsString()
   @MaxLength(120)

@@ -49,7 +49,7 @@ export class OrganizersService {
         createdAt: true,
         fotoPerfil: true,
         organizerProfile: {
-          select: { status: true, organizationName: true, eventDescription: true, socialUrl: true, reviewedAt: true },
+          select: { status: true, organizationName: true, eventDescription: true, socialUrl: true, reviewedAt: true, organizacion: { select: { estado: true, verificadaEn: true } } },
         },
       },
     });
@@ -101,6 +101,9 @@ export class OrganizersService {
       id: user.id,
       nombre: profile.organizationName || user.name,
       responsable: profile.organizationName ? user.name : null,
+      // Organización con RUT comprobado por UBIK (no solo la persona verificada)
+      organizacionVerificada: profile.organizacion?.estado === 'VERIFICADA',
+      organizacionVerificadaEn: profile.organizacion?.estado === 'VERIFICADA' ? profile.organizacion.verificadaEn : null,
       logo: user.fotoPerfil,
       descripcion: profile.eventDescription,
       redSocial: /^https?:\/\//i.test(profile.socialUrl ?? '') ? profile.socialUrl : null,

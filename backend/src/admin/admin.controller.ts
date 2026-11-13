@@ -1,7 +1,7 @@
 import { Body, Controller, Get, Param, Patch, Query, UseGuards } from '@nestjs/common';
 import { Type } from 'class-transformer';
 import { AccountStatus, EventStatus, OrganizerStatus, Role } from '@prisma/client';
-import { IsIn, IsNumber, Max, Min, ValidateIf } from 'class-validator';
+import { IsIn, IsNumber, IsOptional, Max, Min, ValidateIf } from 'class-validator';
 import { AdminService } from './admin.service';
 import { CargosAdminService } from './cargos-admin.service';
 import { PORCENTAJE_CARGO_MAX } from '../parametros/cargos';
@@ -13,6 +13,12 @@ import { IsReason } from '../common/reason.validator';
 class ReviewOrganizerDto {
   @IsReason()
   reason: string;
+
+  // Al aprobar: qué hacer con su organización. VERIFICAR la deja verificada (necesita RUT),
+  // MANTENER no la cambia (ej. se suma a una ya verificada) y QUITAR lo aprueba a título personal.
+  @IsOptional()
+  @IsIn(['VERIFICAR', 'MANTENER', 'QUITAR'], { message: 'Opción de organización no válida' })
+  organizacion?: 'VERIFICAR' | 'MANTENER' | 'QUITAR';
 }
 
 class UpdateUserStatusDto {
@@ -86,7 +92,7 @@ export class AdminController {
 
   @Patch('organizers/:id/approve')
   approve(@Param('id') id: string, @Body() dto: ReviewOrganizerDto, @CurrentUser() admin: AuthenticatedUser) {
-    return this.adminService.reviewOrganizer(id, admin.sub, true, dto.reason);
+    return this.adminService.reviewOrganizer(id, admin.sub, true, dto.reason, dto.organizacion ?? 'MANTENER');
   }
 
   @Patch('organizers/:id/reject')

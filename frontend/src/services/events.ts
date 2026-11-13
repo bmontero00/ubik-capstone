@@ -47,7 +47,7 @@ export interface EventItem {
     id: string;
     name: string;
     email?: string;
-    organizerProfile?: { organizationName: string | null } | null;
+    organizerProfile?: { organizationName: string | null; organizacion?: { estado: 'PENDIENTE' | 'VERIFICADA' | 'RECHAZADA' } | null } | null;
     perfilPublico?: boolean; // solo en el detalle: si tiene perfil público para enlazar
     logo?: string | null; // solo en el detalle: logo del organizador verificado
   };
@@ -150,6 +150,10 @@ export interface EventDetail extends EventItem {
 // Nombre visible del organizador: su organización, o su nombre
 export const organizerName = (event: Pick<EventItem, 'organizer'>) =>
   event.organizer.organizerProfile?.organizationName || event.organizer.name;
+
+// La organización del organizador fue verificada por UBIK (con su RUT)
+export const organizacionVerificada = (event: Pick<EventItem, 'organizer'>) =>
+  !!event.organizer.organizerProfile?.organizationName && event.organizer.organizerProfile?.organizacion?.estado === 'VERIFICADA';
 
 // Tipo de entrada en el formulario ("id" solo en los que ya existen)
 export interface TipoEntradaPayload {

@@ -9,6 +9,7 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import { OrganizerStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { OrganizacionesService } from '../organizaciones/organizaciones.service';
 import { normalizarCelular } from '../cuenta/cuenta.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
@@ -55,6 +56,7 @@ export class AuthService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
+    private readonly organizaciones: OrganizacionesService,
   ) {}
 
   async register(dto: RegisterDto) {
@@ -79,7 +81,11 @@ export class AuthService {
 
     const hashedPassword = await bcrypt.hash(dto.password, 10);
 
-    const user = await this.prisma.user.create({
+    const user = await this.prisma.$transaction(async (tx) => {
+      const org = isOrganizer
+        ? await this.organizaciones.resolver(tx, { tipo: dto.tipoOrganizador, rut: dto.rutOrganizacion, nombre: dto.organizationName })
+        : null;
+      return tx.user.create({
       data: {
         email: dto.email,
         password: hashedPassword,
@@ -93,7 +99,8 @@ export class AuthService {
               create: {
                 rut,
                 phone: dto.phone!.replace(/\s/g, ''),
-                organizationName: dto.organizationName?.trim() || null,
+                organizationName: org?.organizationName ?? null,
+                organizacionId: org?.organizacionId ?? null,
                 eventDescription: dto.eventDescription!.trim(),
                 socialUrl: dto.socialUrl?.trim() || null,
               },
@@ -101,6 +108,7 @@ export class AuthService {
           : undefined,
       },
       select: userSelect,
+      });
     });
 
     return {
@@ -129,6 +137,7 @@ export class AuthService {
             phone: true,
             eventDescription: true,
             socialUrl: true,
+            organizacion: { select: { rut: true } },
           },
         },
       },
@@ -164,6 +173,7 @@ export class AuthService {
           rut: profile.rut,
           phone: profile.phone,
           organizationName: profile.organizationName,
+          rutOrganizacion: profile.organizacion?.rut ?? null,
           eventDescription: profile.eventDescription,
           socialUrl: profile.socialUrl,
         },
@@ -202,7 +212,10 @@ export class AuthService {
     const rut = normalizeRut(dto.rut);
     await this.assertRutAvailable(rut, user.organizerProfile.id);
 
-    const updated = await this.prisma.user.update({
+    const anterior = await this.prisma.organizerProfile.findUnique({ where: { id: user.organizerProfile.id }, select: { organizacionId: true } });
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const org = await this.organizaciones.resolver(tx, { tipo: dto.tipoOrganizador, rut: dto.rutOrganizacion, nombre: dto.organizationName });
+      const actualizado = await tx.user.update({
       where: { id: userId },
       data: {
         name: dto.name.trim(),
@@ -210,7 +223,8 @@ export class AuthService {
           update: {
             rut,
             phone: dto.phone.replace(/\s/g, ''),
-            organizationName: dto.organizationName?.trim() || null,
+            organizationName: org.organizationName,
+            organizacionId: org.organizacionId,
             eventDescription: dto.eventDescription.trim(),
             socialUrl: dto.socialUrl?.trim() || null,
             status: 'PENDING',
@@ -224,6 +238,12 @@ export class AuthService {
         },
       },
       select: userSelect,
+      });
+      // Si cambió de organización, la que había creado y quedó sin miembros (y sin verificar) se borra
+      if (anterior?.organizacionId && anterior.organizacionId !== org.organizacionId) {
+        await tx.organizacion.deleteMany({ where: { id: anterior.organizacionId, estado: 'PENDIENTE', miembros: { none: {} } } });
+      }
+      return actualizado;
     });
 
     return {
