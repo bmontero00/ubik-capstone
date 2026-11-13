@@ -41,6 +41,7 @@ model User {
   // Ingresos que validó en la puerta de sus eventos (organizador)
   entradasValidadas    Entrada[]              @relation("EntradaValidadaPor")
   validaciones         Validacion[]
+  accesosCreados       AccesoValidador[]
   parametrosEditados   ParametroPlataforma[]  @relation("ParametroEditadoPor")
   historialParametros  HistorialParametro[]
   historialCargos      HistorialCargoEvento[]
@@ -209,10 +210,11 @@ model Event {
   bitacora BitacoraEvento[]
 
   // Compras de entradas (o confirmaciones de asistencia si el evento es gratuito)
-  compras      Compra[]
-  entradas     Entrada[]
-  resenas      Resena[]
-  validaciones Validacion[]
+  compras          Compra[]
+  entradas         Entrada[]
+  resenas          Resena[]
+  validaciones     Validacion[]
+  accesosValidador AccesoValidador[]
 
   // Cargo por servicio de UBIK: se fija al crear el evento con el % vigente y no cambia si después
   // se modifica el % de la plataforma. "price" es lo que recibe el organizador por entrada; el
@@ -380,22 +382,25 @@ model TransaccionPago {
 
 // Entrada nominativa: cada una queda a nombre de un asistente
 model Entrada {
-  id            String       @id @default(uuid())
-  codigo        String       @unique // código que se presenta en el acceso
-  nombre        String
-  apellido      String
-  rut           String // normalizado "12345678-5"
-  telefono      String // "+56912345678"
-  correo        String
-  fechaCreacion DateTime     @default(now())
+  id                  String           @id @default(uuid())
+  codigo              String           @unique // código que se presenta en el acceso
+  nombre              String
+  apellido            String
+  rut                 String // normalizado "12345678-5"
+  telefono            String // "+56912345678"
+  correo              String
+  fechaCreacion       DateTime         @default(now())
   // Lo que pagó el público por esta entrada (incluye cargo y oferta) y el cargo por servicio incluido
-  precio        Float        @default(0)
-  cargo         Float        @default(0)
+  precio              Float            @default(0)
+  cargo               Float            @default(0)
   // Ingreso validado en el acceso: la entrada queda inhabilitada para un nuevo ingreso
-  usadaEn       DateTime?
-  validadaPorId String?
-  validadaPor   User?        @relation("EntradaValidadaPor", fields: [validadaPorId], references: [id], onDelete: SetNull)
-  validaciones  Validacion[]
+  usadaEn             DateTime?
+  validadaPorId       String?
+  validadaPor         User?            @relation("EntradaValidadaPor", fields: [validadaPorId], references: [id], onDelete: SetNull)
+  // Si la validó alguien del equipo de acceso (sin cuenta), queda su acceso
+  validadaPorAccesoId String?
+  validadaPorAcceso   AccesoValidador? @relation(fields: [validadaPorAccesoId], references: [id], onDelete: SetNull)
+  validaciones        Validacion[]
 
   compraId      String
   compra        Compra       @relation(fields: [compraId], references: [id], onDelete: Cascade)
@@ -417,12 +422,15 @@ model Validacion {
   resultado ResultadoValidacion
   fecha     DateTime            @default(now())
 
-  eventoId  String
-  evento    Event    @relation(fields: [eventoId], references: [id], onDelete: Cascade)
-  usuarioId String
-  usuario   User     @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
-  entradaId String?
-  entrada   Entrada? @relation(fields: [entradaId], references: [id], onDelete: SetNull)
+  eventoId          String
+  evento            Event            @relation(fields: [eventoId], references: [id], onDelete: Cascade)
+  // Quién escaneó: el organizador (usuario) o alguien de su equipo de acceso
+  usuarioId         String?
+  usuario           User?            @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  accesoValidadorId String?
+  accesoValidador   AccesoValidador? @relation(fields: [accesoValidadorId], references: [id], onDelete: SetNull)
+  entradaId         String?
+  entrada           Entrada?         @relation(fields: [entradaId], references: [id], onDelete: SetNull)
 
   @@index([eventoId, fecha])
   @@map("validaciones")
@@ -435,6 +443,36 @@ enum ResultadoValidacion {
   NO_PAGADA
   INEXISTENTE
   EVENTO_CANCELADO
+  TIPO_NO_PERMITIDO // el acceso del validador no admite ese tipo de entrada (no se marca como usada)
+}
+
+// Acceso para que alguien del equipo valide entradas de UN evento sin la cuenta del organizador.
+// Se vincula un celular con un código de un solo uso; puede limitarse a ciertos tipos de entrada.
+// Vence solo, 12 horas después del inicio del evento, y el organizador puede revocarlo antes.
+model AccesoValidador {
+  id                     String    @id @default(uuid())
+  nombre                 String // persona o puesto, ej. "Juan"
+  puerta                 String? // ej. "Puerta norte"
+  tiposEntradaIds        String[]  @default([]) // vacío = todos los tipos
+  permiteEstacionamiento Boolean   @default(true)
+  codigoHash             String?   @unique // código de vinculación (hash); null una vez usado
+  version                Int       @default(0) // sube al regenerar el código: invalida el celular anterior
+  vinculadoEn            DateTime?
+  dispositivo            String? // nombre del celular vinculado
+  ultimoUsoEn            DateTime?
+  revocadoEn             DateTime?
+  fechaCreacion          DateTime  @default(now())
+
+  eventoId    String
+  evento      Event  @relation(fields: [eventoId], references: [id], onDelete: Cascade)
+  creadoPorId String
+  creadoPor   User   @relation(fields: [creadoPorId], references: [id], onDelete: Cascade)
+
+  validaciones      Validacion[]
+  entradasValidadas Entrada[]
+
+  @@index([eventoId])
+  @@map("accesos_validador")
 }
 
 enum EstadoCondicionEspecial {

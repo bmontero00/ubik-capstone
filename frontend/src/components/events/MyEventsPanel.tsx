@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   CalendarPlus, CalendarDays, MapPin, Pencil, Ban, Loader2, Inbox, Lock, ImageIcon, Copy, CalendarClock, Eye,
-  ShieldAlert, Megaphone, PlayCircle, Check, Rocket, Hourglass, BadgePercent, Flag, Ticket, MessageSquareQuote, ChevronRight,
+  ShieldAlert, Megaphone, PlayCircle, Check, Rocket, Hourglass, BadgePercent, Flag, Ticket, MessageSquareQuote, ChevronRight, Users,
 } from 'lucide-react';
 import {
   EntradaBitacora, EventItem, cancelEvent, fetchMyEvents, formatEventDate, formatPercent, formatPrice, imageSrc,
@@ -15,6 +15,7 @@ import ReasonField, { validateReason } from '../admin/ReasonField';
 import { ReasonToggle } from '../AuthModal';
 import { Chip } from '../admin/UsersTab';
 import OfferForm from './OfferForm';
+import AccessTeamModal from './AccessTeamModal';
 import { OfferBadge } from './OfferBadge';
 import EventCover from './EventCover';
 import StarRating from '../organizers/StarRating';
@@ -78,6 +79,7 @@ export default function MyEventsPanel({ canManage, refreshKey, onCreate, onEdit,
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<{ text: string; tone: 'ok' | 'error' } | null>(null);
   const [seen, setSeen] = useState<string[]>([]);
+  const [equipoDe, setEquipoDe] = useState<string | null>(null); // evento cuyo equipo de acceso está abierto
 
   useEffect(() => setSeen(loadSeen()), []);
 
@@ -377,6 +379,8 @@ export default function MyEventsPanel({ canManage, refreshKey, onCreate, onEdit,
                         {e.ofertaActiva ? 'Editar oferta' : 'Poner en oferta'}
                       </ActionButton>
                     )}
+                    {canManage && isOpen(e) && <ActionButton icon={Users} onClick={() => setEquipoDe(e.id)}>Equipo de acceso</ActionButton>}
+                    {equipoDe === e.id && <AccessTeamModal eventoId={e.id} onClose={() => setEquipoDe(null)} />}
                     {canManage && <ActionButton icon={Copy} onClick={() => onDuplicate(e)}>Duplicar</ActionButton>}
                     {editable && (
                       <ActionButton icon={Ban} danger active={current === 'cancel'} onClick={() => openAction('cancel', e)}>Cancelar evento</ActionButton>
