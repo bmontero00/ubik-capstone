@@ -38,6 +38,9 @@ model User {
   eventStatusChanges   Event[]                @relation("EventStatusChangedBy")
   entradasBitacora     BitacoraEvento[]       @relation("AutorBitacora")
   compras              Compra[]
+  // Ingresos que validó en la puerta de sus eventos (organizador)
+  entradasValidadas    Entrada[]              @relation("EntradaValidadaPor")
+  validaciones         Validacion[]
   parametrosEditados   ParametroPlataforma[]  @relation("ParametroEditadoPor")
   historialParametros  HistorialParametro[]
   historialCargos      HistorialCargoEvento[]
@@ -206,9 +209,10 @@ model Event {
   bitacora BitacoraEvento[]
 
   // Compras de entradas (o confirmaciones de asistencia si el evento es gratuito)
-  compras  Compra[]
-  entradas Entrada[]
-  resenas  Resena[]
+  compras      Compra[]
+  entradas     Entrada[]
+  resenas      Resena[]
+  validaciones Validacion[]
 
   // Cargo por servicio de UBIK: se fija al crear el evento con el % vigente y no cambia si después
   // se modifica el % de la plataforma. "price" es lo que recibe el organizador por entrada; el
@@ -319,6 +323,7 @@ model Compra {
   cantidadEstacionamiento Int          @default(0)
   precioEstacionamiento   Float        @default(0) // por vehículo
   codigoEstacionamiento   String?      @unique
+  estacionamientoUsadoEn  DateTime? // ingreso del vehículo validado en el acceso (una sola vez)
   medioPago               String? // ej. WEBPAY, MERCADO_PAGO (SIMULADO mientras no exista pasarela)
   fechaCreacion           DateTime     @default(now())
   expiraEn                DateTime? // límite para pagar una compra pendiente
@@ -375,17 +380,22 @@ model TransaccionPago {
 
 // Entrada nominativa: cada una queda a nombre de un asistente
 model Entrada {
-  id            String   @id @default(uuid())
-  codigo        String   @unique // código que se presenta en el acceso
+  id            String       @id @default(uuid())
+  codigo        String       @unique // código que se presenta en el acceso
   nombre        String
   apellido      String
   rut           String // normalizado "12345678-5"
   telefono      String // "+56912345678"
   correo        String
-  fechaCreacion DateTime @default(now())
+  fechaCreacion DateTime     @default(now())
   // Lo que pagó el público por esta entrada (incluye cargo y oferta) y el cargo por servicio incluido
-  precio        Float    @default(0)
-  cargo         Float    @default(0)
+  precio        Float        @default(0)
+  cargo         Float        @default(0)
+  // Ingreso validado en el acceso: la entrada queda inhabilitada para un nuevo ingreso
+  usadaEn       DateTime?
+  validadaPorId String?
+  validadaPor   User?        @relation("EntradaValidadaPor", fields: [validadaPorId], references: [id], onDelete: SetNull)
+  validaciones  Validacion[]
 
   compraId      String
   compra        Compra       @relation(fields: [compraId], references: [id], onDelete: Cascade)
@@ -395,8 +405,36 @@ model Entrada {
   tipoEntrada   TipoEntrada? @relation(fields: [tipoEntradaId], references: [id])
 
   @@index([eventoId, rut])
+  @@index([eventoId, usadaEn])
   @@index([tipoEntradaId])
   @@map("entradas")
+}
+
+// Registro de cada escaneo en el acceso (válido o no): historial de la app y auditoría
+model Validacion {
+  id        String              @id @default(uuid())
+  codigo    String // tal como se escaneó o escribió (normalizado a mayúsculas)
+  resultado ResultadoValidacion
+  fecha     DateTime            @default(now())
+
+  eventoId  String
+  evento    Event    @relation(fields: [eventoId], references: [id], onDelete: Cascade)
+  usuarioId String
+  usuario   User     @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  entradaId String?
+  entrada   Entrada? @relation(fields: [entradaId], references: [id], onDelete: SetNull)
+
+  @@index([eventoId, fecha])
+  @@map("validaciones")
+}
+
+enum ResultadoValidacion {
+  VALIDA
+  YA_USADA
+  OTRO_EVENTO
+  NO_PAGADA
+  INEXISTENTE
+  EVENTO_CANCELADO
 }
 
 enum EstadoCondicionEspecial {

@@ -13,8 +13,9 @@ import { IaModule } from './ia/ia.module';
 import { UbicacionesModule } from './ubicaciones/ubicaciones.module';
 import { CuentaModule } from './cuenta/cuenta.module';
 import { ReportesModule } from './reportes/reportes.module';
+import { ValidacionesModule } from './validaciones/validaciones.module';
 
 @Module({
-  imports: [AuthModule, EventsModule, PrismaModule, AdminModule, OrganizersModule, ComprasModule, ParametrosModule, PagosModule, CorreoModule, IaModule, ResenasModule, UbicacionesModule, CuentaModule, ReportesModule],
+  imports: [AuthModule, EventsModule, PrismaModule, AdminModule, OrganizersModule, ComprasModule, ParametrosModule, PagosModule, CorreoModule, IaModule, ResenasModule, UbicacionesModule, CuentaModule, ReportesModule, ValidacionesModule],
 })
 export class AppModule {}
