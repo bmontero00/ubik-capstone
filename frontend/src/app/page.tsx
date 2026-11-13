@@ -16,7 +16,8 @@ import MyTicketsPanel from '../components/tickets/MyTicketsPanel';
 import Landing from '../components/landing/Landing';
 import Footer from '../components/Footer';
 import { Compra, TicketSelection, compraValida, fetchCompra, fetchMisCompras, selectionCount } from '../services/compras';
-import { CalendarPlus, Compass, LayoutList, CheckCircle2, X, ArrowRight, Ticket, Search, MapPin, ChartColumn } from 'lucide-react';
+import { CalendarPlus, Compass, LayoutList, CheckCircle2, X, ArrowRight, Ticket, Search, MapPin, ChartColumn, ArrowUp, ArrowDownWideNarrow } from 'lucide-react';
+import { FILTROS_FECHA, FiltroFecha, Grupo, ORDENES, OrdenEventos, TITULO_GRUPO, enFecha, grupoDe, ordenar } from '../utils/agendaEventos';
 import {
   ApiError, AuthResponse, AuthUser, SuspendedInfo, canPublishEvents, clearSession,
   fetchCurrentUser, isAccountActive, loadStoredUser, markApprovalNoticeSeen, saveSession, saveToken, updateStoredUser,
@@ -48,6 +49,7 @@ const InteractiveMap = dynamic(() => import('../components/Map'), {
 // Opciones de radio de búsqueda; "Ciudad" trae todo lo que está a una distancia razonable de Santiago
 const RADIOS = [2, 5, 10, 20];
 const RADIO_CIUDAD = 60;
+const POR_PAGINA = 9; // tres filas de tarjetas
 
 const SECTOR_KEY = 'ubik_sector';
 const leerSector = (): SectorMapa | null => {
@@ -80,6 +82,13 @@ export default function HomePage() {
   const radioElegido = useRef(false);
   const elegirRadio = (r: number) => { radioElegido.current = true; setRadius(r); };
   const [searchQuery, setSearchQuery] = useState<string>('');
+  // Listado de Explorar: filtro por fecha (también filtra el mapa), orden y cuántos se muestran
+  const [fechaFiltro, setFechaFiltro] = useState<FiltroFecha>('todos');
+  const [orden, setOrden] = useState<OrdenEventos>('fecha');
+  const [mostrados, setMostrados] = useState(POR_PAGINA);
+  const mapaRef = useRef<HTMLElement>(null);
+  const listaRef = useRef<HTMLElement>(null);
+  const [mapaFuera, setMapaFuera] = useState(false);
   const [events, setEvents] = useState<EventItem[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -384,12 +393,34 @@ export default function HomePage() {
     evt.category?.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
   const dentroDe = (r: number) => (evt: EventItem) => r >= RADIO_CIUDAD || (evt.distanceKm ?? 0) <= r;
-  const filteredEvents = conTexto.filter(dentroDe(radius));
+  // El filtro de fecha aplica al mapa y a la lista; los conteos de cada fecha usan el radio actual
+  const enRadio = conTexto.filter(dentroDe(radius));
+  const cantidadFecha = (f: FiltroFecha) => enRadio.filter(enFecha(f)).length;
+  const conFecha = conTexto.filter(enFecha(fechaFiltro));
+  const filteredEvents = conFecha.filter(dentroDe(radius));
+  const ordenados = ordenar(filteredEvents, orden, publicPrice);
+  const visibles = ordenados.slice(0, mostrados);
   // Sin resultados: el radio más chico que sí tiene eventos (sin otra consulta al backend)
   const ampliarA = filteredEvents.length === 0
-    ? [...RADIOS, RADIO_CIUDAD].find((r) => r > radius && conTexto.some(dentroDe(r)))
+    ? [...RADIOS, RADIO_CIUDAD].find((r) => r > radius && conFecha.some(dentroDe(r)))
     : undefined;
-  const cantidadEn = (r: number) => conTexto.filter(dentroDe(r)).length;
+  const cantidadEn = (r: number) => conFecha.filter(dentroDe(r)).length;
+  const etiquetaFecha = FILTROS_FECHA.find((f) => f.id === fechaFiltro)!.label.toLowerCase();
+
+  // Al cambiar la búsqueda, el radio, la fecha o el orden, la lista vuelve a mostrar las primeras tarjetas
+  useEffect(() => { setMostrados(POR_PAGINA); }, [searchQuery, radius, fechaFiltro, orden, sector]);
+
+  // Botón "Volver al mapa": aparece cuando el mapa sale de la pantalla al recorrer la lista
+  useEffect(() => {
+    const revisar = () => {
+      const mapa = mapaRef.current;
+      setMapaFuera(!!mapa && mapa.getBoundingClientRect().bottom < 0);
+    };
+    revisar();
+    window.addEventListener('scroll', revisar, { passive: true });
+    window.addEventListener('resize', revisar);
+    return () => { window.removeEventListener('scroll', revisar); window.removeEventListener('resize', revisar); };
+  }, []);
   const textoRadio = (r: number) => (r >= RADIO_CIUDAD ? 'toda la ciudad' : `${r} km`);
 
 
@@ -448,6 +479,28 @@ export default function HomePage() {
         </div>
         </div>
 
+        <div className="mt-4 flex gap-2 overflow-x-auto ubik-scroll pb-1 -mb-1" role="radiogroup" aria-label="Fecha de los eventos">
+          {FILTROS_FECHA.map((f) => {
+            const n = cantidadFecha(f.id);
+            const activo = fechaFiltro === f.id;
+            return (
+              <button
+                key={f.id}
+                type="button"
+                role="radio"
+                aria-checked={activo}
+                onClick={() => setFechaFiltro(f.id)}
+                className={`shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-xs font-semibold whitespace-nowrap transition-colors ${
+                  activo ? 'bg-indigo-600 border-indigo-500 text-white' : n ? 'bg-slate-950 border-slate-700 text-slate-300 hover:border-slate-500 hover:text-white' : 'bg-slate-950 border-slate-800 text-slate-500'
+                }`}
+              >
+                {f.label}
+                <span className={`tabular-nums ${activo ? 'text-indigo-100' : 'text-slate-500'}`}>{n}</span>
+              </button>
+            );
+          })}
+        </div>
+
         {/* Resumen: cuántos eventos hay y desde dónde se busca */}
         <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2 text-sm" aria-live="polite">
           {sector ? (
@@ -460,6 +513,7 @@ export default function HomePage() {
           ) : null}
           <span className="text-slate-300">
             <strong className="text-white">{filteredEvents.length}</strong> {filteredEvents.length === 1 ? 'evento' : 'eventos'}
+            {fechaFiltro !== 'todos' && <> · {etiquetaFecha}</>}
             {radius >= RADIO_CIUDAD ? ' en toda la ciudad' : <> a {radius} km de {origen ?? 'tu ubicación'}</>}
           </span>
           {ampliarA !== undefined && !isLoading && (
@@ -475,7 +529,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section className="w-full h-[450px] bg-slate-800 rounded-2xl border border-slate-700 relative overflow-hidden shadow-2xl z-0">
+      <section ref={mapaRef} className="w-full h-[450px] bg-slate-800 rounded-2xl border border-slate-700 relative overflow-hidden shadow-2xl z-0">
         <InteractiveMap
           events={filteredEvents}
           centerLat={centerLat}
@@ -495,10 +549,22 @@ export default function HomePage() {
       {/* Con sesión, el listado va bajo el mapa (también sirve para recorrer los eventos con teclado
           o lector de pantalla). En la portada lo reemplaza el carrusel de próximos eventos. */}
       {user && (
-        <section className="mt-8" aria-labelledby="catalogo-title">
-          <h3 id="catalogo-title" className="text-xl font-bold text-white mb-5">
-            Eventos en este radio <span className="text-slate-500 font-semibold">({filteredEvents.length})</span>
-          </h3>
+        <section ref={listaRef} className="mt-8 scroll-mt-24" aria-labelledby="catalogo-title">
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
+            <h3 id="catalogo-title" className="text-xl font-bold text-white">
+              Eventos {fechaFiltro === 'todos' ? 'en este radio' : etiquetaFecha} <span className="text-slate-500 font-semibold">({filteredEvents.length})</span>
+            </h3>
+            {filteredEvents.length > 1 && (
+              <label className="flex items-center gap-2 text-xs text-slate-400">
+                <ArrowDownWideNarrow className="w-4 h-4" aria-hidden />
+                <span className="sr-only sm:not-sr-only">Ordenar por</span>
+                <select value={orden} onChange={(e) => setOrden(e.target.value as OrdenEventos)}
+                  className="px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-sm text-slate-200 focus:outline-none focus:border-indigo-500">
+                  {ORDENES.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+                </select>
+              </label>
+            )}
+          </div>
           {isLoading ? (
             <div className="text-center py-10"><span className="text-indigo-400">Cargando actividades...</span></div>
           ) : error ? (
@@ -506,8 +572,15 @@ export default function HomePage() {
           ) : filteredEvents.length === 0 ? (
             <div className="text-center py-12 bg-slate-900/40 rounded-2xl border border-slate-800 text-slate-400">
               {ampliarA !== undefined
-                ? <>No hay eventos a {radius} km de {origen ?? 'tu ubicación'}.</>
-                : 'No hay coincidencias para tu búsqueda en este radio.'}
+                ? <>No hay eventos{fechaFiltro !== 'todos' ? ` ${etiquetaFecha}` : ''} a {radius} km de {origen ?? 'tu ubicación'}.</>
+                : fechaFiltro !== 'todos'
+                  ? <>No hay eventos {etiquetaFecha} para tu búsqueda en este radio.</>
+                  : 'No hay coincidencias para tu búsqueda en este radio.'}
+              {fechaFiltro !== 'todos' && ampliarA === undefined && (
+                <button type="button" onClick={() => setFechaFiltro('todos')} className="block mx-auto mt-3 px-4 py-2 text-sm font-bold rounded-xl bg-slate-800 hover:bg-slate-700 text-white">
+                  Ver todas las fechas
+                </button>
+              )}
               {ampliarA !== undefined && (
                 <button type="button" onClick={() => elegirRadio(ampliarA)} className="block mx-auto mt-3 px-4 py-2 text-sm font-bold rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white">
                   Ampliar a {textoRadio(ampliarA)} ({cantidadEn(ampliarA)} {cantidadEn(ampliarA) === 1 ? 'evento' : 'eventos'})
@@ -515,8 +588,19 @@ export default function HomePage() {
               )}
             </div>
           ) : (
+            <>
+            {(orden === 'fecha' ? agrupar(visibles) : [{ grupo: null, eventos: visibles }]).map(({ grupo, eventos }) => (
+            <div key={grupo ?? 'lista'} className="mb-8 last:mb-0">
+              {grupo && (
+                <h4 className="flex items-baseline gap-2 text-sm font-bold uppercase tracking-wider text-slate-300 mb-3">
+                  {TITULO_GRUPO[grupo]}
+                  <span className="text-xs font-semibold normal-case tracking-normal text-slate-500">
+                    {ordenados.filter((e) => grupoDe(e.date) === grupo).length} {ordenados.filter((e) => grupoDe(e.date) === grupo).length === 1 ? 'evento' : 'eventos'}
+                  </span>
+                </h4>
+              )}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {filteredEvents.map((evt) => (
+              {eventos.map((evt) => (
                 <EventCard
                   key={evt.id}
                   event={{ ...evt, price: publicPrice(evt), categoryName: evt.category?.name, distanceFrom: origen ?? undefined }}
@@ -532,8 +616,30 @@ export default function HomePage() {
                 />
               ))}
             </div>
+            </div>
+            ))}
+            <div className="mt-8 flex flex-col items-center gap-3">
+              <p className="text-xs text-slate-500" aria-live="polite">Mostrando {visibles.length} de {ordenados.length}</p>
+              {visibles.length < ordenados.length && (
+                <button type="button" onClick={() => setMostrados((n) => n + POR_PAGINA)}
+                  className="px-5 py-2.5 text-sm font-bold rounded-xl bg-slate-800 hover:bg-slate-700 text-white border border-slate-700">
+                  Mostrar {Math.min(POR_PAGINA, ordenados.length - visibles.length)} más
+                </button>
+              )}
+            </div>
+            </>
           )}
         </section>
+      )}
+
+      {user && mapaFuera && filteredEvents.length > 0 && (
+        <button
+          type="button"
+          onClick={() => mapaRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
+          className="fixed bottom-6 right-6 z-40 inline-flex items-center gap-2 px-4 py-2.5 rounded-full bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold shadow-xl shadow-indigo-950/50 ring-1 ring-indigo-400/40"
+        >
+          <ArrowUp className="w-4 h-4" /> Volver al mapa
+        </button>
       )}
     </>
   );
@@ -797,4 +903,16 @@ export default function HomePage() {
       )}
     </div>
   );
+}
+
+// Agrupa la lista (ya ordenada por fecha) en tramos: hoy, mañana, fin de semana, esta semana y más adelante
+function agrupar(eventos: EventItem[]) {
+  const grupos: { grupo: Grupo; eventos: EventItem[] }[] = [];
+  for (const e of eventos) {
+    const g = grupoDe(e.date);
+    const ultimo = grupos[grupos.length - 1];
+    if (ultimo?.grupo === g) ultimo.eventos.push(e);
+    else grupos.push({ grupo: g, eventos: [e] });
+  }
+  return grupos;
 }
