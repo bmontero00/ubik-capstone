@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   X, Check, ChevronDown, Loader2, CalendarDays, MapPin, Timer, CreditCard, ShieldCheck, PartyPopper, UserRound,
-  Copy, AlertTriangle, Ticket, ArrowLeft, Lock, FlaskConical, Info,
+  Copy, AlertTriangle, Ticket, ArrowLeft, Lock, FlaskConical,
 } from 'lucide-react';
 import { AgeNotice } from '../events/AgeRestriction';
 import { ApiError } from '../../services/auth';
@@ -413,7 +413,6 @@ export default function CheckoutModal({ event, selection, buyer, resume, notice,
                         Te llevaremos al sitio seguro de Webpay para pagar. UBIK no ve ni guarda los datos de tu tarjeta.
                       </p>
                     )}
-                    {method === 'webpay' && paymentConfig?.webpay.ambiente === 'integracion' && <WebpayTestCards />}
 
                     <div className="mt-5 p-4 rounded-2xl bg-slate-950 border border-slate-800">
                       <p className="text-xs font-semibold text-slate-400 mb-2">Entradas a nombre de</p>
@@ -634,20 +633,6 @@ function PaymentOption({ title, subtitle, icon: Icon, selected, disabled, onSele
         <span className="block text-[11px] text-slate-400">{subtitle}</span>
       </span>
     </button>
-  );
-}
-
-// Datos públicos de prueba de Transbank (ambiente de integración, sin dinero real)
-function WebpayTestCards() {
-  return (
-    <div className="mt-3 p-3 rounded-xl bg-sky-500/10 border border-sky-500/25 text-[11px] text-sky-100/90">
-      <p className="flex items-center gap-1.5 font-bold text-sky-200"><Info className="w-3.5 h-3.5" /> Ambiente de pruebas de Transbank</p>
-      <ul className="mt-1.5 space-y-0.5">
-        <li>Aprobada: VISA <span className="font-mono">4051 8856 0044 6623</span> · CVV <span className="font-mono">123</span> · cualquier fecha futura</li>
-        <li>Rechazada: Mastercard <span className="font-mono">5186 0595 5959 0568</span></li>
-        <li>Al pedir autenticación: RUT <span className="font-mono">11.111.111-1</span> y clave <span className="font-mono">123</span></li>
-      </ul>
-    </div>
   );
 }
 
