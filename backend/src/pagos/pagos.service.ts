@@ -122,12 +122,10 @@ export class PagosService {
       return destino('rechazado', tx.compraId);
     }
 
-    // Se confirma solo si la compra sigue reservada y el evento sigue vendiendo (publicado o postergado)
-    const { count } = await this.prisma.compra.updateMany({
-      where: { id: tx.compraId, estado: 'PENDIENTE_PAGO', evento: { status: { in: ['PUBLISHED', 'POSTPONED'] } } },
-      data: { estado: 'PAGADA', fechaPago: new Date(), medioPago: 'WEBPAY', expiraEn: null },
-    });
-    if (count) {
+    // Se confirma con el evento bloqueado: si la reserva venció mientras pagaba, se vuelve a revisar el
+    // stock (si otra persona tomó el cupo, no se confirma y el pago se reversa abajo)
+    const confirmada = await this.compras.confirmarPago(tx.compraId, 'WEBPAY');
+    if (confirmada) {
       await this.prisma.transaccionPago.update({ where: { id: tx.id }, data: { estado: 'AUTORIZADA', ...datos } });
       return destino('aprobado', tx.compraId);
     }

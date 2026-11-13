@@ -125,22 +125,6 @@ export class ComprasService {
       });
     }
 
-    const tomados = await this.prisma.entrada.findMany({
-      where: {
-        eventoId: event.id,
-        rut: { in: asistentes.map((a) => a.rut) },
-        compra: { estado: { in: ESTADOS_VIGENTES } },
-      },
-      select: { rut: true },
-    });
-    if (tomados.length) {
-      throw new ConflictException({
-        message: 'Algunas personas ya tienen una entrada para este evento',
-        code: 'RUT_CON_ENTRADA',
-        ruts: [...new Set(tomados.map((t) => t.rut))],
-      });
-    }
-
     // Precio de cada entrada según su tipo: lo del organizador (con la oferta vigente) más el cargo por
     // servicio fijado en el evento. Se guarda en cada entrada para que no cambie si después se edita el evento.
     const entradas = asistentes.map((a) => ({ ...a, ...precioEntrada(event, tipos.get(a.tipoEntradaId)!.precio) }));
@@ -155,6 +139,9 @@ export class ComprasService {
     // simultáneas del mismo evento no pueden vender el mismo último cupo
     const compra = await this.prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM "events" WHERE id = ${event.id} FOR UPDATE`;
+      // Una entrada por persona: se revisa con el evento bloqueado, así dos compras simultáneas con el
+      // mismo RUT no pasan las dos
+      await this.assertRutsLibres(tx, event.id, entradas.map((e) => e.rut));
       await this.assertCupos(tx, event, entradas.map((e) => e.tipoEntradaId), estacionamientos);
       return tx.compra.create({
         data: {
@@ -192,12 +179,14 @@ export class ComprasService {
     event: Event & { tiposEntrada: TipoEntrada[] },
     tiposPedidos: string[],
     estacionamientos: number,
+    excluirCompraId?: string,
   ) {
+    const ocupa = (): Prisma.CompraWhereInput => (excluirCompraId ? { AND: [compraOcupaCupo(), { id: { not: excluirCompraId } }] } : compraOcupaCupo());
     const pedidos = new Map<string, number>();
     tiposPedidos.forEach((id) => pedidos.set(id, (pedidos.get(id) ?? 0) + 1));
     const ocupadas = await tx.entrada.groupBy({
       by: ['tipoEntradaId'],
-      where: { tipoEntradaId: { in: [...pedidos.keys()] }, compra: compraOcupaCupo() },
+      where: { tipoEntradaId: { in: [...pedidos.keys()] }, compra: ocupa() },
       _count: { _all: true },
     });
     const sinCupo = event.tiposEntrada
@@ -215,7 +204,7 @@ export class ComprasService {
     }
     if (estacionamientos > 0) {
       const { _sum } = await tx.compra.aggregate({
-        where: { eventoId: event.id, ...compraOcupaCupo() },
+        where: { eventoId: event.id, ...ocupa() },
         _sum: { cantidadEstacionamiento: true },
       });
       const disponibles = Math.max(0, (event.cuposEstacionamiento ?? 0) - (_sum.cantidadEstacionamiento ?? 0));
@@ -229,16 +218,66 @@ export class ComprasService {
     }
   }
 
-  // Pago simulado, solo fuera de producción (para probar sin pasar por Webpay)
+  // Personas (RUT) que ya tienen una entrada vigente para el evento (pagada, confirmada o reservada en plazo)
+  private async assertRutsLibres(tx: Prisma.TransactionClient, eventoId: string, ruts: string[], excluirCompraId?: string) {
+    const tomados = await tx.entrada.findMany({
+      where: {
+        eventoId,
+        rut: { in: ruts },
+        compra: excluirCompraId ? { AND: [compraOcupaCupo(), { id: { not: excluirCompraId } }] } : compraOcupaCupo(),
+      },
+      select: { rut: true },
+    });
+    if (tomados.length) {
+      throw new ConflictException({
+        message: 'Algunas personas ya tienen una entrada para este evento',
+        code: 'RUT_CON_ENTRADA',
+        ruts: [...new Set(tomados.map((t) => t.rut))],
+      });
+    }
+  }
+
+  // Confirma una compra pagada (Webpay o pago simulado). Se hace con el evento bloqueado, igual que la
+  // reserva: si la reserva venció mientras se pagaba, vuelve a revisar cupos y RUT; si el cupo sigue
+  // libre la compra se confirma igual, y si otra persona lo tomó devuelve false (el pago se reversa).
+  async confirmarPago(compraId: string, medioPago: string): Promise<boolean> {
+    return this.prisma.$transaction(async (tx) => {
+      const previa = await tx.compra.findUnique({ where: { id: compraId }, select: { eventoId: true } });
+      if (!previa) return false;
+      await tx.$queryRaw`SELECT id FROM "events" WHERE id = ${previa.eventoId} FOR UPDATE`;
+      const compra = await tx.compra.findUnique({
+        where: { id: compraId },
+        include: { entradas: { select: { tipoEntradaId: true, rut: true } }, evento: { include: { tiposEntrada: true } } },
+      });
+      if (!compra) return false;
+      // Anulada o reemplazada por otra compra: no se confirma
+      if (compra.estado !== 'PENDIENTE_PAGO' && compra.estado !== 'EXPIRADA') return false;
+      if (!ESTADOS_CON_VENTA.includes(compra.evento.status) || compra.evento.date.getTime() <= Date.now()) return false;
+      const vencida = compra.estado === 'EXPIRADA' || (!!compra.expiraEn && compra.expiraEn.getTime() <= Date.now());
+      if (vencida) {
+        try {
+          await this.assertRutsLibres(tx, compra.eventoId, compra.entradas.map((e) => e.rut), compra.id);
+          await this.assertCupos(tx, compra.evento, compra.entradas.map((e) => e.tipoEntradaId!).filter(Boolean), compra.cantidadEstacionamiento, compra.id);
+        } catch (e) {
+          if (e instanceof ConflictException) return false;
+          throw e;
+        }
+      }
+      await tx.compra.update({ where: { id: compraId }, data: { estado: 'PAGADA', fechaPago: new Date(), medioPago, expiraEn: null } });
+      return true;
+    });
+  }
+
+  // Pago simulado, solo fuera de producción (para probar sin pasar por Webpay). Usa la misma
+  // confirmación que Webpay, incluido el caso de una reserva que venció mientras se pagaba.
   async pay(id: string, user: AuthenticatedUser, medioPago: string) {
     if (!webpayConfig().pagoSimulado) throw new BadRequestException('Medio de pago no disponible');
-    await this.findPayable(id, user);
-    const pagada = await this.prisma.compra.update({
-      where: { id },
-      data: { estado: 'PAGADA', fechaPago: new Date(), medioPago, expiraEn: null },
-      include: compraInclude,
-    });
-    return this.serialize(pagada);
+    const compra = await this.findOwn(id, user);
+    if (compra.estado !== 'PENDIENTE_PAGO' && compra.estado !== 'EXPIRADA') throw new BadRequestException('Esta compra no está pendiente de pago');
+    if (!(await this.confirmarPago(id, medioPago))) {
+      throw new GoneException('El tiempo para pagar expiró y otra persona tomó esas entradas. Vuelve a seleccionar tus entradas.');
+    }
+    return this.serialize(await this.findOwn(id, user));
   }
 
   // Compra propia que todavía se puede pagar (pendiente, dentro de plazo y con el evento vigente)
