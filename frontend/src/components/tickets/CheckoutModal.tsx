@@ -405,7 +405,6 @@ export default function CheckoutModal({ event, selection, buyer, resume, notice,
                           icon={FlaskConical}
                         />
                       )}
-                      <PaymentOption title="Mercado Pago" subtitle="Saldo, tarjetas y cuotas · Próximamente" icon={CreditCard} disabled />
                     </div>
                     {method === 'webpay' && (
                       <p className="mt-3 flex items-start gap-2 text-[11px] text-slate-400">

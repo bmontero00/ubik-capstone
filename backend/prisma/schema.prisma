@@ -330,7 +330,7 @@ model Compra {
   precioEstacionamiento   Float        @default(0) // por vehículo
   codigoEstacionamiento   String?      @unique
   estacionamientoUsadoEn  DateTime? // ingreso del vehículo validado en el acceso (una sola vez)
-  medioPago               String? // ej. WEBPAY, MERCADO_PAGO (SIMULADO mientras no exista pasarela)
+  medioPago               String? // WEBPAY, o SIMULADO en desarrollo
   fechaCreacion           DateTime     @default(now())
   expiraEn                DateTime? // límite para pagar una compra pendiente
   fechaPago               DateTime?
