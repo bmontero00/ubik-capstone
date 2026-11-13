@@ -3,9 +3,10 @@
 import React, { useEffect, useState } from 'react';
 import {
   Ticket, CalendarDays, MapPin, Loader2, Inbox, Timer, ChevronDown, Compass, CalendarClock, Ban, Eye, Copy, Check, Receipt, Car,
-  Star, Pencil, MessageSquareQuote,
+  Star, Pencil, MessageSquareQuote, Download, QrCode,
 } from 'lucide-react';
-import { Compra, cancelCompra, compraValida } from '../../services/compras';
+import { Compra, cancelCompra, compraValida, descargarPdfEntradas } from '../../services/compras';
+import TicketQrModal from './TicketQrModal';
 import { formatEventDate, formatPrice, imageSrc, relativeTime } from '../../services/events';
 import { formatRut } from '../../utils/rut';
 import { formatDate } from '../../utils/labels';
@@ -198,7 +199,19 @@ function PurchaseCard({ compra, past, review, onReview, onOpenEvent }: {
 }) {
   const [open, setOpen] = useState(false); // las entradas se muestran con "Ver entradas"
   const [receipt, setReceipt] = useState(false);
+  const [pdf, setPdf] = useState<{ busy: boolean; error: string | null }>({ busy: false, error: null });
   const e = compra.evento;
+  // Las entradas se pueden descargar o mostrar mientras sean válidas (pagadas y con el evento vigente)
+  const descargable = compraValida(compra) && e.status !== 'CANCELLED';
+  const descargarTodas = async () => {
+    setPdf({ busy: true, error: null });
+    try {
+      await descargarPdfEntradas(compra);
+      setPdf({ busy: false, error: null });
+    } catch (err) {
+      setPdf({ busy: false, error: err instanceof Error ? err.message : 'No se pudo generar el PDF' });
+    }
+  };
   const src = imageSrc(e.imageUrl);
   const color = categoryColor(e.category.name);
   const notice =
@@ -255,7 +268,14 @@ function PurchaseCard({ compra, past, review, onReview, onOpenEvent }: {
             <button onClick={() => setReceipt(true)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-800 hover:bg-slate-700">
               <Receipt className="w-3.5 h-3.5" /> Comprobante
             </button>
+            {descargable && (
+              <button onClick={descargarTodas} disabled={pdf.busy} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-60">
+                {pdf.busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+                {compra.cantidad > 1 || compra.codigoEstacionamiento ? 'Descargar todas (PDF)' : 'Descargar PDF'}
+              </button>
+            )}
           </div>
+          {pdf.error && <p className="mt-2 text-xs text-rose-300" role="alert">{pdf.error}</p>}
           {review && <ReviewBox review={review} onReview={onReview} />}
         </div>
       </div>
@@ -263,7 +283,7 @@ function PurchaseCard({ compra, past, review, onReview, onOpenEvent }: {
       {open && (
         // Separadas del resumen por una línea, para que no queden pegadas a la imagen del evento
         <div className="border-t border-slate-800 p-4 sm:p-5 grid grid-cols-1 md:grid-cols-2 gap-3">
-          {compra.entradas.map((t, i) => <TicketStub key={t.id} index={i + 1} total={compra.cantidad} entrada={t} color={color} />)}
+          {compra.entradas.map((t, i) => <TicketStub key={t.id} index={i + 1} compra={compra} entrada={t} color={color} descargable={descargable} />)}
           {compra.codigoEstacionamiento && <ParkingStub compra={compra} />}
         </div>
       )}
@@ -305,34 +325,84 @@ function ReviewBox({ review, onReview }: { review: EstadoResena; onReview: () =>
   );
 }
 
-// Entrada con estilo de ticket: talón perforado con el código de acceso
-function TicketStub({ index, total, entrada, color }: { index: number; total: number; entrada: Compra['entradas'][number]; color: string }) {
+// Entrada con estilo de ticket: talón perforado con el código de acceso. Al pincharla se abre su QR
+// a pantalla completa (para mostrarlo en el acceso) con la opción de descargarla en PDF.
+function TicketStub({ index, compra, entrada, color, descargable }: {
+  index: number;
+  compra: Compra;
+  entrada: Compra['entradas'][number];
+  color: string;
+  descargable: boolean;
+}) {
   const [copied, setCopied] = useState(false);
+  const [qr, setQr] = useState(false);
+  const [pdf, setPdf] = useState<{ busy: boolean; error: string | null }>({ busy: false, error: null });
+  const codigo = entrada.codigo;
+  const activa = descargable && !!codigo;
   const copy = async () => {
-    if (!entrada.codigo) return;
-    await navigator.clipboard.writeText(entrada.codigo).catch(() => {});
+    if (!codigo) return;
+    await navigator.clipboard.writeText(codigo).catch(() => {});
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+  const descargar = () => descargarPdfEntradas(compra, { id: entrada.id, codigo });
+  const descargarDesdeTalon = async () => {
+    setPdf({ busy: true, error: null });
+    try {
+      await descargar();
+      setPdf({ busy: false, error: null });
+    } catch (err) {
+      setPdf({ busy: false, error: err instanceof Error ? err.message : 'No se pudo generar el PDF' });
+    }
   };
   return (
     <div className="relative flex rounded-2xl bg-slate-950 border border-slate-800 overflow-hidden">
       <span className="w-1.5 shrink-0" style={{ background: color }} />
-      <div className="flex-1 p-4 min-w-0">
+      <button
+        type="button"
+        onClick={() => activa && setQr(true)}
+        disabled={!activa}
+        className="flex-1 p-4 min-w-0 text-left enabled:hover:bg-slate-900/70 transition-colors disabled:cursor-default"
+        aria-label={activa ? `Ver el código QR de la entrada de ${entrada.nombre} ${entrada.apellido}` : undefined}
+      >
         <p className="text-[10px] uppercase tracking-wider font-bold text-slate-500 truncate">
-          <span style={{ color }}>{entrada.tipo}</span> · Entrada {index} de {total}
+          <span style={{ color }}>{entrada.tipo}</span> · Entrada {index} de {compra.cantidad}
         </p>
         <p className="text-sm font-bold text-white truncate mt-0.5">{entrada.nombre} {entrada.apellido}</p>
         <p className="text-xs text-slate-400">{formatRut(entrada.rut)}</p>
-      </div>
+        {activa && (
+          <span className="mt-2 inline-flex items-center gap-1 text-[11px] font-semibold text-indigo-300">
+            <QrCode className="w-3.5 h-3.5" /> Ver QR
+          </span>
+        )}
+        {pdf.error && <span className="block mt-1 text-[11px] text-rose-300">{pdf.error}</span>}
+      </button>
       <div className="relative flex flex-col items-center justify-center px-4 border-l-2 border-dashed border-slate-700">
         <span className="absolute -top-2 -left-2 w-4 h-4 rounded-full bg-slate-900" />
         <span className="absolute -bottom-2 -left-2 w-4 h-4 rounded-full bg-slate-900" />
         <span className="text-[10px] uppercase tracking-wider text-slate-500">Código</span>
-        <span className="font-mono text-sm font-extrabold text-indigo-200 tracking-widest">{entrada.codigo}</span>
-        <button onClick={copy} className="mt-1 flex items-center gap-1 text-[10px] text-slate-500 hover:text-slate-300">
-          {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />} {copied ? 'Copiado' : 'Copiar'}
-        </button>
+        <span className="font-mono text-sm font-extrabold text-indigo-200 tracking-widest">{codigo}</span>
+        <div className="mt-1 flex items-center gap-2">
+          <button onClick={copy} className="flex items-center gap-1 text-[10px] text-slate-500 hover:text-slate-300">
+            {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />} {copied ? 'Copiado' : 'Copiar'}
+          </button>
+          {activa && (
+            <button onClick={descargarDesdeTalon} disabled={pdf.busy} className="flex items-center gap-1 text-[10px] text-slate-500 hover:text-slate-300 disabled:opacity-60" aria-label="Descargar esta entrada en PDF">
+              {pdf.busy ? <Loader2 className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />} PDF
+            </button>
+          )}
+        </div>
       </div>
+      {qr && codigo && (
+        <TicketQrModal
+          codigo={codigo}
+          titulo={compra.evento.title}
+          detalle={`${entrada.nombre} ${entrada.apellido} · ${entrada.tipo}`}
+          color={color}
+          onDownload={descargar}
+          onClose={() => setQr(false)}
+        />
+      )}
     </div>
   );
 }

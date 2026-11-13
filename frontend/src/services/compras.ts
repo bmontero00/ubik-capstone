@@ -1,4 +1,4 @@
-import { EventStatus, apiJson } from './auth';
+import { EventStatus, apiJson, authFetch } from './auth';
 import type { PortadaIa } from '../utils/portadas';
 import { Category } from './events';
 
@@ -156,4 +156,19 @@ export function cancelCompra(id: string): Promise<Compra> {
 
 export function fetchMisCompras(): Promise<Compra[]> {
   return apiJson<Compra[]>('/compras/mias');
+}
+
+// Descarga las entradas en PDF con su QR: todas las de la compra (y el estacionamiento) o solo una
+export async function descargarPdfEntradas(compra: Pick<Compra, 'id' | 'codigo'>, entrada?: { id: string; codigo: string | null }): Promise<void> {
+  const res = await authFetch(`/compras/${compra.id}/pdf${entrada ? `?entrada=${entrada.id}` : ''}`);
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new Error((Array.isArray(data?.message) ? data.message[0] : data?.message) || 'No se pudo generar el PDF');
+  }
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = entrada ? `ubik-entrada-${entrada.codigo}.pdf` : `ubik-entradas-${compra.codigo}.pdf`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }

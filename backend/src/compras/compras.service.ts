@@ -11,6 +11,7 @@ import { COMPRA_LIMITS, CreateCompraDto } from './dto/compra.dto';
 import { precioEntrada } from '../parametros/cargos';
 import { compraOcupaCupo } from '../events/tipos-entrada';
 import { webpayConfig } from '../pagos/webpay.config';
+import { generarPdfEntradas } from './entrada-pdf';
 
 // Compras que reservan o ya son entradas válidas (cuentan para los límites y los RUT repetidos)
 const ESTADOS_VIGENTES: EstadoCompra[] = ['PENDIENTE_PAGO', 'PAGADA', 'CONFIRMADA'];
@@ -279,6 +280,34 @@ export class ComprasService {
       orderBy: { fechaCreacion: 'desc' },
     });
     return compras.map((c) => this.serialize(c));
+  }
+
+  // PDF con las entradas de una compra pagada o confirmada: todas (y el estacionamiento) o solo una
+  async pdf(id: string, user: AuthenticatedUser, entradaId?: string) {
+    const compra = await this.findOwn(id, user);
+    if (!ESTADOS_VALIDOS.includes(compra.estado)) {
+      throw new BadRequestException('Las entradas estarán disponibles cuando se confirme el pago');
+    }
+    if (compra.evento.status === 'CANCELLED') throw new GoneException('El evento fue cancelado: estas entradas ya no son válidas');
+    const entradas = compra.entradas.map((e, i) => ({
+      codigo: e.codigo, nombre: e.nombre, apellido: e.apellido, rut: e.rut, precio: e.precio,
+      tipo: e.tipoEntrada?.nombre ?? 'General', indice: i + 1, id: e.id,
+    }));
+    const elegidas = entradaId ? entradas.filter((e) => e.id === entradaId) : entradas;
+    if (!elegidas.length) throw new NotFoundException('Entrada no encontrada');
+    const ev = compra.evento;
+    const buffer = await generarPdfEntradas({
+      compra,
+      evento: {
+        ...ev,
+        categoria: ev.category.name,
+        organizador: ev.organizer.organizerProfile?.organizationName || ev.organizer.name,
+      },
+      entradas: elegidas,
+      incluirEstacionamiento: !entradaId,
+    });
+    const nombre = entradaId ? `ubik-entrada-${elegidas[0].codigo}.pdf` : `ubik-entradas-${compra.codigo}.pdf`;
+    return { buffer, nombre };
   }
 
   private async findOwn(id: string, user: AuthenticatedUser) {
