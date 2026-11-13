@@ -13,9 +13,10 @@ interface NavbarProps {
   onLogout: () => void;
   onOpenAuth: () => void;
   onOpenAccount?: () => void;
+  onHome?: () => void; // el logo lleva al inicio
 }
 
-export default function Navbar({ user, onLogout, onOpenAuth, onOpenAccount }: NavbarProps) {
+export default function Navbar({ user, onLogout, onOpenAuth, onOpenAccount, onHome }: NavbarProps) {
   const [abierto, setAbierto] = useState(false);
   const menu = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -29,13 +30,15 @@ export default function Navbar({ user, onLogout, onOpenAuth, onOpenAccount }: Na
   return (
     <header className="sticky top-0 z-50 bg-slate-950/80 backdrop-blur-md border-b border-slate-800 text-white">
       <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
-        <div className="flex items-center gap-2 cursor-pointer">
+        <a
+          href="/"
+          onClick={(e) => { if (onHome) { e.preventDefault(); onHome(); } }}
+          aria-label="UBIK, ir al inicio"
+          className="flex items-center gap-2 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 transition-opacity hover:opacity-90"
+        >
           <UbikLogo size={36} className="rounded-xl shadow-lg shadow-emerald-500/10 ring-1 ring-slate-700/60" />
           <UbikWordmark height={22} className="ml-0.5" />
-          <span className="hidden sm:inline-block text-xs uppercase tracking-widest px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 ml-2">
-            Eventos & Comunidad
-          </span>
-        </div>
+        </a>
 
         <nav className="flex items-center gap-4">
           {user ? (

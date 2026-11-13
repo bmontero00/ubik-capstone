@@ -540,7 +540,18 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-950 text-slate-100 font-sans">
-      <Navbar user={user} onOpenAuth={() => openAuth()} onLogout={handleLogout} onOpenAccount={() => setAccountOpen(true)} />
+      <Navbar
+        user={user}
+        onOpenAuth={() => openAuth()}
+        onLogout={handleLogout}
+        onOpenAccount={() => setAccountOpen(true)}
+        onHome={() => {
+          // Inicio: la vista principal de cada rol (explorar eventos) y arriba de la página
+          setOrganizerView('explore');
+          setAttendeeView('explore');
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }}
+      />
       {accountOpen && user && (
         <AccountModal
           onClose={() => setAccountOpen(false)}

@@ -426,7 +426,8 @@ export default function AuthModal({
             )}
             <h2 className="text-2xl font-bold text-center tracking-tight mb-2">
               {view === 'login'
-                ? <>Bienvenido a <span className="bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">UBIK</span></>
+                ? <>Bienvenido a <span className="bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">UBIK</span>
+                    <span className="block mt-1.5 text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">Eventos y Comunidad</span></>
                 : isReapply
                   ? 'Nueva solicitud de organizador'
                   : isOrganizer

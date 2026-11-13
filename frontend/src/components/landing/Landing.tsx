@@ -81,10 +81,8 @@ export default function Landing({ categories, explore, activeQuery, onSearch, on
       <section className="relative pt-6 pb-14 sm:pt-12 sm:pb-20 text-center">
         <div aria-hidden className="pointer-events-none absolute inset-x-0 -top-10 h-80 bg-[radial-gradient(ellipse_at_center,rgba(16,185,129,0.18),transparent_65%)]" />
         <div className="relative flex flex-col items-center">
-          <UbikLogo size={72} className="rounded-2xl shadow-2xl shadow-emerald-500/20 ring-1 ring-slate-700/60 mb-6" />
-          <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/25 text-emerald-300 text-xs font-semibold mb-5 tracking-wide">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" /> Ya disponible en Santiago
-          </span>
+          <UbikLogo size={72} className="rounded-2xl shadow-2xl shadow-emerald-500/20 ring-1 ring-slate-700/60 mb-4" />
+          <p className="text-[11px] sm:text-xs font-semibold uppercase tracking-[0.35em] text-slate-400 mb-8">Eventos y Comunidad</p>
           <h1 className="text-4xl sm:text-6xl font-extrabold tracking-tight text-white leading-[1.08] max-w-3xl">
             Descubre lo que pasa{' '}
             <span className="bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">cerca de ti</span>
