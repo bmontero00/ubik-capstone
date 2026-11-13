@@ -2,6 +2,7 @@ import React from 'react';
 import Link from 'next/link';
 import { ArrowLeft, FileWarning } from 'lucide-react';
 import UbikLogo from './UbikLogo';
+import UbikWordmark from './UbikWordmark';
 import Footer from './Footer';
 
 export interface LegalSection {
@@ -22,7 +23,7 @@ export default function LegalPage({ title, updated, intro, sections }: {
         <div className="max-w-3xl mx-auto px-4 h-16 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2">
             <UbikLogo size={32} className="rounded-lg" />
-            <span className="font-extrabold text-lg bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">UBIK</span>
+            <UbikWordmark height={18} className="ml-0.5" />
           </Link>
           <Link href="/" className="flex items-center gap-1.5 text-sm text-slate-400 hover:text-white">
             <ArrowLeft className="w-4 h-4" /> Volver al inicio

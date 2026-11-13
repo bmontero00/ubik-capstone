@@ -4,6 +4,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { LogOut, UserRound, ChevronDown } from 'lucide-react';
 import Avatar from './account/Avatar';
 import UbikLogo from './UbikLogo';
+import UbikWordmark from './UbikWordmark';
 import { ROLE_LABELS } from '../utils/labels';
 import type { UserRole } from '../services/auth';
 
@@ -30,9 +31,7 @@ export default function Navbar({ user, onLogout, onOpenAuth, onOpenAccount }: Na
       <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
         <div className="flex items-center gap-2 cursor-pointer">
           <UbikLogo size={36} className="rounded-xl shadow-lg shadow-emerald-500/10 ring-1 ring-slate-700/60" />
-          <span className="font-extrabold text-xl tracking-tight bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">
-            UBIK
-          </span>
+          <UbikWordmark height={22} className="ml-0.5" />
           <span className="hidden sm:inline-block text-xs uppercase tracking-widest px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 ml-2">
             Eventos & Comunidad
           </span>

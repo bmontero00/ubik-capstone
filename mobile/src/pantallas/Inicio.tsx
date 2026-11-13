@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Device from 'expo-device';
 import { Sesion, cambiarServidor, entrarComoOrganizador, servidorActual, vincular } from '../api';
 import Escaner from '../componentes/Escaner';
+import { Icono, Palabra } from '../componentes/Logo';
 import { c, s } from '../tema';
 
 type Modo = 'organizador' | 'equipo';
@@ -54,9 +55,12 @@ export default function Inicio({ onEntrar }: { onEntrar: (s: Sesion) => void }) 
     <SafeAreaView style={s.pantalla}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={[s.contenido, { paddingTop: 36 }]} keyboardShouldPersistTaps="handled">
-          <View style={{ alignItems: 'center', gap: 6, marginBottom: 8 }}>
-            <Text style={st.marca}>UBIK</Text>
-            <Text style={s.titulo}>Control de acceso</Text>
+          <View style={{ alignItems: 'center', gap: 8, marginBottom: 8 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }} accessible accessibilityLabel="UBIK">
+              <Icono tamano={56} />
+              <Palabra alto={46} />
+            </View>
+            <Text style={st.bajada}>CONTROL DE ACCESO</Text>
             <Text style={[s.subtitulo, { textAlign: 'center' }]}>Valida las entradas de tu evento escaneando su código QR.</Text>
           </View>
 
@@ -147,7 +151,7 @@ export default function Inicio({ onEntrar }: { onEntrar: (s: Sesion) => void }) 
 }
 
 const st = StyleSheet.create({
-  marca: { color: c.esmeraldaClaro, fontSize: 36, fontWeight: '900', letterSpacing: 2 },
+  bajada: { color: c.suave, fontSize: 12, fontWeight: '700', letterSpacing: 4, marginTop: 2 },
   pestanas: { flexDirection: 'row', backgroundColor: c.tarjeta, borderRadius: 14, padding: 4, borderWidth: 1, borderColor: c.borde },
   pestana: { flex: 1, paddingVertical: 10, borderRadius: 10, alignItems: 'center' },
   pestanaActiva: { backgroundColor: c.borde },

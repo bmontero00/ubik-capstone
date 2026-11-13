@@ -32,6 +32,14 @@
           "recordAudioAndroid": false,
           "barcodeScannerEnabled": true
         }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "backgroundColor": "#0b1120",
+          "imageWidth": 140
+        }
       ]
     ],
     "backgroundColor": "#0b1120"

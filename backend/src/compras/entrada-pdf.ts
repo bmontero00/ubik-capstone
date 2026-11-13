@@ -31,6 +31,14 @@ export interface DatosPdf {
   incluirEstacionamiento: boolean;
 }
 
+// Trazos de la palabra "UBIK" (mismo dibujo que frontend/src/components/UbikWordmark.tsx)
+const TRAZOS_UBIK = [
+  'M3.5 6V30a10 10 0 0 0 20 0V6',
+  'M35 6V40H45a9.5 9.5 0 0 0 0-19H35M35 6h8.5a7.5 7.5 0 0 1 0 15',
+  'M66 6V40',
+  'M80 6V40M99 6L82.5 24.5M89 17L100 40',
+];
+
 // Colores de UBIK (impreso sobre fondo blanco)
 const TINTA = '#0f172a';
 const TEXTO = '#334155';
@@ -111,14 +119,20 @@ export async function generarPdfEntradas(d: DatosPdf): Promise<Buffer> {
     doc.restore();
   };
 
+  // Palabra "UBIK" del imagotipo en tinta (versión neutra para impresión), en una grilla de 104 x 46
+  const palabra = (x: number, y: number, alto: number) => {
+    doc.save();
+    doc.translate(x, y).scale(alto / 46);
+    for (const d of TRAZOS_UBIK) doc.path(d).lineWidth(7).lineCap('round').lineJoin('round').stroke(TINTA);
+    doc.restore();
+  };
+
   // Cabecera común: marca, imagen o degradado, y datos del evento
   const cabecera = (etiqueta: string) => {
     doc.addPage();
     logo(M, M - 2, 36);
-    const marca = doc.linearGradient(M + 46, 0, M + 104, 0);
-    marca.stop(0, '#10b981').stop(1, '#06b6d4');
-    doc.font('Helvetica-Bold').fontSize(20).fillColor(marca).text('UBIK', M + 46, M, { lineBreak: false });
-    doc.font('Helvetica').fontSize(9).fillColor(SUAVE).text('Eventos & Comunidad', M + 46, M + 22, { lineBreak: false });
+    palabra(M + 46, M + 1, 17);
+    doc.font('Helvetica').fontSize(9).fillColor(SUAVE).text('Eventos & Comunidad', M + 46, M + 23, { lineBreak: false });
     doc.font('Helvetica-Bold').fontSize(10).fillColor(TINTA).text(etiqueta.toUpperCase(), M, M + 4, { width: ANCHO, align: 'right', characterSpacing: 1 });
     doc.font('Helvetica').fontSize(9).fillColor(SUAVE).text(`Compra ${d.compra.codigo}`, M, M + 20, { width: ANCHO, align: 'right' });
 

@@ -2,6 +2,7 @@ import React from 'react';
 import Link from 'next/link';
 import { Mail } from 'lucide-react';
 import UbikLogo from './UbikLogo';
+import UbikWordmark from './UbikWordmark';
 
 export const SUPPORT_EMAIL = 'soporte@ubik.cl';
 
@@ -13,7 +14,7 @@ export default function Footer() {
         <div>
           <div className="flex items-center gap-2">
             <UbikLogo size={32} className="rounded-lg" />
-            <span className="font-extrabold text-lg bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">UBIK</span>
+            <UbikWordmark height={18} className="ml-0.5" />
           </div>
           <p className="text-sm text-slate-400 mt-3 max-w-xs leading-relaxed">
             Eventos y comunidad cerca de ti. Disponible por ahora en Santiago de Chile.
